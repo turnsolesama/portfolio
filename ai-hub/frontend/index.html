@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Hub · 本地资产管理</title><meta name="color-scheme" content="dark">
+  <link rel="icon" href="brand.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="studio.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar" aria-label="主导航">
+    <div class="logo"><span class="logo-mark" data-icon="layers"></span><div><b>AI HUB</b><small>本地创作资产</small></div></div>
+    <nav id="nav">
+      <div class="nav-label">工作空间</div>
+      <a href="#/overview" data-page="overview"><span data-icon="overview"></span><span>工作总览</span></a>
+      <a href="#/models" data-page="models"><span data-icon="layers"></span><span>模型资产</span></a>
+      <a href="#/llm" data-page="llm"><span data-icon="cpu"></span><span>大模型与语音</span></a>
+      <a href="#/workflows" data-page="workflows"><span data-icon="workflow"></span><span>工作流</span></a>
+      <a href="#/files" data-page="files"><span data-icon="folder"></span><span>文件空间</span></a>
+      <div class="nav-label">观察与管理</div>
+      <a href="#/analysis" data-page="analysis"><span data-icon="chart"></span><span>使用分析</span></a>
+      <a href="#/images" data-page="images"><span data-icon="image"></span><span>出图图库</span></a>
+      <a href="#/updates" data-page="updates"><span data-icon="refresh"></span><span>版本更新</span></a>
+      <a href="#/reports" data-page="reports"><span data-icon="document"></span><span>资料与报告</span></a>
+      <a href="#/settings" data-page="settings"><span data-icon="settings"></span><span>终端设置</span></a>
+    </nav>
+    <div id="sidebar-status" class="sidebar-status" aria-live="polite">正在连接本地服务…</div>
+    <div class="sidebar-note">LOCAL WORKSPACE · V2.2</div>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <button class="btn ghost menu-toggle" id="menu-toggle" aria-label="切换导航" aria-expanded="false"><span data-icon="menu"></span></button>
+      <button class="btn ghost" id="nav-back" aria-label="暂无上一页" aria-keyshortcuts="Alt+ArrowLeft" title="暂无上一页" disabled><span data-icon="back"></span><span id="nav-back-label">返回</span></button>
+      <div class="top-heading"><small>WORKSPACE</small><span class="sep">/</span><h1 id="page-title">工作总览</h1></div>
+      <div id="jobbar" class="jobbar hidden" role="status"><span class="spin">◌</span><span id="jobbar-text"></span></div>
+      <label class="global-searchbox"><span data-icon="search" aria-hidden="true"></span><input id="global-search" type="search" aria-label="全局搜索模型" placeholder="搜索模型、架构…"><kbd aria-hidden="true">Ctrl K</kbd></label>
+      <button id="btn-check-updates" class="btn ghost" title="检查模型来源的版本信息"><span data-icon="refresh"></span>检查更新</button>
+      <button id="btn-rescan" class="btn primary" title="刷新本地文件与出图索引"><span data-icon="scan"></span>刷新索引</button>
+    </header>
+    <div id="page"></div>
+  </main>
+</div>
+<div id="drawer-mask" class="hidden"></div><aside id="drawer" class="hidden" role="dialog" aria-modal="true" aria-label="模型详情"></aside>
+<div id="lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="图片查看"></div>
+<div id="modal-mask" class="hidden"><div id="modal" role="dialog" aria-modal="true" aria-label="详细信息"></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="navigation.js"></script><script src="app.js"></script>
+</body>
+</html>

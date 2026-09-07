@@ -1,0 +1,2 @@
+9c698ed13e9e8c9bb2c6e725a49c53415df1bd1f0e03bbcf2b4701dbe3d12789  AI-Hub-v2.2.0-Source.zip
+7b02a667415f22aac3589939572f2c55a0cbf707acf2d76d6ef05491c08cac28  AI-Hub-v2.2.0-Windows-x64.zip

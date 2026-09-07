@@ -1,0 +1,16 @@
+data/
+backups/
+runtime/
+desktop/vendor/
+__pycache__/
+*.py[cod]
+tests/_tmp/
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.lnk
+*.navigation-update
+*.release-update
