@@ -1,4 +1,5 @@
 ﻿$ErrorActionPreference='Stop'
+$env:PROXY_SWITCH_DATA_DIR=Join-Path $env:TEMP ('ProxySwitch-unit-'+[Guid]::NewGuid().ToString('N'))
 . (Join-Path $PSScriptRoot 'ProxyBackend.ps1')
 $script:pass=0
 function Check($Condition,$Message){if(-not $Condition){throw $Message};$script:pass++}

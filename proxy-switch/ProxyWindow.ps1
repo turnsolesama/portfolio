@@ -12,7 +12,7 @@ $muted=[Drawing.ColorTranslator]::FromHtml('#617687')
 $mint=[Drawing.ColorTranslator]::FromHtml('#087F72')
 $paper=[Drawing.ColorTranslator]::FromHtml('#F1F5F7')
 $form=New-Object Windows.Forms.Form
-$form.Text='ProxySwitch 3.0.3 · 网络代理管家'
+$form.Text='ProxySwitch 3.1.0 · 网络代理管家'
 $form.ClientSize=New-Object Drawing.Size(1080,830)
 $form.MinimumSize=New-Object Drawing.Size(1020,800)
 $form.StartPosition='CenterScreen';$form.AutoScaleMode='Dpi';$form.BackColor=$paper
@@ -51,7 +51,7 @@ $form.Controls.Add($layout)
 $header=New-Object Windows.Forms.Panel;$header.Dock='Fill';$header.BackColor=$ink;$header.Margin=New-Object Windows.Forms.Padding(0,0,0,12)
 $layout.Controls.Add($header,0,0)
 $brand=New-Label $header 'ProxySwitch' 18 8 210 35 21 $true;$brand.ForeColor=[Drawing.Color]::White
-$sub=New-Label $header '网络代理管家   /   3.0.3' 228 18 300 26 10;$sub.ForeColor=[Drawing.ColorTranslator]::FromHtml('#80DED0')
+$sub=New-Label $header '网络代理管家   /   3.1.0' 228 18 300 26 10;$sub.ForeColor=[Drawing.ColorTranslator]::FromHtml('#80DED0')
 $tagline=New-Label $header '看清当前出口，为每个程序选择合适的线路。' 20 43 670 22 9;$tagline.ForeColor=[Drawing.ColorTranslator]::FromHtml('#CADAE3')
 $help=New-Button $header '使用指南' 816 17 92 34 {Show-Guide};$help.Anchor='Top,Right'
 $settings=New-Button $header '代理管理' 916 17 96 34 {$tabs.SelectedTab=$proxyPage};$settings.Anchor='Top,Right'
@@ -146,10 +146,11 @@ foreach($option in @(@('跟随统一线路 · 移除此规则','Follow'),@('直�
     [void]$appMenu.Items.Add($item)
 }
 [void]$appMenu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+$launchItem=New-Object Windows.Forms.ToolStripMenuItem('按指定线路打开（请先退出程序）');$launchItem.Add_Click({if($script:AppTarget){Start-Work 'AppLaunch' $script:AppTarget.Path}});[void]$appMenu.Items.Add($launchItem)
 $copyItem=New-Object Windows.Forms.ToolStripMenuItem('复制程序路径');$copyItem.Add_Click({if($script:AppTarget){[Windows.Forms.Clipboard]::SetText($script:AppTarget.Path);Write-Activity '已复制所选程序的路径。'}});[void]$appMenu.Items.Add($copyItem)
 $appMenu.Add_Opening({
     if(-not $script:AppTarget.Path -or ($script:Worker -and $script:Worker.Kind -ne 'Status')){$_.Cancel=$true;return}
-    $script:MenuOpen=$true;$menuTitle.Text=$script:AppTarget.Name
+    $script:MenuOpen=$true;$menuTitle.Text=$script:AppTarget.Name;$launchItem.Enabled=[bool]$script:AppTarget.CanLaunch
     foreach($item in @($appMenu.Items)){if($item.Tag -and $item.Tag -notin @('Follow','Direct')){$appMenu.Items.Remove($item);$item.Dispose()}}
     $insert=3
     foreach($p in $script:Profiles.Profiles){
@@ -207,7 +208,7 @@ function Add-ProgramRule([string]$TargetPath='') {
 function Show-AppDetails {
     if(-not $liveList.SelectedItems.Count){Write-Activity '请先选中一个程序。';return}
     $app=$liveList.SelectedItems[0].Tag;$script:DialogOpen=$true
-    try{[void][Windows.Forms.MessageBox]::Show($form,($app.Name+"`r`n`r`n程序路径："+$app.Path+"`r`n`r`n进程 ID："+$(if($app.PIDs){$app.PIDs}else{'未运行'})+"`r`n实际连接："+$app.Actual+"`r`n规则状态："+$app.Status+"`r`n`r`n一个程序可能有多个联网进程。规则按 EXE 路径生效，软件升级后路径变化需重新添加。"),'程序详情','OK','Information')}finally{$script:DialogOpen=$false}
+    try{[void][Windows.Forms.MessageBox]::Show($form,($app.Name+"`r`n`r`n程序路径："+$app.Path+"`r`n`r`n进程 ID："+$(if($app.PIDs){$app.PIDs}else{'未运行'})+"`r`n实际连接："+$app.Actual+"`r`n规则状态："+$app.Status+"`r`n`r`n联网子进程："+$app.ChildNames+"。启动代理会同时传给界面和支持代理变量的子进程；保存设置不代表已经生效，实际连接以上面的观察结果为准。"),'程序详情','OK','Information')}finally{$script:DialogOpen=$false}
 }
 function Show-Guide {
     $script:DialogOpen=$true
@@ -219,7 +220,7 @@ function Show-Guide {
 在上方选择直连或已添加代理，点击「统一切换」。它会同步系统代理与用户环境变量，撤销程序专用规则；切换前设置会备份，支持撤回。
 
 ③ 按程序指定线路
-按程序分流与 SOCKS5 统一切换需要可选的本地分流引擎，目前适配 Clash Verge。在代理编辑窗口中勾选「用作程序分流引擎」，填写其本地混合端口和内核路径。然后右键程序选择线路。
+Electron / Chromium 程序可使用启动代理：右键选择 HTTP 入口或直连，工具备份并更新桌面启动入口，同时为界面和联网子进程传入代理。保存任务并完整退出后，从桌面原图标重新打开，列表会观察实际连接。其他程序仍需受支持的分流引擎；不会假装接管未经过引擎的流量。
 
 统一切换只影响遵循系统代理或分流引擎的新连接。已有连接、独立代理与 VPN 隧道可能仍需手动处理；本工具不会结束程序或自动启用 TUN。
 
@@ -319,9 +320,9 @@ function Show-Applications($Apps) {
     $rows=@(Select-ApplicationRows $Apps.Rows $searchBox.Text.Trim() $savedOnly.Checked)
     foreach($app in $rows){
         $item=New-Object Windows.Forms.ListViewItem($app.Name);$item.Tag=$app;$item.ToolTipText=$app.Path
-        [void]$item.SubItems.Add($policies[$app.Policy]);[void]$item.SubItems.Add($app.Actual)
+        [void]$item.SubItems.Add($(if($app.PolicyName){$app.PolicyName}else{Get-RouteName $app.Policy}));[void]$item.SubItems.Add($app.Actual)
         $note=$app.Status
-        if($app.Policy -ne 'Follow' -and $script:LastState.Key -ne (Get-GatewayKey)){$note='未经过分流引擎，规则可能未生效'}
+        if($app.Mode -ne 'launch' -and $app.Policy -ne 'Follow' -and $script:LastState.Key -ne (Get-GatewayKey)){$note='未经过分流引擎，规则可能未生效'}
         [void]$item.SubItems.Add($note)
         if($app.Policy -ne 'Follow'){$item.ForeColor=$mint;if(-not $app.Loaded -or $note -match '旧连接|失效|切回'){$item.ForeColor=[Drawing.Color]::FromArgb(160,86,14)}}
         [void]$liveList.Items.Add($item);if($selectedPath -and $selectedPath -ieq $app.Path){$item.Selected=$true}
@@ -334,7 +335,8 @@ function Show-Applications($Apps) {
     $ruleMeta.Text='已加载 '+$loaded+' 条'
     if($Apps.DefaultRoute){$ruleMeta.Text='统一线路：'+(Get-RouteName $Apps.DefaultRoute)+' · '+$(if($Apps.DefaultLoaded){'已加载'}else{'待重载'})}
     elseif(-not (Get-GatewayKey)){$ruleMeta.Text='程序分流引擎未配置'}
-    elseif(-not $Apps.Available){$ruleMeta.Text='分流引擎暂不可用';$ruleValue.ForeColor=$muted}
+    elseif(-not $Apps.Available){$ruleMeta.Text='引擎离线 · 支持的程序可使用启动代理';$ruleValue.ForeColor=$muted}
+    if($Apps.LaunchRuleCount){$ruleMeta.Text='启动代理 '+$Apps.LaunchRuleCount+' 条 · 生效状态见程序列表'}
     $programHint.Text='右键指定线路；统一切换会撤销 '+$Apps.RuleCount+' 条专用规则。新连接生效。'
     if($Apps.DefaultRoute -and -not $Apps.DefaultLoaded){$noticeLabel.Text='统一路由尚未加载，请检查分流引擎的规则模式并重载。'}
 
@@ -371,9 +373,9 @@ function Get-DemoState {
     [pscustomobject]@{Key='office';Current='办公网络';NetworkKey='office';NetworkName='办公网络';Server='127.0.0.1:7890';Aligned=$true;EnvConflict=$false;EndpointReady=$true;Drift=$false;Environment=@();Listeners=@([pscustomobject]@{Key='office';Ready=$true},[pscustomobject]@{Key='backup';Ready=$true});OldConnections=@();CheckedAt='12:30:00'}
 }
 function Get-DemoApps {
-    [pscustomobject]@{Available=$true;Mode='rule';RuleCount=2;DefaultRoute='office';DefaultLoaded=$true;Rows=@(
-        [pscustomobject]@{Name='浏览器';Path='C:\Apps\Browser\browser.exe';Policy='Follow';Loaded=$false;Actual='办公网络 ×8';Status='跟随当前线路';PIDs='2200'},
-        [pscustomobject]@{Name='开发工具';Path='C:\Apps\Editor\editor.exe';Policy='backup';Loaded=$true;Actual='备用网络 ×3';Status='已加载；新连接生效';PIDs='1200'},
+    [pscustomobject]@{Available=$true;Mode='rule';RuleCount=2;LaunchRuleCount=1;DefaultRoute='office';DefaultLoaded=$true;Rows=@(
+        [pscustomobject]@{Name='浏览器';Path='C:\Apps\Browser\browser.exe';Policy='office';Loaded=$true;Actual='办公网络 ×8';Status='已观察到目标代理连接（含子进程）';PIDs='2200,2201';Mode='launch';CanLaunch=$true;ChildNames='network_helper'},
+        [pscustomobject]@{Name='开发工具';Path='C:\Apps\Editor\editor.exe';Policy='Follow';PolicyName='未单独指定';Loaded=$false;Actual='暂无连接';Status='未设专用规则 · 以实际连接为准';PIDs='1200'},
         [pscustomobject]@{Name='本地工作台';Path='C:\Apps\Studio\studio.exe';Policy='Direct';Loaded=$true;Actual='直连 ×2';Status='已加载；新连接生效';PIDs='3300'},
         [pscustomobject]@{Name='文件同步';Path='C:\Apps\Sync\sync.exe';Policy='Follow';Loaded=$false;Actual='暂无连接';Status='跟随当前线路';PIDs='4400'}
     )}
@@ -419,6 +421,7 @@ function Start-Work([string]$Kind,[string]$Key) {
                 'Discover'{$result=$discovery}
                 'AppRoute'{$change=$Key | ConvertFrom-Json;$result=Set-ApplicationRoute $change.path $change.route}
                 'AppSync'{$result=Sync-ApplicationRoutes}
+                'AppLaunch'{$result=Start-ManagedProgram $Key}
                 'Diagnose'{
                     $result=@()
                     foreach($route in @($Key)){
@@ -491,7 +494,7 @@ $timer.Add_Tick({
     if(-not $script:Worker -and -not $script:MenuOpen -and -not $script:DialogOpen -and $autoRefresh.Checked -and [DateTime]::Now -ge $script:NextPoll){Start-Work 'Status' ''}
 })
 $form.Add_FormClosing({
-    if($script:Worker -and $script:Worker.Kind -in @('Switch','Restore','AppRoute','AppSync')){
+    if($script:Worker -and $script:Worker.Kind -in @('Switch','Restore','AppRoute','AppSync','AppLaunch')){
         $_.Cancel=$true
         Write-Activity '正在完成设置与校验，请稍候再关闭，以便失败时能恢复原配置。'
     }

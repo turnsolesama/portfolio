@@ -3,7 +3,7 @@ Add-Type -AssemblyName System.Windows.Forms
 $qaSource=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('passive-ui-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
 # Isolated Windows fixtures must not contend with the real manager or other test windows.
 $qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
 $qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
@@ -47,7 +47,7 @@ $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=300
 $qaTimer.Add_Tick({
     try{
         if($clock.Elapsed.TotalSeconds -gt 95){throw 'Lifecycle test timed out'}
-        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.0.3*'} | Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.0*'} | Select-Object -First 1
         if(-not $main){return}
         if($canary.Pending()){throw 'Passive status opened a socket'}
         if(Test-Path -LiteralPath (Join-Path $qaRoot 'writes.log')){throw 'Lifecycle wrote network settings'}

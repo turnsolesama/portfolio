@@ -14,10 +14,16 @@ param(
     [switch]$Demo,
     [ValidateSet('Programs','Tools','Settings','Proxies')][string]$PreviewView='Programs',
     [string]$ExportReport,
+    [string]$DataDirectory='',
+    [string]$LaunchProgram='',
     [switch]$NoUI
 )
 $ErrorActionPreference='Stop'
-. (Join-Path $PSScriptRoot 'ProxyBackend.ps1')
+. (Join-Path $PSScriptRoot 'ProxyBackend.ps1') -DataDirectory $DataDirectory
+if($LaunchProgram){
+    try{Start-ManagedProgram $LaunchProgram | Out-Null}catch{Add-Type -AssemblyName System.Windows.Forms;[void][Windows.Forms.MessageBox]::Show($_.Exception.Message,'程序代理启动','OK','Warning')}
+    return
+}
 if($NoUI){return}
 if($Discover){Sync-LocalProxyDiscovery | ConvertTo-Json -Depth 5;return}
 if($ExportReport){Write-LocalJson ([IO.Path]::GetFullPath($ExportReport)) (New-SupportReport (Get-ProxyStatus) (Get-ApplicationRoutes));Write-Output 'Diagnostic summary exported.';return}

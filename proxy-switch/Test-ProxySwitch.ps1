@@ -1,4 +1,5 @@
 ﻿$ErrorActionPreference='Stop'
+$env:PROXY_SWITCH_DATA_DIR=Join-Path $env:TEMP ('ProxySwitch-unit-'+[Guid]::NewGuid().ToString('N'))
 . (Join-Path $PSScriptRoot 'ProxyBackend.ps1')
 $script:Profiles=[pscustomobject]@{Version=3;Profiles=@(
     [pscustomobject]@{Id='alpha';Name='办公';Protocol='http';Host='127.0.0.1';Port=7897},

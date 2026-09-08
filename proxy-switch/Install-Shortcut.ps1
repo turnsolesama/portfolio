@@ -20,7 +20,7 @@ try{
     $link.TargetPath=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $link.Arguments='-NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -File "'+$entry+'"'
     $link.WorkingDirectory=$PSScriptRoot;$link.WindowStyle=7
-    $link.Description='ProxySwitch 3.0.3：管理自定义代理，一键统一切换，按程序指定线路。'
+    $link.Description='ProxySwitch 3.1.0：管理自定义代理，一键统一切换，按程序指定线路。'
     $icon=Join-Path $PSScriptRoot 'assets\ProxySwitch.ico'
     if(Test-Path -LiteralPath $icon){$link.IconLocation=$icon+',0'}
     $link.Save()

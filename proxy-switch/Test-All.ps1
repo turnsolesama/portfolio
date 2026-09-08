@@ -5,7 +5,7 @@ foreach($file in Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1'){
     if($errors){throw ($file.Name+': '+(($errors | ForEach-Object Message)-join '; '))}
 }
 $windowsPowerShell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-foreach($name in @('Test-ProxySwitch.ps1','Test-Preferences.ps1','Test-ProxyDiscovery.ps1','Test-Compatibility.ps1','Test-AutomaticDiscovery.ps1')){
+foreach($name in @('Test-ProxySwitch.ps1','Test-Preferences.ps1','Test-ProxyDiscovery.ps1','Test-Compatibility.ps1','Test-AutomaticDiscovery.ps1','Test-ProgramLaunch.ps1')){
     & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot $name)
     if($LASTEXITCODE -ne 0){throw ($name+' failed')}
 }

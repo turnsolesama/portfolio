@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $script:Root = $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Preferences.ps1') -DataDirectory $DataDirectory
 . (Join-Path $PSScriptRoot 'ProcessInventory.ps1')
+. (Join-Path $PSScriptRoot 'ProgramLaunch.ps1')
 . (Join-Path $PSScriptRoot 'ProxyDiscovery.ps1')
 $script:Profiles = Read-ProfileSettings
 $script:StatePath = Join-Path $script:DataRoot 'selection.json'
@@ -313,14 +314,17 @@ function Save-Backup($Snapshot) {
     return $path
 }
 function Test-SameRouting($A,$B) {
-    $aText=@{entries=@($A.entries | ForEach-Object {@{path=$_.path;route=$_.route}});defaultRoute=$A.defaultRoute}|ConvertTo-Json -Depth 6 -Compress
-    $bText=@{entries=@($B.entries | ForEach-Object {@{path=$_.path;route=$_.route}});defaultRoute=$B.defaultRoute}|ConvertTo-Json -Depth 6 -Compress
+    $aText=@{entries=@($A.entries | ForEach-Object {@{path=$_.path;route=$_.route}});defaultRoute=$A.defaultRoute;launchEntries=@($A.launchEntries|Where-Object {$_})}|ConvertTo-Json -Depth 6 -Compress
+    $bText=@{entries=@($B.entries | ForEach-Object {@{path=$_.path;route=$_.route}});defaultRoute=$B.defaultRoute;launchEntries=@($B.launchEntries|Where-Object {$_})}|ConvertTo-Json -Depth 6 -Compress
     return $aText -ceq $bText
 }
 function Set-RoutingSnapshot($Snapshot) {
     $current=Get-RoutingSnapshot
-    if(-not $current.installed -and -not @($current.entries).Count -and -not $current.defaultRoute -and -not @($Snapshot.entries).Count -and -not $Snapshot.defaultRoute){return}
-    Invoke-AppRouter @{action='replace';entries=@($Snapshot.entries);defaultRoute=$Snapshot.defaultRoute} | Out-Null
+    $hasLaunch=$null -ne $Snapshot.PSObject.Properties['launchEntries']
+    if($hasLaunch){Set-ProgramLaunchEntries @($Snapshot.launchEntries)}
+    try{
+        if($current.installed -or @($current.entries).Count -or $current.defaultRoute -or @($Snapshot.entries).Count -or $Snapshot.defaultRoute){Invoke-AppRouter @{action='replace';entries=@($Snapshot.entries);defaultRoute=$Snapshot.defaultRoute} | Out-Null}
+    }catch{if($hasLaunch){Set-ProgramLaunchEntries @($current.launchEntries)};throw}
 }
 function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSystem,$BeforeEnv,$TargetRouting=$null,$BeforeRouting=$null,[scriptblock]$VerifyAction=$null) {
     if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $BeforeEnv (Get-UserProxyEnv))){throw '检测期间其他程序改动了代理，请稍后重试。未写入设置。'}
@@ -390,7 +394,7 @@ function Get-UnifiedPlan([string]$Key,$BeforeRouting) {
         if($useEngine -and ($Key -eq $gateway -or (Get-Profile $Key).Protocol -ne 'http')){$entrance=$gateway;$default=$Key}
         elseif((Get-Profile $Key).Protocol -ne 'http'){throw 'SOCKS5 统一切换需要本地分流引擎提供 HTTP 入口，请在代理管理设置引擎。'}
     }
-    [pscustomobject]@{Entrance=$entrance;NetworkKey=$Key;Routing=[pscustomobject]@{entries=@();defaultRoute=$default};ClearedRules=@($BeforeRouting.entries).Count}
+    [pscustomobject]@{Entrance=$entrance;NetworkKey=$Key;Routing=[pscustomobject]@{entries=@();defaultRoute=$default;launchEntries=@($BeforeRouting.launchEntries|Where-Object {$_}|ForEach-Object {[pscustomobject]@{path=$_.path;route='Follow';adapter=$_.adapter}})};ClearedRules=(@($BeforeRouting.entries).Count+@($BeforeRouting.launchEntries|Where-Object {$_ -and $_.route -ne 'Follow'}).Count)}
 }
 function Set-SelectedProxy([string]$Key) {
     Use-ChangeLock {
@@ -409,7 +413,7 @@ function Set-SelectedProxy([string]$Key) {
         $target=[pscustomobject]@{Flags=$flags;Server=$server;Bypass=$before.Bypass}
         $selection=[pscustomobject]@{Key=$plan.Entrance;NetworkKey=$Key;Unified=$true;ChangedAt=(Get-Date).ToString('o')}
         $rules=$plan.Routing
-        if(-not $beforeRules.installed -and -not $rules.defaultRoute){$rules=$null}
+        if(-not $beforeRules.installed -and -not $rules.defaultRoute -and -not @($beforeRules.launchEntries|Where-Object {$_}).Count){$rules=$null}
         $verify={
             if($rules.defaultRoute -and -not (Test-ProxyRoute $plan.Entrance -Fast).Usable){throw '统一线路的实际检测未通过。'}
             if($plan.Entrance -ne 'Direct' -and -not (Get-Listener (Get-Profile $plan.Entrance) -ProbeRemote)){throw '提交前入口已退出，未写入失效端口。'}

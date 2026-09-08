@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.0.3'
+$script:ProductVersion='3.1.0'
 $script:DataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 if($env:PROXY_SWITCH_DATA_DIR){$script:DataRoot=[IO.Path]::GetFullPath($env:PROXY_SWITCH_DATA_DIR)}
 if($DataDirectory){$script:DataRoot=[IO.Path]::GetFullPath($DataDirectory)}
@@ -61,17 +61,17 @@ function Write-LocalJson([string]$Path,$Value) {
 }
 function Get-RoutingSnapshot {
     $path=Join-Path $script:DataRoot 'app-rules.json'
-    if(-not (Test-Path -LiteralPath $path)){return [pscustomobject]@{entries=@();defaultRoute=$null;installed=$false}}
+    if(-not (Test-Path -LiteralPath $path)){return [pscustomobject]@{entries=@();defaultRoute=$null;installed=$false;launchEntries=@(Get-ProgramLaunchEntries)}}
     try{$state=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json}catch{throw '程序规则文件无法读取，已停止更改。'}
     if($state.version -notin @(1,2)){throw '程序规则版本不兼容。'}
     if(-not $state.installed -and (@($state.entries).Count -gt 0 -or $state.defaultRoute)){throw '程序规则状态不一致，请先从备份恢复规则文件。'}
-    [pscustomobject]@{entries=@($state.entries);defaultRoute=$state.defaultRoute;installed=[bool]$state.installed}
+    [pscustomobject]@{entries=@($state.entries);defaultRoute=$state.defaultRoute;installed=[bool]$state.installed;launchEntries=@(Get-ProgramLaunchEntries)}
 }
 function Save-ProfileSettings($Value) {
     $clean=ConvertTo-ValidProfileSettings $Value
     Use-ChangeLock {
         $saved=Get-RoutingSnapshot;$selection=Get-Selection
-        $inUse=@($saved.entries | ForEach-Object route)+@($saved.defaultRoute,$selection.Key,$selection.NetworkKey,(Get-SystemKey (Get-SystemSnapshot)))
+        $inUse=@($saved.entries | ForEach-Object route)+@($saved.launchEntries | ForEach-Object route)+@($saved.defaultRoute,$selection.Key,$selection.NetworkKey,(Get-SystemKey (Get-SystemSnapshot)))
         foreach($id in $inUse){if($id -and $id -notin @('Direct','Other','Follow') -and $id -notin @($clean.Profiles | ForEach-Object Id)){throw '该代理仍被当前入口或程序规则使用，请先统一切换到其他线路再删除。'}}
         if($saved.installed -and ($clean.Routing.Adapter -ne $script:Profiles.Routing.Adapter -or $clean.Routing.ProfileId -ne $script:Profiles.Routing.ProfileId)){throw '请先统一切换到直连，撤除已加载的分流规则，再更换分流引擎。'}
         if(Test-Path -LiteralPath $script:ConfigPath){[void][IO.Directory]::CreateDirectory($script:BackupDir);Copy-Item -LiteralPath $script:ConfigPath -Destination (Join-Path $script:BackupDir ('settings-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')+'.json'))}
