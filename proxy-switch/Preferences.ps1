@@ -1,8 +1,9 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.1.0'
-$script:DataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
-if($env:PROXY_SWITCH_DATA_DIR){$script:DataRoot=[IO.Path]::GetFullPath($env:PROXY_SWITCH_DATA_DIR)}
-if($DataDirectory){$script:DataRoot=[IO.Path]::GetFullPath($DataDirectory)}
+$script:ProductVersion='3.1.1'
+. (Join-Path $PSScriptRoot 'Storage.ps1')
+$script:LegacyDataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
+$script:DataRoot=Resolve-ProxyDataDirectory $DataDirectory $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA
+if(-not $DataDirectory -and -not $env:PROXY_SWITCH_DATA_DIR){Initialize-ProxyDataDirectory $script:DataRoot $script:LegacyDataRoot}
 $script:ConfigPath=Join-Path $script:DataRoot 'config.json'
 function Convert-LegacySettings($Value) {
     if($Value.Version -eq 3){return $Value}

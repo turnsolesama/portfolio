@@ -1,8 +1,8 @@
 ﻿[
     {
         "path":  "ProxySwitch.ps1",
-        "bytes":  1743,
-        "sha256":  "ff819ef8f28879b0961d6a2392a20e88bd7e8884b1441dfece6058f3ae167e8d"
+        "bytes":  2512,
+        "sha256":  "86a2a4ac735d6e9499438eda03e0fbee2510f9a45e3245181cd96faf53fa35f9"
     },
     {
         "path":  "ProxyBackend.ps1",
@@ -11,8 +11,8 @@
     },
     {
         "path":  "ProxyWindow.ps1",
-        "bytes":  47919,
-        "sha256":  "2bce6a24ee4c15c7b78a72f776523a01f6307d54bcfe236642b1bb6d7f781588"
+        "bytes":  47981,
+        "sha256":  "1395be0d2638008d50c2218cc52cfdfd984ed1c1757af4cb3c7994a81ae39f18"
     },
     {
         "path":  "AppRouting.ps1",
@@ -21,13 +21,13 @@
     },
     {
         "path":  "AppRouter.cjs",
-        "bytes":  19406,
-        "sha256":  "89f7b93bf6dd93fab7cbcac57d2f5712de6d34cfc52b991a0a66faefc625c61a"
+        "bytes":  19437,
+        "sha256":  "c12d1776ee06028c4eda3f7937f47e7561e74361a74666036e9639bed1c51f9f"
     },
     {
         "path":  "Preferences.ps1",
-        "bytes":  10778,
-        "sha256":  "27ff902f048575b9cbac53b5d23e0bb5dda3867c3ca9225e2229b03221df0904"
+        "bytes":  10933,
+        "sha256":  "811248787a9f167d3f69dd77240509db473373ead3c4dd077eaae93797d06eb9"
     },
     {
         "path":  "ProxyDiscovery.ps1",
@@ -45,6 +45,11 @@
         "sha256":  "2f4326a8e1be03efd6d403c55d1d24fecd315b8b2dea915bdd5c35299a490c5b"
     },
     {
+        "path":  "Storage.ps1",
+        "bytes":  3723,
+        "sha256":  "a3607f435a07cfd4c4c3ffc001478b35904e7100e856db03378b2844e052b543"
+    },
+    {
         "path":  "config.defaults.json",
         "bytes":  93,
         "sha256":  "aac9b43374897dd5434a7c71021f1ce5a2a18ca94735905b2b6d957d7e9585d8"
@@ -56,13 +61,13 @@
     },
     {
         "path":  "Install-Shortcut.ps1",
-        "bytes":  1880,
-        "sha256":  "06d25524e90f1c2711fa5b29e78a2dafc146f9e23edc5bf855e02a01f8fb7497"
+        "bytes":  2181,
+        "sha256":  "f48c5b7e83bfdceb2ec76a77578773bee5e5b7a48a8de2dd87b627a1045fc2b0"
     },
     {
         "path":  "Test-All.ps1",
-        "bytes":  1053,
-        "sha256":  "7899da0b7bcc810b7daf8f15baab61da8362d6ef1502626cc2f3935e6ff5e60b"
+        "bytes":  1072,
+        "sha256":  "ace286fefaf23bb31f3a8ca54d33c8b2873d49d90d7f8e55c7dc6f4ff97c8bea"
     },
     {
         "path":  "Test-ProxySwitch.ps1",
@@ -86,8 +91,8 @@
     },
     {
         "path":  "Build-Release.ps1",
-        "bytes":  2617,
-        "sha256":  "e32ac529686ff41ca4b2ab19a8042ad51de5faea3502e05943bd45682db34fe6"
+        "bytes":  2650,
+        "sha256":  "e8789212c5e43ac995ce3ab51bb71d49ca0438dfd9c1eb644960d83f406365c7"
     },
     {
         "path":  "Test-Compatibility.ps1",
@@ -105,34 +110,39 @@
         "sha256":  "5b4a6589ece9db659b5b980433b95642dd72e00afe40645bd1a3288340bca9b8"
     },
     {
+        "path":  "Test-Storage.ps1",
+        "bytes":  4118,
+        "sha256":  "e694833e9324b1f37706316a08f2d9783b11b365f32918c55610ee28cbb2d0db"
+    },
+    {
         "path":  "Test-AutomaticDiscoveryUI.ps1",
-        "bytes":  4849,
-        "sha256":  "4076bc37070f8315f18da0b2aef52b20c9ef29face11986053c233c7dc990833"
+        "bytes":  4863,
+        "sha256":  "25daf4b3872281c1909bd5615023b1e893c393659a0bc04371a4b3c1ccaf5386"
     },
     {
         "path":  "Test-SwitchInteraction.ps1",
-        "bytes":  5863,
-        "sha256":  "2180210dd9c25f403a5340bddcdecff30957260ff046bf2286227c1653f6d738"
+        "bytes":  5877,
+        "sha256":  "d7420b1cd5d83e36dd84ab7eccd13ecd1e7f334f801a0aff21321940382b4ef8"
     },
     {
         "path":  "Test-PassiveLifecycle.ps1",
-        "bytes":  7021,
-        "sha256":  "8d9ef835af9fb58cbd4294d3b6d923e0ee837ab002b844c0acaacca06f1bfd34"
+        "bytes":  7035,
+        "sha256":  "96781bfeeadcdd5b71711c82a7a8a20964aca784cefe8389252696ff42d5209c"
     },
     {
         "path":  "Test-DiscoveryUI.ps1",
-        "bytes":  5786,
-        "sha256":  "c29eb0b20c62b152fb14e3f8580fa3a3038af48b7f6feaaed3ed0b5003bc2832"
+        "bytes":  6110,
+        "sha256":  "11e2fb16fbc89a85a03e57fd9b7deb46efc8e47d73d10a4da429206973652c7c"
     },
     {
         "path":  "README.md",
-        "bytes":  15953,
-        "sha256":  "218e3336957e868bdc524efdb0b1d0752194fff871e105fff05e621866153836"
+        "bytes":  17373,
+        "sha256":  "425571c70174d41e06589497b07b9e0c03fc7824735587b56e60e3e437226df2"
     },
     {
         "path":  "CHANGELOG.md",
-        "bytes":  5547,
-        "sha256":  "a6f0c2ec3cd52eb2ed2c3ad68301c18ae57edc1ea61551b54490f922eafc20de"
+        "bytes":  6382,
+        "sha256":  "9cda19864e72fd311da0be49c5ad8345b17325adf0c01273981d0a9e07c9590a"
     },
     {
         "path":  "LICENSE",
@@ -146,13 +156,13 @@
     },
     {
         "path":  "AGENTS.md",
-        "bytes":  7825,
-        "sha256":  "104cf7554dd9bb3d30180e6c0ac6387da3f57c8d9456ea3dd61a9cea34db0732"
+        "bytes":  8641,
+        "sha256":  "5e932c6045236a058a239a86e5cc3685fe180b145563a01d5df86b45617ba027"
     },
     {
         "path":  ".gitignore",
-        "bytes":  242,
-        "sha256":  "b87f3437de0e95e2304e6df30c45deb70cba3e7f3eb0c1898fde15bf1455aa7d"
+        "bytes":  367,
+        "sha256":  "e67edb2b16547e11e7d38a77ec0bd65b3ac727d657a40ed694ebcddf5d8759ac"
     },
     {
         "path":  ".gitattributes",
@@ -166,18 +176,18 @@
     },
     {
         "path":  "assets/screenshot.png",
-        "bytes":  58506,
-        "sha256":  "c9ac1bc20a9aa6fb2b36b3cbbb913e77bd7e96306309259ce1da8c05696eaba6"
+        "bytes":  58447,
+        "sha256":  "2c001aa49ce8c4a8b5a2ef05ad95f6f06d07135ed09189531e444a47071845d8"
     },
     {
         "path":  "assets/program-menu.png",
-        "bytes":  63577,
-        "sha256":  "84c65a455db4fe100d6e80740463f5dc5ccb843b7dd07f9c267629c3afde45a7"
+        "bytes":  63525,
+        "sha256":  "763e40833a1563dc3c2d092a7d42b26b8d6101e041210a5dfa3f4705615d5a45"
     },
     {
         "path":  "assets/proxy-management.png",
-        "bytes":  56532,
-        "sha256":  "c82115b59bda1a8918427297bc7d924706604867d43796d6aabe16e4161aa03f"
+        "bytes":  56461,
+        "sha256":  "392895175f98986c6940d660cf9e993e41f41f7aa3893352fd5858f21ab7438d"
     },
     {
         "path":  "vendor/js-yaml/package.json",

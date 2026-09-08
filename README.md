@@ -24,14 +24,11 @@ My personal website and AI portfolio.
 
 ## ProxySwitch · 网络代理管家
 
-添加自定义 HTTP / SOCKS5 代理入口，统一切换系统代理，支持可选引擎下的程序分流与实际连接检查。3.1.0 新增程序启动代理，让支持的界面和联网子进程一起使用所选 HTTP 入口；备份并接入桌面图标，区分已保存与实际生效状态，保留自动发现和手动统一切换。
+添加自定义 HTTP / SOCKS5 代理入口，统一切换系统代理，支持可选引擎下的程序分流与实际连接检查。3.1.1 修复桌面入口与打包应用读取不同代理配置的问题，统一本机数据目录，保留旧数据与快捷方式备份；支持程序启动代理、后台自动发现和手动统一切换。
 
 - [源码、运行要求与使用说明](proxy-switch/README.md)
-- [下载 Windows 源码运行包 · v3.1.0](proxy-switch/releases/ProxySwitch-v3.1.0-Windows-Source.zip?raw=true)
+- [下载 Windows 源码运行包 · v3.1.1](proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip?raw=true)
 - [版本记录](proxy-switch/CHANGELOG.md)
 - [下载与校验说明](proxy-switch/releases/README.md)
 
 解压完整目录后双击「启动代理切换.cmd」。基础 HTTP / 直连切换无需 Node.js；程序分流与 SOCKS5 统一切换需要可选引擎。软件不捆绑 VPN 或代理服务。
-
-
-

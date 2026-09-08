@@ -3,12 +3,14 @@ Add-Type -AssemblyName System.Windows.Forms
 $qaSource=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('discovery-ui-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
 # Isolated Windows fixtures must not contend with the real manager or other test windows.
 $qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
 $qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
 [IO.File]::WriteAllText($qaBackend,$qaBackendText,(New-Object Text.UTF8Encoding($true)))
-$env:PROXY_SWITCH_DATA_DIR=Join-Path $qaRoot 'settings'
+$qaData=Join-Path $qaRoot 'settings'
+$env:PROXY_SWITCH_DATA_DIR=Join-Path $qaRoot 'other-environment'
+[void][IO.Directory]::CreateDirectory($env:PROXY_SWITCH_DATA_DIR)
 $discoveryPath=Join-Path $qaRoot 'ProxyBackend.ps1'
 [IO.File]::AppendAllText($discoveryPath,@'
 
@@ -31,11 +33,11 @@ $qaTimer.Add_Tick({
     $global:discoveryTicks++
     try{
         if($global:discoveryTicks -gt 120){throw 'Discovery UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.0*'} | Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.1*'} | Select-Object -First 1
         if(-not $main){return}
         $combo=Find-QAType $main ([Windows.Forms.ComboBox]) | Select-Object -First 1
         $list=Find-QAType $main ([Windows.Forms.ListView]) | Where-Object {$_.Columns.Count -eq 6} | Select-Object -First 1
-        $file=Join-Path $env:PROXY_SWITCH_DATA_DIR 'config.json'
+        $file=Join-Path $qaData 'config.json'
         if($global:discoveryStep -eq -1 -and $combo.Items.Count -eq 1 -and (Find-QAControl $main '检测并添加后台代理').Enabled){
             (Find-QAControl $main '代理管理').PerformClick()
             (Find-QAControl $main '检测并添加后台代理').PerformClick();$global:discoveryStep=0
@@ -63,7 +65,8 @@ $qaTimer.Add_Tick({
     }catch{$global:discoveryFailure=$_.Exception.Message;$qaTimer.Stop();foreach($w in @([Windows.Forms.Application]::OpenForms)){$w.Close()}}
 })
 $qaTimer.Start()
-try{& (Join-Path $qaRoot 'ProxySwitch.ps1')}finally{$qaTimer.Stop();$qaTimer.Dispose()}
+try{& (Join-Path $qaRoot 'ProxySwitch.ps1') -DataDirectory $qaData}finally{$qaTimer.Stop();$qaTimer.Dispose()}
 if($global:discoveryFailure){throw $global:discoveryFailure}
 if($global:discoveryStep -ne 4){throw 'Discovery UI incomplete'}
-'PASS: manual discovery, dropdown, external config refresh, delete and re-scan. Settings isolated; network writers prohibited.'
+if(Test-Path -LiteralPath (Join-Path $env:PROXY_SWITCH_DATA_DIR 'config.json')){throw 'UI or worker ignored the explicit data directory'}
+'PASS: manual discovery, dropdown, external config refresh, delete and re-scan; explicit data directory preserved by UI and workers. Settings isolated; network writers prohibited.'

@@ -21,7 +21,17 @@ param(
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'ProxyBackend.ps1') -DataDirectory $DataDirectory
 if($LaunchProgram){
-    try{Start-ManagedProgram $LaunchProgram | Out-Null}catch{Add-Type -AssemblyName System.Windows.Forms;[void][Windows.Forms.MessageBox]::Show($_.Exception.Message,'程序代理启动','OK','Warning')}
+    $launchAttempt=[ordered]@{Time=(Get-Date).ToString('o');Version=$script:ProductVersion;EntryPoint=$PSCommandPath;RequestedProgram=$LaunchProgram;DataDirectory=$script:DataRoot;PID=$PID;Outcome='starting'}
+    try{
+        $result=Start-ManagedProgram $LaunchProgram
+        $launchAttempt.Outcome='started';$launchAttempt.ApplicationPID=$result.PID
+        try{Write-LocalJson (Join-Path $script:DataRoot 'last-program-launch.json') $launchAttempt}catch{}
+    }catch{
+        $launchAttempt.Outcome='failed';$launchAttempt.Error=$_.Exception.Message
+        try{Write-LocalJson (Join-Path $script:DataRoot 'last-program-launch.json') $launchAttempt}catch{}
+        $launchNotice=$launchAttempt.Error+"`r`n`r`n"+'程序：'+[IO.Path]::GetFileNameWithoutExtension($LaunchProgram)
+        Add-Type -AssemblyName System.Windows.Forms;[void][Windows.Forms.MessageBox]::Show($launchNotice,'程序代理启动','OK','Warning')
+    }
     return
 }
 if($NoUI){return}
@@ -33,4 +43,4 @@ if($Status){Get-ProxyStatus | ConvertTo-Json -Depth 8;return}
 if($Check){Test-ProxyRoute $Check | ConvertTo-Json -Depth 6;return}
 if($Switch){Set-SelectedProxy $Switch | ConvertTo-Json -Depth 6;return}
 if($Restore){Restore-ProxyBackup | ConvertTo-Json -Depth 6;return}
-& (Join-Path $PSScriptRoot 'ProxyWindow.ps1') -PreviewPath $PreviewPath -SmokeTest:$SmokeTest -PreviewMenu:$PreviewMenu -Demo:$Demo -PreviewView $PreviewView
+& (Join-Path $PSScriptRoot 'ProxyWindow.ps1') -DataDirectory $script:DataRoot -PreviewPath $PreviewPath -SmokeTest:$SmokeTest -PreviewMenu:$PreviewMenu -Demo:$Demo -PreviewView $PreviewView

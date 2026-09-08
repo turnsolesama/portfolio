@@ -2,7 +2,7 @@
 Add-Type -AssemblyName System.Windows.Forms
 $source=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('ProxySwitch-action-ui-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $source $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $source $name) -Destination $qaRoot}
 # Isolated Windows fixtures must not contend with the real manager or other test windows.
 $qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
 $qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
@@ -40,7 +40,7 @@ $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=100
 $qaTimer.Add_Tick({
     try{
         if($clock.Elapsed.TotalSeconds -gt 20){throw 'Switch UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms|Where-Object Text -like 'ProxySwitch 3.1.0*'|Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms|Where-Object Text -like 'ProxySwitch 3.1.1*'|Select-Object -First 1
         if(-not $main){return};$combo=Find-Type $main ([Windows.Forms.ComboBox])|Select-Object -First 1
         if($global:step -eq 0 -and (Test-Path -LiteralPath (Join-Path $qaRoot 'inspection-started'))){
             $combo.SelectedIndex=2

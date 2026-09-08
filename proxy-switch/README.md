@@ -106,7 +106,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-Shortcut.ps1
 
 ## 本机数据与更新
 
-本机数据位于 `%LOCALAPPDATA%\ProxySwitch`，与发布源码分开保存：
+3.1.1 起，本机数据默认位于 `%USERPROFILE%\.proxyswitch`，与发布源码分开保存。管理器、桌面启动入口和后台工作进程使用同一个目录，避免 MSIX 应用启动的进程与普通桌面进程看到不同的 AppData 文件。依据：[Windows 打包桌面应用的文件重定向](https://learn.microsoft.com/en-us/windows/msix/desktop/desktop-to-uwp-behind-the-scenes)。
+
+首次使用新版默认目录时，会复制当前启动环境可见的 `%LOCALAPPDATA%\ProxySwitch` 数据及备份，保留原文件。复制完整后才启用新目录；已有新目录不会被旧配置覆盖。这个迁移只处理本机文件，不应用历史网络选择。若旧版已经产生两套配置，需要先核对并合并差异；自动迁移不会自行搜索或合并其他应用的私有目录。
+
+完成迁移后，旧快捷方式中指向原默认 AppData 目录的 `-DataDirectory` 参数会按迁移记录转到共享目录。自行指定的其他目录和 `PROXY_SWITCH_DATA_DIR` 仍按原设置使用；测试继续使用独立目录。
 
 | 文件 | 用途 |
 | --- | --- |
@@ -115,6 +119,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-Shortcut.ps1
 | `app-rules.json` | 分流引擎规则与统一默认路由 |
 | `program-proxies.json` | 程序启动代理目标 |
 | `program-shortcuts.json` / `program-launches.json` | 本机入口备份索引与启动会话核对 |
+| `last-program-launch.json` | 最近一次启动结果、程序路径和实际配置目录，仅存本机 |
+| `storage-layout.json` | 迁移来源与旧默认路径兼容记录 |
 | `backups/` | 修改前系统、变量、规则和代理列表备份 |
 
 含原 Clash 节点信息的配置备份留在 Clash 用户目录的 `proxy-switch-backups` 内，不进入发布包。更新时关闭本工具并替换程序文件，本机数据保持独立。
@@ -143,9 +149,10 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-DiscoveryUI.
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-AutomaticDiscoveryUI.ps1
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-SwitchInteraction.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-ProgramLaunch.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-Storage.ps1
 ```
 
-175 项断言覆盖代理模型、迁移、路由、事务回滚、并发改写保护、匿名报告、协议识别、自动发现缓存与有限进程查询。四种隔离界面回归覆盖自动发现、新端口识别、游戏行保留、连续 72 秒观察、外部选择、用户切换优先、阶段进度和设置实读。测试使用独立数据与模拟 Windows 写入，不切换用户正在使用的网络。新增的临时父子程序真实验证启动环境继承、旧代理变量隔离、程序已运行时拒绝重复启动、快捷方式备份恢复及子进程绕过状态。
+188 项断言覆盖代理模型、迁移、路由、事务回滚、并发改写保护、匿名报告、协议识别、自动发现缓存与有限进程查询。四种隔离界面回归覆盖自动发现、新端口识别、游戏行保留、连续 72 秒观察、外部选择、用户切换优先、阶段进度和设置实读。测试使用独立数据与模拟 Windows 写入，不切换用户正在使用的网络。临时父子程序真实验证启动环境继承、旧代理变量隔离、程序已运行时拒绝重复启动、快捷方式备份恢复及子进程绕过状态。13 项存储断言覆盖默认共享目录、显式目录优先级、迁移数据与原文件保留、快捷方式备份重定位、旧参数兼容及复制失败不发布半成品。
 
 在一次现场只读预检中，当前可用 HTTP 代理 1.78 秒通过；无响应入口的并行检查 4.39 秒返回失败。这是预检耗时，不能当作完整切换时间，也不能保证其他网络同样快。
 

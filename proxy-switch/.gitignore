@@ -3,6 +3,12 @@ config.json
 selection.json
 app-rules.json
 app-rules.lock
+program-proxies.json
+program-shortcuts.json
+program-launches.json
+last-program-launch.json
+storage-layout.json
+.proxyswitch/
 backups/
 备份/
 work/

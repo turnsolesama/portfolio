@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const { spawnSync } = require('node:child_process');
 const yaml = require('./vendor/js-yaml');
 const ROOT = __dirname;
-const DATA = process.env.PROXY_SWITCH_DATA_DIR || path.join(process.env.LOCALAPPDATA, 'ProxySwitch');
+const DATA = process.env.PROXY_SWITCH_DATA_DIR || path.join(process.env.USERPROFILE || require('node:os').homedir(), '.proxyswitch');
 const TEST_ENGINE = process.env.PROXY_SWITCH_TEST_ENGINE_DIR;
 const TEST_PIPE = process.env.PROXY_SWITCH_TEST_PIPE;
 if((TEST_ENGINE||TEST_PIPE)&&(!TEST_ENGINE||!path.isAbsolute(TEST_ENGINE)||!TEST_PIPE?.startsWith('\\\\.\\pipe\\ProxySwitch-Test-')))throw new Error('Isolated test engine requires a dedicated directory and test pipe.');

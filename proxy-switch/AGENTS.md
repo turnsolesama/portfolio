@@ -2,7 +2,7 @@
 
 - Windows PowerShell 5.1 / WinForms。程序分流使用已安装的 Node.js 与本目录 vendor/js-yaml 5.4.1（保留 MIT 许可证）。不自动更新依赖。
 - `ProxySwitch.ps1` 是唯一入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。
-- `Preferences.ps1` 提供本机设置、快捷方式解析、汇总诊断；数据统一保存到 `%LOCALAPPDATA%\ProxySwitch`，代码目录仅保留 `config.defaults.json` 默认模板。测试可用 `PROXY_SWITCH_DATA_DIR` 指定隔离目录。
+- `Preferences.ps1` 提供本机设置、快捷方式解析、汇总诊断；`Storage.ps1` 解析共享目录，数据默认保存到 `%USERPROFILE%\.proxyswitch`，避免 MSIX AppData 重定向产生不同文件视图。代码目录仅保留 `config.defaults.json` 默认模板。测试可用 `PROXY_SWITCH_DATA_DIR` 指定隔离目录。
 - `Build-Release.ps1 -Destination <新目录>` 通过显式文件清单打包；不得把本机 config.json、selection.json、app-rules.json、备份或实机截图加入清单。
 - `assets` 中的截图使用 `-Demo` 演示数据生成；不要用用户真实进程列表作为公开截图。
 - PowerShell 中文源文件保存为 UTF-8 BOM，兼容 Windows PowerShell 5.1。
@@ -44,3 +44,5 @@
 - 统一切换要将启动代理专用目标改为 Follow，与引擎规则一起备份和回滚。删除代理时检查两类规则的引用。旧版本备份只恢复其包含的数据。
 - Get-ProgramFamily 汇总同一程序目录内由其创建的子进程，显示入口外 SynSent。未单独指定、等待重开、已启动待验证、实际观察到目标连接必须分开，不能仅靠主界面连接就声称联网子进程也已成功。
 - 新增 Test-ProgramLaunch.ps1：真实临时父子程序验证环境继承、原桌面入口备份/恢复、引擎离线时的程序代理、统一回滚与子进程绕过状态。只写临时目录。
+- 3.1.1 默认共享目录只在首次创建时复制当前环境可见的旧 AppData 数据，完整复制后原子发布，保留原文件；已有共享数据不得被旧版本覆盖。仅在存在匹配的迁移记录时将显式旧默认目录作为兼容别名；其他显式目录及测试环境变量保持隔离。迁移不得应用历史线路或写 Windows 网络设置。
+- `Test-Storage.ps1` 验证共享目录解析、迁移完整性、备份索引重定位、旧入口兼容和失败保留。`last-program-launch.json`、`storage-layout.json` 及程序配置和记录只存本机，不能加入发布清单。实机桌面入口验收必须由桌面实际启动，打包父进程下的成功运行不能代替。
