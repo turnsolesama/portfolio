@@ -24,10 +24,10 @@ My personal website and AI portfolio.
 
 ## ProxySwitch · 网络代理管家
 
-添加自定义 HTTP / SOCKS5 代理入口，统一切换系统代理，支持可选引擎下的程序分流与实际连接检查。3.0 移除固定 VPN 品牌选项，新增代理管理和统一切换。
+添加自定义 HTTP / SOCKS5 代理入口，统一切换系统代理，支持可选引擎下的程序分流与实际连接检查。3.0.1 新增后台代理自动发现、协议识别和配置刷新，保留通用代理管理与统一切换。
 
 - [源码、运行要求与使用说明](proxy-switch/README.md)
-- [下载 Windows 源码运行包 · v3.0.0](proxy-switch/releases/ProxySwitch-v3.0.0-Windows-Source.zip?raw=true)
+- [下载 Windows 源码运行包 · v3.0.1](proxy-switch/releases/ProxySwitch-v3.0.1-Windows-Source.zip?raw=true)
 - [版本记录](proxy-switch/CHANGELOG.md)
 - [下载与校验说明](proxy-switch/releases/README.md)
 

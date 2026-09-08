@@ -1,6 +1,8 @@
-﻿$script:ProductVersion='3.0.0'
+﻿param([string]$DataDirectory='')
+$script:ProductVersion='3.0.1'
 $script:DataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 if($env:PROXY_SWITCH_DATA_DIR){$script:DataRoot=[IO.Path]::GetFullPath($env:PROXY_SWITCH_DATA_DIR)}
+if($DataDirectory){$script:DataRoot=[IO.Path]::GetFullPath($DataDirectory)}
 $script:ConfigPath=Join-Path $script:DataRoot 'config.json'
 function Convert-LegacySettings($Value) {
     if($Value.Version -eq 3){return $Value}
@@ -42,7 +44,8 @@ function ConvertTo-ValidProfileSettings($Value) {
         $engine=$items | Where-Object {$_.Id -eq $gateway} | Select-Object -First 1
         if(-not $engine -or $engine.Protocol -ne 'http' -or $engine.Host -notin @('localhost','127.0.0.1','::1') -or -not $engine.CorePath){throw '分流引擎需要本地 HTTP / 混合入口与 Clash Verge 内核路径。'}
     }
-    [pscustomobject]@{Version=3;Profiles=@($items);Routing=[pscustomobject]@{Adapter=$adapter;ProfileId=$gateway}}
+    $ignored=@($Value.DiscoveryIgnored | Where-Object {$_ -match '^loopback:[0-9]{1,5}$'} | Select-Object -Unique -First 128)
+    [pscustomobject]@{Version=3;Profiles=@($items);Routing=[pscustomobject]@{Adapter=$adapter;ProfileId=$gateway};DiscoveryIgnored=$ignored}
 }
 function Read-ProfileSettings {
     $path=$script:ConfigPath;if(-not (Test-Path -LiteralPath $path)){$path=Join-Path $PSScriptRoot 'config.defaults.json'}
@@ -84,19 +87,6 @@ function Get-RouteName([string]$Key) {
 }
 function Get-EndpointAddress($Profile) {
     $h=$Profile.Host;if($h.Contains(':')){$h='['+$h+']'};return $h+':'+$Profile.Port
-}
-function Find-LocalProxies {
-    # Only inspect listening ports and the owner's executable, never client private configuration.
-    $items=@();$seen=@{}
-    $listeners=@(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object {$_.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1')})
-    foreach($c in $listeners){
-        $proc=Get-Process -Id $c.OwningProcess -ErrorAction SilentlyContinue
-        if(-not $proc.Path -or $proc.ProcessName -notmatch '(?i)clash|mihomo|sing-box|v2ray|xray|upnet|ss-local|shadowsocks|gost'){continue}
-        $port=[int]$c.LocalPort;if($seen.ContainsKey($port)){continue};$seen[$port]=$true
-        if(@($script:Profiles.Profiles | Where-Object {$_.Host -in @('localhost','127.0.0.1','::1') -and $_.Port -eq $port}).Count){continue}
-        $items+=[pscustomobject]@{Id=('p'+[Guid]::NewGuid().ToString('N').Substring(0,12));Name=($proc.ProcessName+' :'+$port);Protocol='http';Host='127.0.0.1';Port=$port;AppPath='';CorePath=$proc.Path;AutoPort=$false}
-    }
-    return $items
 }
 function Resolve-ProgramTarget([string]$Path) {
     if(-not (Test-Path -LiteralPath $Path -PathType Leaf)){throw '找不到所选文件。'}

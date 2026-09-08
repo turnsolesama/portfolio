@@ -1,6 +1,8 @@
-﻿$ErrorActionPreference = 'Stop'
+﻿param([string]$DataDirectory='')
+$ErrorActionPreference = 'Stop'
 $script:Root = $PSScriptRoot
-. (Join-Path $PSScriptRoot 'Preferences.ps1')
+. (Join-Path $PSScriptRoot 'Preferences.ps1') -DataDirectory $DataDirectory
+. (Join-Path $PSScriptRoot 'ProxyDiscovery.ps1')
 $script:Profiles = Read-ProfileSettings
 $script:StatePath = Join-Path $script:DataRoot 'selection.json'
 $script:BackupDir = Join-Path $script:DataRoot 'backups'

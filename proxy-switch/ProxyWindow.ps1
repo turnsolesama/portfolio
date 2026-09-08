@@ -6,12 +6,13 @@ Add-Type -AssemblyName System.Drawing
 $script:Worker=$null;$script:LastState=$null;$script:LastApps=$null;$script:NextPoll=[DateTime]::MinValue
 $script:Controls=@();$script:RouteButtons=@{};$script:UiRoot=$PSScriptRoot
 $script:MenuOpen=$false;$script:DialogOpen=$false
+$script:NextDiscovery=[DateTime]::MinValue;$script:DiscoveryStatus='等待自动检测'
 $ink=[Drawing.ColorTranslator]::FromHtml('#142B3D')
 $muted=[Drawing.ColorTranslator]::FromHtml('#617687')
 $mint=[Drawing.ColorTranslator]::FromHtml('#087F72')
 $paper=[Drawing.ColorTranslator]::FromHtml('#F1F5F7')
 $form=New-Object Windows.Forms.Form
-$form.Text='ProxySwitch 3.0 · 网络代理管家'
+$form.Text='ProxySwitch 3.0.1 · 网络代理管家'
 $form.ClientSize=New-Object Drawing.Size(1080,830)
 $form.MinimumSize=New-Object Drawing.Size(1020,800)
 $form.StartPosition='CenterScreen';$form.AutoScaleMode='Dpi';$form.BackColor=$paper
@@ -50,7 +51,7 @@ $form.Controls.Add($layout)
 $header=New-Object Windows.Forms.Panel;$header.Dock='Fill';$header.BackColor=$ink;$header.Margin=New-Object Windows.Forms.Padding(0,0,0,12)
 $layout.Controls.Add($header,0,0)
 $brand=New-Label $header 'ProxySwitch' 18 8 210 35 21 $true;$brand.ForeColor=[Drawing.Color]::White
-$sub=New-Label $header '网络代理管家   /   3.0' 228 18 300 26 10;$sub.ForeColor=[Drawing.ColorTranslator]::FromHtml('#80DED0')
+$sub=New-Label $header '网络代理管家   /   3.0.1' 228 18 300 26 10;$sub.ForeColor=[Drawing.ColorTranslator]::FromHtml('#80DED0')
 $tagline=New-Label $header '看清当前出口，为每个程序选择合适的线路。' 20 43 670 22 9;$tagline.ForeColor=[Drawing.ColorTranslator]::FromHtml('#CADAE3')
 $help=New-Button $header '使用指南' 816 17 92 34 {Show-Guide};$help.Anchor='Top,Right'
 $settings=New-Button $header '代理管理' 916 17 96 34 {$tabs.SelectedTab=$proxyPage};$settings.Anchor='Top,Right'
@@ -59,7 +60,7 @@ for($i=0;$i -lt 3;$i++){[void]$cards.ColumnStyles.Add((New-Object Windows.Forms.
 $layout.Controls.Add($cards,0,1)
 $panels=@()
 for($i=0;$i -lt 3;$i++){$p=New-Object Windows.Forms.Panel;$p.Dock='Fill';$p.BackColor=[Drawing.Color]::White;$p.Margin=New-Object Windows.Forms.Padding(0,0,$(if($i -lt 2){12}else{0}),12);$cards.Controls.Add($p,$i,0);$panels+=$p}
-$null=New-Label $panels[0] '01   当前线路' 16 10 260 22 9
+$null=New-Label $panels[0] '01   系统默认入口' 16 10 260 22 9
 $entryValue=New-Label $panels[0] '正在读取…' 16 33 280 32 17 $true
 $systemLabel=New-Label $panels[0] 'Windows / 浏览器 / 命令行' 16 71 290 23 9;$systemLabel.ForeColor=$muted
 $null=New-Label $panels[1] '02   代理列表' 16 10 260 22 9
@@ -169,17 +170,17 @@ foreach($height in @(50,46)){[void]$proxyGrid.RowStyles.Add((New-Object Windows.
 [void]$proxyGrid.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Percent,100)))
 [void]$proxyGrid.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute,42)))
 $proxyPage.Controls.Add($proxyGrid)
-$intro=New-Label $proxyGrid '添加你实际使用的 HTTP / SOCKS5 入口。代理名称由你决定，可关联客户端程序。' 0 0 980 46 10;$intro.Dock='Fill';$proxyGrid.SetCellPosition($intro,(New-Object Windows.Forms.TableLayoutPanelCellPosition(0,0)))
+$intro=New-Label $proxyGrid '启动后自动检测本机 HTTP / SOCKS5 代理；验证通过后加入列表。检测不会切换网络。' 0 0 980 46 10;$intro.Dock='Fill';$proxyGrid.SetCellPosition($intro,(New-Object Windows.Forms.TableLayoutPanelCellPosition(0,0)))
 $proxyBar=New-Object Windows.Forms.FlowLayoutPanel;$proxyBar.Dock='Fill';$proxyBar.WrapContents=$false;$proxyGrid.Controls.Add($proxyBar,0,1)
 $null=New-Button $proxyBar '添加代理' 0 0 128 35 {Show-ProfileEditor}
 $null=New-Button $proxyBar '编辑' 0 0 92 35 {Edit-SelectedProfile}
 $null=New-Button $proxyBar '删除' 0 0 92 35 {Remove-SelectedProfile}
-$null=New-Button $proxyBar '发现本机代理' 0 0 154 35 {Start-Work 'Discover' ''}
+$null=New-Button $proxyBar '重新检测后台代理' 0 0 174 35 {Start-Work 'Discover' ''}
 $null=New-Button $proxyBar '检测选中项' 0 0 145 35 {if($proxyList.SelectedItems.Count){Start-Work 'Diagnose' $proxyList.SelectedItems[0].Tag.Id}else{Write-Activity '请先选中一个代理。'}}
 $proxyList=New-Object Windows.Forms.ListView;$proxyList.Dock='Fill';$proxyList.View='Details';$proxyList.FullRowSelect=$true;$proxyList.MultiSelect=$false;$proxyList.HideSelection=$false
 foreach($column in @(@('名称',240),@('协议',100),@('地址',245),@('端口',85),@('用途',135),@('状态',150))){[void]$proxyList.Columns.Add($column[0],[int]$column[1])}
 $proxyGrid.Controls.Add($proxyList,0,2);$proxyList.Add_DoubleClick({Edit-SelectedProfile})
-$proxyEmpty=New-Label $proxyList '还没有代理。点击「添加代理」，或先「发现本机代理」。' 28 60 750 45 12;$proxyEmpty.ForeColor=$muted
+$proxyEmpty=New-Label $proxyList '正在自动检测后台代理。也可点击「添加代理」填写远程入口。' 28 60 750 45 12;$proxyEmpty.ForeColor=$muted
 $engineLabel=New-Label $proxyGrid '' 0 0 980 36 9;$engineLabel.Dock='Fill';$engineLabel.TextAlign='MiddleLeft';$engineLabel.ForeColor=$muted;$proxyGrid.SetCellPosition($engineLabel,(New-Object Windows.Forms.TableLayoutPanelCellPosition(0,3)))
 function Show-SelectedMenu {
     if(-not $liveList.SelectedItems.Count){Write-Activity '请先选中一个程序。';return}
@@ -209,7 +210,7 @@ function Show-Guide {
     $script:DialogOpen=$true
     try{[void][Windows.Forms.MessageBox]::Show($form,@'
 ① 添加代理
-在「代理管理」添加名称、协议、地址和端口。可以手动填写，也可发现本机候选端口后核对。新电脑不会预设某个 VPN 品牌。
+启动后会自动识别后台 HTTP / SOCKS5 入口并加入列表，每分钟重新检测。也可点击「重新检测后台代理」或手动添加远程入口。已删除的入口不会被自动加回。
 
 ② 统一切换
 在上方选择直连或已添加代理，点击「统一切换」。它会同步系统代理与用户环境变量，撤销程序专用规则；切换前设置会备份，支持撤回。
@@ -267,22 +268,13 @@ function Remove-SelectedProfile {
     try{
         $selected=$proxyList.SelectedItems[0].Tag;$value=Read-ProfileSettings
         $value.Profiles=@($value.Profiles | Where-Object {$_.Id -ne $selected.Id})
+        if($selected.Host -in @('127.0.0.1','::1','localhost')){$value.DiscoveryIgnored=@($value.DiscoveryIgnored)+@((Get-LocalEndpointId $selected.Host $selected.Port))}
         if($value.Routing.ProfileId -eq $selected.Id){$value.Routing=[pscustomobject]@{Adapter='none';ProfileId=''}}
         Save-ProfileSettings $value;Reload-ProfileViews;Write-Activity '该代理已从列表移除，修改前设置已备份。'
     }catch{Write-Activity $_.Exception.Message}
 }
-function Show-DiscoveredProfiles($Candidates) {
-    if(-not @($Candidates).Count){Write-Activity '未发现新的候选端口。可点击「添加代理」手动填写地址和端口。';return}
-    $dialog=New-Object Windows.Forms.Form;$dialog.Text='本机候选代理';$dialog.ClientSize=New-Object Drawing.Size(600,350);$dialog.Font=$form.Font;$dialog.StartPosition='CenterParent';$dialog.BackColor=$paper
-    $null=New-Label $dialog '候选端口尚未验证协议，请选择一个并核对后添加。' 18 16 555 40 10
-    $list=New-Object Windows.Forms.ListBox;$list.SetBounds(20,61,558,220);$list.DisplayMember='Name';foreach($c in $Candidates){[void]$list.Items.Add($c)};$dialog.Controls.Add($list)
-    $accept=New-Button $dialog '核对并添加' 430 296 148 34 {if($list.SelectedItem){$dialog.Tag=$list.SelectedItem;$dialog.DialogResult='OK';$dialog.Close()}}
-    $script:DialogOpen=$true;$picked=$null
-    try{if($dialog.ShowDialog($form) -eq 'OK'){$picked=$dialog.Tag}}finally{$dialog.Dispose();$script:DialogOpen=$false;$script:Controls=@($script:Controls | Where-Object {-not $_.IsDisposed})}
-    if($picked){Show-ProfileEditor $picked}
-}
-function Reload-ProfileViews {
-    if(-not $Demo){$script:Profiles=Read-ProfileSettings}
+function Reload-ProfileViews($Settings=$null) {
+    if($Settings){$script:Profiles=$Settings}elseif(-not $Demo){$script:Profiles=Read-ProfileSettings}
     $chosen=$null;if($networkChoice.SelectedItem){$chosen=$networkChoice.SelectedItem.Id}
     $networkChoice.Items.Clear();[void]$networkChoice.Items.Add([pscustomobject]@{Id='Direct';Name='直连 · 不使用代理'})
     foreach($p in $script:Profiles.Profiles){[void]$networkChoice.Items.Add([pscustomobject]@{Id=$p.Id;Name=($p.Name+'  ·  '+$p.Protocol.ToUpperInvariant()+'  '+$p.Host+':'+$p.Port)})}
@@ -296,10 +288,12 @@ function Show-ProxyCatalog {
         $item=New-Object Windows.Forms.ListViewItem($p.Name);$item.Tag=$p;$item.ToolTipText=$p.Protocol+'://'+(Get-EndpointAddress $p)
         foreach($value in @($p.Protocol.ToUpperInvariant(),$p.Host,[string]$p.Port,$(if($script:Profiles.Routing.ProfileId -eq $p.Id){'分流引擎'}else{'代理入口'}))){[void]$item.SubItems.Add($value)}
         $state=$script:LastState.Listeners | Where-Object {$_.Key -eq $p.Id} | Select-Object -First 1
-        [void]$item.SubItems.Add($(if($state){if($state.Ready){'入口就绪'}else{'未就绪'}}else{'等待检测'}));[void]$proxyList.Items.Add($item)
+        [void]$item.SubItems.Add($(if($state){if($state.Ready){'运行中 · 入口就绪'}else{'未运行 / 端口未监听'}}else{'等待检测'}));[void]$proxyList.Items.Add($item)
         if($selected -eq $p.Id){$item.Selected=$true}
     }
     $proxyList.EndUpdate();$proxyEmpty.Visible=($proxyList.Items.Count -eq 0)
+    if($proxyList.Items.Count -eq 0 -and $script:DiscoveryStatus -ne '等待自动检测'){$proxyEmpty.Text='暂未识别到可用 HTTP / SOCKS5 入口。可重新检测，或手动填写地址与端口。'}
+    $intro.Text='自动检测后台代理 · '+$script:DiscoveryStatus+'。可手动添加远程入口。'
     $engineKey=Get-GatewayKey
     $engineLabel.Text=$(if($engineKey){'程序分流引擎：'+(Get-RouteName $engineKey)+'。右键程序可以指定任意已添加代理。'}else{'程序分流引擎：未配置。HTTP 统一切换、直连和检测仍可使用。'})
 }
@@ -355,13 +349,14 @@ function Show-State($State) {
     if(-not $State.EndpointReady){$headline+=' · 入口未就绪';$color=[Drawing.Color]::FromArgb(167,61,46)}
     $statusLabel.Text=$headline;$statusLabel.ForeColor=$color;$entryValue.Text=$State.NetworkName;$entryValue.ForeColor=$color
     $systemLabel.Text='系统入口：'+$(if($State.Key -eq 'Direct'){'直连'}else{$State.Server})
-    $portsLabel.Text='已添加 '+@($State.Listeners).Count+' 个代理'
+    $portsLabel.Text='代理 '+@($State.Listeners).Count+' 个 · 运行中 '+@($State.Listeners | Where-Object Ready).Count+' 个'
     $envLabel.Text='入口就绪 '+@($State.Listeners | Where-Object Ready).Count+' 个 · 代理变量'+$(if($State.Aligned){'已同步'}else{'待统一'})
     $noticeLabel.Text='选择目标后点击「统一切换」：同步系统和命令行，撤销程序专用规则。旧连接需刷新。'
     if($first -and $State.NetworkKey){for($i=0;$i -lt $networkChoice.Items.Count;$i++){if($networkChoice.Items[$i].Id -eq $State.NetworkKey){$networkChoice.SelectedIndex=$i;break}}}
     Show-ProxyCatalog;$checkedLabel.Text='最近读取 '+$State.CheckedAt
 }
 function Set-DemoCatalog {
+    $script:DiscoveryStatus='已识别 2 个入口 · 演示数据'
     $script:Profiles=[pscustomobject]@{Version=3;Routing=[pscustomobject]@{Adapter='clash-verge';ProfileId='office'};Profiles=@(
         [pscustomobject]@{Id='office';Name='办公网络';Protocol='http';Host='127.0.0.1';Port=7890;CorePath='C:\Apps\Engine\mihomo.exe';AppPath='';AutoPort=$false},
         [pscustomobject]@{Id='backup';Name='备用网络';Protocol='socks5';Host='127.0.0.1';Port=1080;CorePath='';AppPath='';AutoPort=$false}
@@ -401,15 +396,17 @@ function Start-Work([string]$Kind,[string]$Key) {
         Write-Activity ('正在' + $(if($Kind -eq 'Switch'){'检测并统一设置'}elseif($Kind -eq 'Restore'){'恢复配置'}elseif($Kind -eq 'AppRoute'){'应用程序线路'}elseif($Kind -eq 'Discover'){'查找本机端口'}else{'检测线路'}) + '，请稍候。界面仍可响应。')
     }
     $ps=[PowerShell]::Create()
-    $code={param($Root,$Kind,$Key)
+    $scan=($Kind -eq 'Discover' -or ($Kind -eq 'Status' -and -not $SmokeTest -and [DateTime]::Now -ge $script:NextDiscovery))
+    $code={param($Root,$Kind,$Key,$DataDirectory,$Scan)
         $ErrorActionPreference='Stop'
-        . (Join-Path $Root 'ProxyBackend.ps1')
-        $result=$null
+        . (Join-Path $Root 'ProxyBackend.ps1') -DataDirectory $DataDirectory
+        $result=$null;$discovery=$null;$discoveryError=''
         try {
+            if($Scan){try{$discovery=Sync-LocalProxyDiscovery}catch{$discoveryError=$_.Exception.Message}}
             switch($Kind){
                 'Switch'{$result=Set-SelectedProxy $Key}
                 'Restore'{$result=Restore-ProxyBackup}
-                'Discover'{$result=@(Find-LocalProxies)}
+                'Discover'{$result=$discovery}
                 'AppRoute'{$change=$Key | ConvertFrom-Json;$result=Set-ApplicationRoute $change.path $change.route}
                 'AppSync'{$result=Sync-ApplicationRoutes}
                 'Diagnose'{
@@ -419,10 +416,10 @@ function Start-Work([string]$Kind,[string]$Key) {
                     }
                 }
             }
-            [pscustomobject]@{OK=$true;Kind=$Kind;Result=$result;State=(Get-ProxyStatus);Apps=(Get-ApplicationRoutes)}
+            [pscustomobject]@{OK=$true;Kind=$Kind;Result=$result;State=(Get-ProxyStatus);Apps=(Get-ApplicationRoutes);Settings=$script:Profiles;Discovery=$discovery;DiscoveryError=$discoveryError;Scanned=$Scan}
         } catch { [pscustomobject]@{OK=$false;Kind=$Kind;Error=$_.Exception.Message} }
     }
-    [void]$ps.AddScript($code.ToString()).AddArgument($script:UiRoot).AddArgument($Kind).AddArgument($Key)
+    [void]$ps.AddScript($code.ToString()).AddArgument($script:UiRoot).AddArgument($Kind).AddArgument($Key).AddArgument($script:DataRoot).AddArgument($scan)
     $script:Worker=[pscustomobject]@{PowerShell=$ps;Handle=$ps.BeginInvoke();Kind=$Kind}
 }
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=150
@@ -434,11 +431,21 @@ $timer.Add_Tick({
             $reply=$messages | Select-Object -Last 1
             if(-not $reply){throw '无法取得状态，请重试。'}
             if($reply.OK){
+                $beforeSettings=$script:Profiles | ConvertTo-Json -Depth 8 -Compress
+                $afterSettings=$reply.Settings | ConvertTo-Json -Depth 8 -Compress
+                if($beforeSettings -ne $afterSettings -and -not $script:DialogOpen){Reload-ProfileViews $reply.Settings}
+                if($reply.Scanned){
+                    $script:NextDiscovery=[DateTime]::Now.AddSeconds(60)
+                    if($reply.DiscoveryError){$script:DiscoveryStatus='检测未完成，可重试';Write-Activity ('后台代理检测：'+$reply.DiscoveryError)}
+                    else{
+                        $script:DiscoveryStatus='已识别 '+$reply.Discovery.Detected+' 个入口 · '+$reply.Discovery.CheckedAt
+                        if($reply.Discovery.Added -or $reply.Kind -eq 'Discover'){Write-Activity ('检测到 '+$reply.Discovery.Detected+' 个入口，新增 '+$reply.Discovery.Added+' 个代理。网络设置未更改。')}
+                    }
+                }
                 Show-State $reply.State
                 Show-Applications $reply.Apps
-                if($reply.Kind -eq 'Discover'){Show-DiscoveredProfiles $reply.Result}
-                elseif($reply.Kind -eq 'Diagnose'){Write-Activity (Format-Diagnostics $reply.Result);$tabs.SelectedTab=$toolsPage}
-                elseif($reply.Kind -ne 'Status'){
+                if($reply.Kind -eq 'Diagnose'){Write-Activity (Format-Diagnostics $reply.Result);$tabs.SelectedTab=$toolsPage}
+                elseif($reply.Kind -notin @('Status','Discover')){
                     Write-Activity $reply.Result.Message
                     if($reply.Result.Backup){$logBox.AppendText("`r`n切换前配置已保存，可用「撤回上次更改」恢复。")}
                     if($reply.Result.Test){$logBox.AppendText("`r`n" + (Format-Diagnostics @($reply.Result.Test)))}
@@ -456,7 +463,8 @@ $timer.Add_Tick({
             $searchBox.Clear();$savedOnly.Checked=$true
             if(@($liveList.Items | Where-Object {$_.Tag.Policy -eq 'Follow'}).Count){$script:SmokeFailed=$true}
             $savedOnly.Checked=$false
-            if(-not $script:LastState){$script:SmokeFailed=$true}
+            $expected=@((Read-ProfileSettings).Profiles).Count
+            if(-not $script:LastState -or $networkChoice.Items.Count -ne ($expected+1) -or @($script:LastState.Listeners).Count -ne $expected){$script:SmokeFailed=$true}
             $form.Close();return
         }
         if($script:PendingAction){
@@ -501,6 +509,6 @@ if($PreviewPath){
     return
 }
 if($SmokeTest){$form.Opacity=0;$form.ShowInTaskbar=$false}
-Write-Activity '就绪。选择目标并点击「统一切换」；代理可在「代理管理」中添加、修改或删除。'
+Write-Activity '正在读取已保存配置并自动检测后台代理。检测完成后，选择目标并点击「统一切换」。'
 $timer.Start();[void]$form.ShowDialog();$form.Dispose()
 if($SmokeTest){if($script:SmokeFailed){throw 'UI worker smoke test failed'};Write-Output 'PASS: UI background status worker completed.'}
