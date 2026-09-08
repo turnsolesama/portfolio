@@ -6,18 +6,18 @@
     },
     {
         "path":  "ProxyBackend.ps1",
-        "bytes":  28140,
-        "sha256":  "f8644007449940f7260484a9336804d44fcacf62597175fea3af642f83760971"
+        "bytes":  30001,
+        "sha256":  "b9f3c80697ac66f16d1ad92bd995e04404bd549c0e3c1626a1a910147856d266"
     },
     {
         "path":  "ProxyWindow.ps1",
-        "bytes":  45304,
-        "sha256":  "bb736eca38a169b3a3d7794e64021541895be67ba0417e362fe73ecaede1ad40"
+        "bytes":  46968,
+        "sha256":  "cb7b878e6b329fdfed11e4586e402cc59a33a9722868f5738291fca825373459"
     },
     {
         "path":  "AppRouting.ps1",
-        "bytes":  9270,
-        "sha256":  "57a93e8c0a2cdca2230bd879492696c8cd6005a9b59602076a7717b87a5cd883"
+        "bytes":  9278,
+        "sha256":  "4b34a65fd87fdd23589695cbc1195ba7b92af32232ce2660533823b8601546ee"
     },
     {
         "path":  "AppRouter.cjs",
@@ -27,12 +27,17 @@
     {
         "path":  "Preferences.ps1",
         "bytes":  10647,
-        "sha256":  "b003881552f0c96a41c4397c02f754dd28add7055d6ed1140d32ba3ba6b23dbf"
+        "sha256":  "91afd505dce903d2b4581ca38f8a7d535ebb230331916e001db3da33363ece90"
     },
     {
         "path":  "ProxyDiscovery.ps1",
-        "bytes":  7210,
-        "sha256":  "e66dd3717a83887f95c8895cebdc127e86b21a08f8021fc9acb32f7ea54db8f3"
+        "bytes":  13261,
+        "sha256":  "e4a148d36686b2a50ba5459ff2386506f1750854890e4672b048447c2e46c06c"
+    },
+    {
+        "path":  "ProcessInventory.ps1",
+        "bytes":  5589,
+        "sha256":  "9ece63a148e1966159bf84931520e0bdafb31988991e81dda5ea1b4be5bada7e"
     },
     {
         "path":  "config.defaults.json",
@@ -47,12 +52,12 @@
     {
         "path":  "Install-Shortcut.ps1",
         "bytes":  1880,
-        "sha256":  "df2ccdaa954ccfe047713989d57d9400fb3dcfea38f47401d608de9938b4e141"
+        "sha256":  "aaec6b954b0f7ce965a713878f1a3a15c3d0696962c84a695ccd81eca0303334"
     },
     {
         "path":  "Test-All.ps1",
-        "bytes":  997,
-        "sha256":  "b6321d9594b19a82c2f1ffe93f1ba19a8e18cffedebd3141d39cd118288b6e7f"
+        "bytes":  1027,
+        "sha256":  "21e74e191c75824526d6daef6c3d21030198976689cb454f097377d65f76f264"
     },
     {
         "path":  "Test-ProxySwitch.ps1",
@@ -76,33 +81,48 @@
     },
     {
         "path":  "Build-Release.ps1",
-        "bytes":  2458,
-        "sha256":  "bb8ce60c26525bf41cf365fe93ac8eb5cd0c848d7b4378414770967bf8205a44"
+        "bytes":  2572,
+        "sha256":  "4e11e824a67a0ee0ad1d8e2b841e531f2210c1df50819f564cce1557239d9b38"
     },
     {
         "path":  "Test-Compatibility.ps1",
-        "bytes":  7721,
-        "sha256":  "737ab82d0dead07c33651d36f53ed881cc2b358cd78873cdddd21f4a5359a0aa"
+        "bytes":  7730,
+        "sha256":  "ec96a5dc610127e5173f153489a81b79136eb9c473fcfa6613b724012ef69d32"
+    },
+    {
+        "path":  "Test-AutomaticDiscovery.ps1",
+        "bytes":  5776,
+        "sha256":  "b4321589b010a9df1816ec2c741325737625372a976a9addd10723de5d9b4709"
+    },
+    {
+        "path":  "Test-AutomaticDiscoveryUI.ps1",
+        "bytes":  4829,
+        "sha256":  "7f2767dec0ade5e84ce3fa3650e036a8523e6b031dcdf892015d5e17f7d4f845"
+    },
+    {
+        "path":  "Test-SwitchInteraction.ps1",
+        "bytes":  5843,
+        "sha256":  "b260e450a895b0f96dede4c6a70c9fe0d00288870a49e6b460339fa3d8dcb362"
     },
     {
         "path":  "Test-PassiveLifecycle.ps1",
-        "bytes":  6564,
-        "sha256":  "ab2c849a180b698897c13358463157bb68721c04ec408e0fdab7214d52c5e13c"
+        "bytes":  7001,
+        "sha256":  "882a3c606917113b1707a24e710081463821317ba3d8e0125629b30b0b574ba4"
     },
     {
         "path":  "Test-DiscoveryUI.ps1",
-        "bytes":  5232,
-        "sha256":  "418042e1c58bb80835db1c28434aa061f0947cffde76f01947ca0204f7eeac6c"
+        "bytes":  5766,
+        "sha256":  "c8189b396cf19b46216ff4ff91670a8d5af373e3ab31b18edd867dd4a2407a35"
     },
     {
         "path":  "README.md",
-        "bytes":  10803,
-        "sha256":  "4443258d553fb59c936d9c7cd015e1ff7e33cb2403b5fcfb388f5dca3e0c6dbc"
+        "bytes":  12836,
+        "sha256":  "0b820bf9e9f87961508b9e770019c710bb6210e6cf57c6141949ba6588bb51a7"
     },
     {
         "path":  "CHANGELOG.md",
-        "bytes":  3427,
-        "sha256":  "9b4d0bde88ecf02e06e4bc5af89816711f9f02ffcc1109dc6552256ac972961c"
+        "bytes":  4564,
+        "sha256":  "b1c63dd476c73ffe326c033499cd2345010fae1043c7a9e4c9a126b37c796ea8"
     },
     {
         "path":  "LICENSE",
@@ -116,8 +136,8 @@
     },
     {
         "path":  "AGENTS.md",
-        "bytes":  5120,
-        "sha256":  "60d236bc7cd46e6b6ec5ed40514fef7c98d3124e45ccf24d9506475619bf8730"
+        "bytes":  6246,
+        "sha256":  "6033e97e8d6646c00e8fc33e6b309eac18ce3372ea66ae1fed8af8ae3ba0ee3b"
     },
     {
         "path":  ".gitignore",
@@ -136,18 +156,18 @@
     },
     {
         "path":  "assets/screenshot.png",
-        "bytes":  56274,
-        "sha256":  "b05e2d2f114eced7dfd27bf59144c9f53a3e384ce562bb12de08f6a58e8a9116"
+        "bytes":  57147,
+        "sha256":  "6de2d66054a22173ef576c1c63877a1ada0d84b9f5554d6d23cd12c864075c0b"
     },
     {
         "path":  "assets/program-menu.png",
-        "bytes":  59762,
-        "sha256":  "ae3630d855da03ede8009a5ccde71b4fcc198697f6cb6dca12ce4a0d74a95d90"
+        "bytes":  60572,
+        "sha256":  "7e833d695c3f40e4009bc29cba3ec59e56b54efc76d96b589e24613260487bbb"
     },
     {
         "path":  "assets/proxy-management.png",
-        "bytes":  55392,
-        "sha256":  "d1c8852c030c6135e0468dc477e7d43cd25c5f08e74d507c9c5c60629406e0fb"
+        "bytes":  56175,
+        "sha256":  "0d4993a27247ff4d2f0fc745c1352c14a2443adc2d10fa5a2101c41090a5b0e4"
     },
     {
         "path":  "vendor/js-yaml/package.json",

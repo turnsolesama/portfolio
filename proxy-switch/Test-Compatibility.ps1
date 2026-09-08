@@ -27,7 +27,7 @@ function Save-Backup {'in-memory-backup'}
 function Set-RoutingSnapshot($Value){$script:Rules=$Value}
 
 # Passive inventory must exclude game IPC and unrelated applications.
-function Get-Process {param($Id)
+function Get-ProcessInventory {param($Id)
     $all=@(
         [pscustomobject]@{Id=10;ProcessName='CalabiYau';Path='';SessionId=1;MainWindowHandle=[IntPtr]1},
         [pscustomobject]@{Id=11;ProcessName='Upnet';Path='C:\Apps\Upnet.exe';SessionId=1;MainWindowHandle=[IntPtr]0},

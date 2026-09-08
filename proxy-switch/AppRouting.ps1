@@ -59,7 +59,7 @@ function Get-ApplicationRoutes {
         $saved=Get-RoutingSnapshot
         $core=[pscustomobject]@{available=$false;error=$_.Exception.Message;entries=@($saved.entries | ForEach-Object {[pscustomobject]@{path=$_.path;route=$_.route;loaded=$false}});connections=@();defaultRoute=$saved.defaultRoute;defaultLoaded=$false}
     }
-    $processes=@(Get-Process);$byId=@{};$apps=@{};$clientPaths=@($script:Profiles.Profiles | ForEach-Object {$_.CorePath;$_.AppPath} | Where-Object {$_})
+    $processes=@(Get-ProcessInventory);$byId=@{};$apps=@{};$clientPaths=@($script:Profiles.Profiles | ForEach-Object {$_.CorePath;$_.AppPath} | Where-Object {$_})
     foreach($p in $processes){
         if($p.Path -in $clientPaths -or $p.ProcessName -in @('powershell','pwsh','System','Registry','Idle')){continue}
         $byId[[int]$p.Id]=$p

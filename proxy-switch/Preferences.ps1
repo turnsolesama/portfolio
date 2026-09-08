@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.0.2'
+$script:ProductVersion='3.0.3'
 $script:DataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 if($env:PROXY_SWITCH_DATA_DIR){$script:DataRoot=[IO.Path]::GetFullPath($env:PROXY_SWITCH_DATA_DIR)}
 if($DataDirectory){$script:DataRoot=[IO.Path]::GetFullPath($DataDirectory)}

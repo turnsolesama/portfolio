@@ -3,13 +3,18 @@ Add-Type -AssemblyName System.Windows.Forms
 $qaSource=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('discovery-ui-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','ProxyDiscovery.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+# Isolated Windows fixtures must not contend with the real manager or other test windows.
+$qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
+$qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
+[IO.File]::WriteAllText($qaBackend,$qaBackendText,(New-Object Text.UTF8Encoding($true)))
 $env:PROXY_SWITCH_DATA_DIR=Join-Path $qaRoot 'settings'
 $discoveryPath=Join-Path $qaRoot 'ProxyBackend.ps1'
 [IO.File]::AppendAllText($discoveryPath,@'
 
 function Get-ProxyDiscoveryListeners {@([pscustomobject]@{Host='127.0.0.1';Port=18081;Name='QA background proxy';Path=''})}
 function Test-LocalProxyProtocol($Address,$Port,$Protocol){$Protocol -eq 'http'}
+function Sync-AutomaticProxyDiscovery($Cache){[pscustomobject]@{Detected=0;Added=0;Names=@();Cache=@();CheckedAt='12:00:00'}}
 function Set-SystemSnapshot {throw 'UI test attempted to change system network'}
 function Set-UserProxyEnv {throw 'UI test attempted to change proxy variables'}
 function Get-SystemSnapshot {[pscustomobject]@{Flags=1;Server='';Bypass=''}}
@@ -26,7 +31,7 @@ $qaTimer.Add_Tick({
     $global:discoveryTicks++
     try{
         if($global:discoveryTicks -gt 120){throw 'Discovery UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.0.2*'} | Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.0.3*'} | Select-Object -First 1
         if(-not $main){return}
         $combo=Find-QAType $main ([Windows.Forms.ComboBox]) | Select-Object -First 1
         $list=Find-QAType $main ([Windows.Forms.ListView]) | Where-Object {$_.Columns.Count -eq 6} | Select-Object -First 1

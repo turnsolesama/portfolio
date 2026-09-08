@@ -2,6 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $script:Root = $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Preferences.ps1') -DataDirectory $DataDirectory
+. (Join-Path $PSScriptRoot 'ProcessInventory.ps1')
 . (Join-Path $PSScriptRoot 'ProxyDiscovery.ps1')
 $script:Profiles = Read-ProfileSettings
 $script:StatePath = Join-Path $script:DataRoot 'selection.json'
@@ -123,7 +124,7 @@ function Set-UserProxyEnv($Values) {
     foreach ($name in $script:ProxyNames) {
         $value = $Values.$name
         if ($null -ne $value) { $value = [string]$value }
-        [Environment]::SetEnvironmentVariable($name,$value,'User')
+        if([string][Environment]::GetEnvironmentVariable($name,'User') -cne [string]$value){[Environment]::SetEnvironmentVariable($name,$value,'User')}
     }
 }
 function Get-Selection {
@@ -169,7 +170,7 @@ function Get-Listener($Profile,[switch]$ProbeRemote) {
     if($Profile.Host -in @('localhost','127.0.0.1','::1')){
         $entries=@(Get-NetTCPConnection -State Listen -LocalPort $Profile.Port -ErrorAction SilentlyContinue | Where-Object {$_.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1')})
         foreach($entry in $entries){
-            $owner=Get-Process -Id $entry.OwningProcess -ErrorAction SilentlyContinue
+            $owner=Get-ProcessInventory -Id $entry.OwningProcess
             if($owner -and (-not $Profile.CorePath -or $owner.Path -ieq $Profile.CorePath)){return [pscustomobject]@{PID=$owner.Id;Name=$owner.ProcessName}}
         }
     }elseif($ProbeRemote){
@@ -203,7 +204,7 @@ function Get-ConnectionProfile($Connection) {
     return ''
 }
 function Get-LiveConnections {
-    $processes=@{};Get-Process | ForEach-Object {$processes[[int]$_.Id]=$_.ProcessName}
+    $processes=@{};Get-ProcessInventory | ForEach-Object {$processes[[int]$_.Id]=$_.ProcessName}
     $items=@();$tcp=@(Get-NetTCPConnection -State Established -ErrorAction SilentlyContinue)
     foreach($c in $tcp){$route=Get-ConnectionProfile $c;if($route){$items+=[pscustomobject]@{PID=[int]$c.OwningProcess;Route=$route}}}
     foreach($group in ($items | Group-Object PID,Route)){$c=$group.Group[0];[pscustomobject]@{Process=$processes[$c.PID];PID=$c.PID;Route=$c.Route;Count=$group.Count}}
@@ -233,43 +234,59 @@ function Get-ProxyStatus($RoutingStatus=$null) {
     [pscustomobject]@{Key=$key;Current=(Get-RouteName $key);NetworkKey=$network;NetworkName=(Get-RouteName $network);Server=(Protect-Endpoint $snapshot.Server);Flags=$snapshot.Flags;Environment=$environment;Aligned=$aligned;EnvConflict=$envConflict;EndpointReady=$ready;Listeners=$listeners;Selected=$selection;Drift=[bool]$drift;Connections=$live;OldConnections=$oldConnections;Warnings=$warnings;GatewayKey=(Get-GatewayKey);CheckedAt=(Get-Date).ToString('HH:mm:ss')}
 }
 
-function Test-HttpEndpoint($Profile,[string]$Url) {
+function Start-HttpEndpointProbe($Profile,[string]$Url,[bool]$Fast=$false) {
     $psi=New-Object Diagnostics.ProcessStartInfo
     $psi.FileName=(Get-Command curl.exe -ErrorAction Stop).Source
-    # Validated protocol/host/port and fixed HTTPS URLs only. No credentials or shell.
-    $psi.Arguments='--silent --show-error --head --output NUL --connect-timeout 6 --max-time 10 --proxy '+$(if($Profile.Protocol -eq 'socks5'){'socks5h://'}else{'http://'})+(Get-EndpointAddress $Profile)+' --noproxy "" --write-out "%{http_code} %{time_total} %{http_connect}" ' + $Url
-    $psi.UseShellExecute=$false; $psi.CreateNoWindow=$true
-    $psi.RedirectStandardOutput=$true; $psi.RedirectStandardError=$true
-    $process=New-Object Diagnostics.Process; $process.StartInfo=$psi
-    try {
+    $connect=6;$maximum=10;if($Fast){$connect=3;$maximum=5}
+    $psi.Arguments='--silent --show-error --head --output NUL --connect-timeout '+$connect+' --max-time '+$maximum+' --proxy '+$(if($Profile.Protocol -eq 'socks5'){'socks5h://'}else{'http://'})+(Get-EndpointAddress $Profile)+' --noproxy "" --write-out "%{http_code} %{time_total} %{http_connect}" '+$Url
+    $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
+    $process=New-Object Diagnostics.Process;$process.StartInfo=$psi
+    try{
         [void]$process.Start()
-        $outTask=$process.StandardOutput.ReadToEndAsync(); $errTask=$process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit(12000)) { $process.Kill(); throw '检测进程超时。' }
-        $raw=$outTask.Result.Trim(); $fields=$raw -split '\s+'
-        $code=0; $seconds=0.0
-        if ($fields.Count -ge 2) {
-            [void][int]::TryParse($fields[0],[ref]$code)
-            [void][double]::TryParse($fields[1],[Globalization.NumberStyles]::Float,[Globalization.CultureInfo]::InvariantCulture,[ref]$seconds)
-        }
-        $reachable=($process.ExitCode -eq 0 -and $code -gt 0)
-        $accepted=$reachable -and (($code -ge 200 -and $code -lt 400) -or ($Url -eq 'https://api.openai.com/v1/models' -and $code -eq 401))
-        $note='无法连接 / 超时'
-        if ($reachable) {
-            $note='HTTP ' + $code
-            if ($code -eq 401) { $note+='；已到达接口，未携带登录凭据' }
-            if ($code -eq 403) { $note+='；站点拒绝或验证，不能据此确认网页可用' }
-        }
-        [pscustomobject]@{Site=([uri]$Url).Host;Code=$code;Seconds=$seconds;Reachable=$reachable;Accepted=$accepted;Note=$note}
-    } finally { $process.Dispose() }
+        [pscustomobject]@{Process=$process;Output=$process.StandardOutput.ReadToEndAsync();Error=$process.StandardError.ReadToEndAsync();Url=$Url}
+    }catch{$process.Dispose();throw}
 }
-function Test-ProxyRoute([string]$Key) {
-    $profile=Get-Profile $Key
-    if (-not (Get-Listener $profile -ProbeRemote)) { throw ($profile.Name + ' 入口未就绪，请启动关联程序或检查地址与端口。未修改代理。') }
-    $results=@()
-    foreach ($url in @('https://www.google.com/generate_204','https://api.openai.com/v1/models','https://chatgpt.com/')) {
-        $results += Test-HttpEndpoint $profile $url
+function Read-HttpEndpointProbe($Probe) {
+    $fields=$Probe.Output.Result.Trim() -split '\s+';$code=0;$seconds=0.0
+    if($fields.Count -ge 2){
+        [void][int]::TryParse($fields[0],[ref]$code)
+        [void][double]::TryParse($fields[1],[Globalization.NumberStyles]::Float,[Globalization.CultureInfo]::InvariantCulture,[ref]$seconds)
     }
+    $reachable=($Probe.Process.ExitCode -eq 0 -and $code -gt 0)
+    $accepted=$reachable -and (($code -ge 200 -and $code -lt 400) -or ($Probe.Url -eq 'https://api.openai.com/v1/models' -and $code -eq 401))
+    $note='无法连接 / 超时'
+    if($reachable){$note='HTTP '+$code;if($code -eq 401){$note+='；已到达接口，未携带登录凭据'};if($code -eq 403){$note+='；站点拒绝或验证，不能据此确认网页可用'}}
+    [pscustomobject]@{Site=([uri]$Probe.Url).Host;Code=$code;Seconds=$seconds;Reachable=$reachable;Accepted=$accepted;Note=$note}
+}
+function Close-HttpEndpointProbe($Probe) {
+    try{if(-not $Probe.Process.HasExited){$Probe.Process.Kill();[void]$Probe.Process.WaitForExit(1000)}}finally{$Probe.Process.Dispose()}
+}
+function Test-HttpEndpoint($Profile,[string]$Url) {
+    $probe=Start-HttpEndpointProbe $Profile $Url
+    try{if(-not $probe.Process.WaitForExit(12000)){throw '检测进程超时。'};Read-HttpEndpointProbe $probe}finally{Close-HttpEndpointProbe $probe}
+}
+function Test-ProxyRoute([string]$Key,[switch]$Fast) {
+    $profile=Get-Profile $Key
+    if(-not (Get-Listener $profile -ProbeRemote)){throw ($profile.Name+' 入口未就绪，请启动关联程序或检查地址与端口。未修改代理。')}
+    $urls=@('https://www.google.com/generate_204','https://api.openai.com/v1/models','https://chatgpt.com/')
+    $results=@()
+    if($Fast){
+        $probes=@();$finished=@{};$clock=[Diagnostics.Stopwatch]::StartNew()
+        try{
+            foreach($url in $urls){$probes+=@(Start-HttpEndpointProbe $profile $url $true)}
+            while($clock.Elapsed.TotalSeconds -lt 7){
+                foreach($probe in $probes){
+                    if(-not $finished.ContainsKey($probe.Url) -and $probe.Process.HasExited){$finished[$probe.Url]=$true;$result=Read-HttpEndpointProbe $probe;$results+=@($result)}
+                }
+                if(@($results | Where-Object Accepted).Count -gt 0 -or $finished.Count -eq $probes.Count){break}
+                Start-Sleep -Milliseconds 30
+            }
+        }finally{foreach($probe in $probes){Close-HttpEndpointProbe $probe}}
+    }else{foreach($url in $urls){$results+=@(Test-HttpEndpoint $profile $url)}}
     [pscustomobject]@{Key=$Key;Name=$profile.Name;Ready=$true;Usable=(@($results | Where-Object Accepted).Count -gt 0);Results=$results}
+}
+function Write-OperationProgress([string]$Message) {
+    if($script:OperationProgress){$script:OperationProgress.Enqueue($Message)}
 }
 function Test-SameSnapshot($A,$B) { ($A.Flags -eq $B.Flags -and $A.Server -eq $B.Server -and $A.Bypass -eq $B.Bypass) }
 function Test-SameEnv($A,$B) {
@@ -312,15 +329,18 @@ function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSyst
     $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=$BeforeSystem;Environment=$BeforeEnv;Selection=$beforeSelection;Routing=$BeforeRouting})
     $routesWritten=$false;$nativeStarted=$false;$systemStarted=$false
     try{
-        if($null -ne $TargetRouting){Set-RoutingSnapshot $TargetRouting;$routesWritten=$true}
+        if($null -ne $TargetRouting){Write-OperationProgress '正在更新程序规则并核对引擎…';Set-RoutingSnapshot $TargetRouting;$routesWritten=$true}
         if($VerifyAction){& $VerifyAction | Out-Null}
         # A controller reload can take seconds; recheck before touching Windows settings.
         if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $BeforeEnv (Get-UserProxyEnv))){throw '重载期间系统入口发生变化，请重试。'}
+        Write-OperationProgress '正在同步用户代理变量…'
         $nativeStarted=$true;Set-UserProxyEnv $TargetEnv
         if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot))){throw '写入变量期间其他程序改动了系统代理。'}
+        Write-OperationProgress '正在写入系统入口并实读校验…'
         $systemStarted=$true;Set-SystemSnapshot $TargetSystem
         if(-not (Test-SameSnapshot $TargetSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $TargetEnv (Get-UserProxyEnv))){throw '写入后校验失败，或其他客户端改写了入口。'}
         Save-Selection $Selection
+        Write-OperationProgress '系统入口与变量已核对，正在刷新实际连接…'
     }catch{
         $errorText=$_.Exception.Message;$rollbackErrors=@();$preserved=@()
         if($routesWritten -and $null -ne $BeforeRouting){
@@ -376,9 +396,10 @@ function Set-SelectedProxy([string]$Key) {
     Use-ChangeLock {
         $before=Get-SystemSnapshot;$beforeEnv=Get-UserProxyEnv;$beforeRules=Get-RoutingSnapshot
         $plan=Get-UnifiedPlan $Key $beforeRules
+        Write-OperationProgress '正在检查目标入口（并行检测，单项最多 5 秒）…'
         $overrides=@(Get-OverrideWarnings $plan.Entrance);if($overrides.Count){throw ($overrides -join "`n")}
         $test=$null
-        if($Key -ne 'Direct' -and $Key -ne (Get-GatewayKey)){$test=Test-ProxyRoute $Key;if(-not $test.Usable){throw '所选代理检测未通过，保留原配置。'}}
+        if($Key -ne 'Direct' -and $Key -ne (Get-GatewayKey)){$test=Test-ProxyRoute $Key -Fast;if(-not $test.Usable){throw '所选代理检测未通过，保留原配置。'}}
         $verge=Join-Path $env:APPDATA 'io.github.clash-verge-rev.clash-verge-rev\verge.yaml'
         if((Get-Process -Name 'clash-verge','verge-mihomo' -ErrorAction SilentlyContinue) -and (Test-Path -LiteralPath $verge)){
             if(Select-String -LiteralPath $verge -Pattern '^(enable_tun_mode|enable_proxy_guard):\s*true\s*$' -Quiet){throw '请先关闭正在运行的分流引擎的 TUN / 代理守卫，再统一切换。'}
@@ -390,7 +411,7 @@ function Set-SelectedProxy([string]$Key) {
         $rules=$plan.Routing
         if(-not $beforeRules.installed -and -not $rules.defaultRoute){$rules=$null}
         $verify={
-            if($rules.defaultRoute -and -not (Test-ProxyRoute $plan.Entrance).Usable){throw '统一线路的实际检测未通过。'}
+            if($rules.defaultRoute -and -not (Test-ProxyRoute $plan.Entrance -Fast).Usable){throw '统一线路的实际检测未通过。'}
             if($plan.Entrance -ne 'Direct' -and -not (Get-Listener (Get-Profile $plan.Entrance) -ProbeRemote)){throw '提交前入口已退出，未写入失效端口。'}
         }
         $backup=Invoke-ProxyTransaction $target (New-EnvTarget $beforeEnv $plan.Entrance) $selection $before $beforeEnv $rules $beforeRules $verify
