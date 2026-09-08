@@ -10,7 +10,7 @@ import time
 import tomllib
 from urllib.parse import urlsplit
 
-VERSION = '2.1.0'
+VERSION = '2.1.1'
 FIELDS = ('id', 'name', 'base_url', 'env_key', 'model', 'wire_api')
 BEGIN = '# >>> codex-switcher:begin >>>'
 END = '# <<< codex-switcher:end <<<'

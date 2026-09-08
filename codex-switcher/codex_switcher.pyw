@@ -10,7 +10,7 @@ import tempfile
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
-from switcher_ui import BG, PANEL, FG, MUTED, ACCENT, SURFACE, Dialog, ScrollArea, table, style_app, fit_window, enable_dpi
+from switcher_ui import BG, PANEL, FG, MUTED, ACCENT, SURFACE, Dialog, ScrollArea, table, style_app, fit_window, enable_dpi, set_taskbar_identity
 import tomllib
 import uuid
 import winreg
@@ -50,6 +50,8 @@ def seed_demo():
 
 class App(tk.Tk):
     def __init__(self, ui_scale=None, testing=False):
+        # Windows otherwise groups this GUI with pythonw.exe and uses Python's icon.
+        self.taskbar_identity=set_taskbar_identity(demo=DEMO)
         super().__init__()
         self.testing=testing
         self.title('Codex Switcher '+core.VERSION+' · 服务工作台' + (' · 演示' if DEMO else ''))
@@ -59,8 +61,10 @@ class App(tk.Tk):
         fit_window(self, self, 1120, 750, minimum=(900, 570))
         if testing:
             self.geometry('+30000+30000')
+        self.icon_path=str(APP_DIR/'switcher.ico')
         try:
-            self.iconbitmap(str(APP_DIR/'switcher.ico'))
+            self.iconbitmap(default=self.icon_path)
+            self.iconbitmap(self.icon_path)
         except tk.TclError:
             pass
         self.columnconfigure(0, weight=1)

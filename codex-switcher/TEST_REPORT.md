@@ -1,13 +1,15 @@
-# Codex Switcher 2.1.0 验证记录
+# Codex Switcher 2.1.1 验证记录
 
 日期：2026-09-08。环境：Windows x64、Python 3.11、Tkinter。
 
 ## 自动验证
 
-运行 `python -B -m unittest discover -v`：42 项通过。
+运行 `python -B -m unittest discover -v`：43 项通过。
 
 - 33 项核心测试：配置语义保留、切换备份与恢复、并发修改保护、导入格式、去重、敏感字段过滤、地址和变量校验，以及旧版不兼容记录的保留和修正。
-- 9 项 UI 测试：100% / 125% / 150% / 200% 缩放下的正常与最小窗口尺寸；四类弹窗底部按钮边界；分栏拖动边界；长名称/地址滚动；搜索与选择；唯一副本；粘贴导入不切换配置、不默认保存密钥；空列表的禁用状态；旧版不兼容条目的显示与修复。
+- 10 项 UI 测试：100% / 125% / 150% / 200% 缩放下的正常与最小窗口尺寸；四类弹窗底部按钮边界；分栏拖动边界；长名称/地址滚动；搜索与选择；唯一副本；粘贴导入不切换配置、不默认保存密钥；空列表的禁用状态；旧版不兼容条目的显示与修复；Windows 原生应用标识及主窗口大小图标、弹窗图标。
+
+任务栏修复通过 `GetCurrentProcessExplicitAppUserModelID` 读取实际进程标识，并通过 `WM_GETICON` 验证原生窗口图标句柄。实现依据：[Microsoft 应用标识说明](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nf-shobjidl_core-setcurrentprocessexplicitappusermodelid)。
 - 导入布局使用 80 条虚构配置与额外字段提示；长字段使用最长接近 500 字符的虚构地址和名称。
 
 ## 图形验证

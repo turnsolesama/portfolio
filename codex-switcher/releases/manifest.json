@@ -1,24 +1,24 @@
 {
-  "version": "2.1.0",
-  "package": "Codex-Switcher-v2.1.0-Windows-x64.zip",
-  "bytes": 115831,
-  "sha256": "eb49305ebfa0b7ce26eb8ca85446b8d18644c54bb90b9942a688a5336218635c",
+  "version": "2.1.1",
+  "package": "Codex-Switcher-v2.1.1-Windows-x64.zip",
+  "bytes": 117075,
+  "sha256": "e2ea9755423b683fff5d419024dccefb57b41f2e28a0c660b1bbd47217b20cd9",
   "contains_user_data": false,
   "files": [
     {
       "path": "codex_switcher.pyw",
-      "bytes": 30474,
-      "sha256": "5a933cf31dca4186ff1dd04925ec1cd88ec950850d5f3606905a8a157e3d4a49"
+      "bytes": 30728,
+      "sha256": "a8843c9b24cb34b7360d0a09f133509df0a09ae27fe30fcd562996c20e9f367a"
     },
     {
       "path": "switcher_core.py",
       "bytes": 13925,
-      "sha256": "dc19b60c8bf2ddc11e07b5fce5726e9c0f594189f3a837141a1ab475a383a148"
+      "sha256": "d6622075f2b6bda1d91235c29b5014b373d41dc1e719de1ec63c99528ee838d7"
     },
     {
       "path": "switcher_ui.py",
-      "bytes": 9220,
-      "sha256": "8694dacf39b7587ce27fcc557bee56d92e2f0cb5fc008c5846c9cdf505980705"
+      "bytes": 9838,
+      "sha256": "231ca9603eb8ede7b0a1fbdb47df51de946ce3dc176146e40781d63d436d7923"
     },
     {
       "path": "test_switcher.py",
@@ -27,13 +27,13 @@
     },
     {
       "path": "test_switcher_ui.py",
-      "bytes": 9748,
-      "sha256": "87d8bbd9e6adeec298bade6df014d5ed1fcfef20708cee37c9c9ab20136b1836"
+      "bytes": 10945,
+      "sha256": "d7745e7ad1f196c2890ae6b1d11c45d3079caa7f86f22838b8bc5c6c4177be81"
     },
     {
       "path": "Launcher.cs",
       "bytes": 2429,
-      "sha256": "2a572de34456694e4a69f99b76e1e89f9a0cdb0b5bf43d8a6d67946e8ab9f0f1"
+      "sha256": "81a9de0a84b22436b0cb8fcbdf5453c9ca1432872aaa4f5acbbef3b2ccf8cab7"
     },
     {
       "path": "build.py",
@@ -43,12 +43,12 @@
     {
       "path": "package_release.py",
       "bytes": 1727,
-      "sha256": "323c8f2d011fa725c1fe381880ab7aeebf682a82cef9ded33056ab9374c640fa"
+      "sha256": "737a4329d5baabfc430aa36b31962ae773c51394c3dcbf9d26c43548cd674095"
     },
     {
       "path": "Codex Switcher.exe",
       "bytes": 367616,
-      "sha256": "973f01bfd426df811bb647c45d7a73d53aa8cd0422e330d8626a713c66bdc79d"
+      "sha256": "d242a1d3f60243d559e441043798e1f587d9a9519dadfd0876388423faeed634"
     },
     {
       "path": "switcher.ico",
@@ -57,13 +57,13 @@
     },
     {
       "path": "README.md",
-      "bytes": 5326,
-      "sha256": "63a731c33aeb8d6a7e473720a9ec11bcb9bb80a8d28210e08b445d77bb360e47"
+      "bytes": 5576,
+      "sha256": "a8dab4788c4953538d17bdd2974bb5a9e6f2c14160f50d05365eaa7a0247e82e"
     },
     {
       "path": "TEST_REPORT.md",
-      "bytes": 1586,
-      "sha256": "581377f5cc6e03ff2f625d079c7b524341a75257fc92f8a09264702c41feed94"
+      "bytes": 1976,
+      "sha256": "a296fbc7d11609f61ded10397a86f0021d434837e89ee64a1aae920684ad8735"
     },
     {
       "path": "AGENTS.md",

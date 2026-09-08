@@ -1,6 +1,7 @@
 """Layout and interaction regressions. Always uses isolated demo data, off screen."""
 import importlib.machinery
 import importlib.util
+import ctypes
 import json
 from pathlib import Path
 import sys
@@ -86,6 +87,28 @@ class LayoutTests(unittest.TestCase):
                 w, h = a.minsize(); a.geometry(f'{w}x{h}+30000+30000'); a.update()
                 self.main_bounds()
                 a.destroy(); self.app = None
+
+    def test_windows_identity_and_window_icons(self):
+        a=self.open_app()
+        shell=ctypes.windll.shell32
+        getter=shell.GetCurrentProcessExplicitAppUserModelID
+        getter.argtypes=[ctypes.POINTER(ctypes.c_wchar_p)];getter.restype=ctypes.c_long
+        value=ctypes.c_wchar_p()
+        self.assertEqual(getter(ctypes.byref(value)),0)
+        try:self.assertEqual(value.value,'Turnsole.CodexSwitcher.Desktop.Demo')
+        finally:
+            free=ctypes.windll.ole32.CoTaskMemFree
+            free.argtypes=[ctypes.c_void_p];free(ctypes.cast(value,ctypes.c_void_p))
+        user=ctypes.windll.user32
+        send=user.SendMessageW
+        send.argtypes=[ctypes.c_void_p,ctypes.c_uint,ctypes.c_size_t,ctypes.c_ssize_t]
+        send.restype=ctypes.c_void_p
+        # Tk's outer wrapper is the native top-level seen by the Windows taskbar.
+        hwnd=int(a.frame(),16)
+        self.assertTrue(send(hwnd,0x007f,0,0),'Small taskbar/title icon missing')
+        self.assertTrue(send(hwnd,0x007f,1,0),'Large taskbar icon missing')
+        dialog=a.edit(a.profiles[0]);a.update()
+        self.assertTrue(send(int(dialog.frame(),16),0x007f,1,0),'Dialog icon missing')
 
     def test_splitter_limits_preserve_action_space(self):
         a = self.open_app()

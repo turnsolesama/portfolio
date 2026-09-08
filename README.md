@@ -17,7 +17,7 @@ My personal website and AI portfolio.
 紧凑双栏界面、可调分栏、固定操作区，以及文件/粘贴导入、去重预览、服务搜索、配置备份恢复。v2.1 修复高缩放与小窗口下的按钮裁切，并保留可修复的旧版服务记录。
 
 - [项目源码与使用说明](codex-switcher/README.md)
-- [下载 Windows x64 程序包 · v2.1.0](codex-switcher/releases/Codex-Switcher-v2.1.0-Windows-x64.zip?raw=true)
+- [下载 Windows x64 程序包 · v2.1.1](codex-switcher/releases/Codex-Switcher-v2.1.1-Windows-x64.zip?raw=true)
 - [测试记录](codex-switcher/TEST_REPORT.md) · [文件校验清单](codex-switcher/releases/manifest.json)
 
 解压整个目录后双击 EXE。需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x；EXE 不内置 Python。发布包不包含个人服务列表、密钥、登录信息或备份。

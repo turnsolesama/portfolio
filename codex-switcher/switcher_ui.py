@@ -10,6 +10,19 @@ FG = '#edf1f8'
 MUTED = '#a0aabc'
 ACCENT = '#b9c8ff'
 BORDER = '#333d4e'
+APP_USER_MODEL_ID = 'Turnsole.CodexSwitcher.Desktop'
+
+
+def set_taskbar_identity(demo=False):
+    """Give the Python-hosted window its own Windows taskbar group before Tk starts."""
+    identity=APP_USER_MODEL_ID+('.Demo' if demo else '')
+    setter=ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
+    setter.argtypes=[ctypes.c_wchar_p]
+    setter.restype=ctypes.c_long
+    result=setter(identity)
+    if result!=0:
+        raise OSError('Windows 无法设置切换器任务栏标识', result)
+    return identity
 
 
 def enable_dpi():
@@ -115,6 +128,8 @@ class Dialog(tk.Toplevel):
         self.title(title)
         self.configure(background=BG)
         self.transient(parent)
+        if getattr(parent,'icon_path',None):
+            self.iconbitmap(parent.icon_path)
         self.px = parent.px
         px = self.px
         self.columnconfigure(0, weight=1)
