@@ -1,0 +1,43 @@
+ 'use strict';
+const assert=require('node:assert/strict');const vm=require('node:vm');const r=require('./AppRouter.cjs');
+let checks=0;function check(test,message){assert.ok(test,message);checks++;}function throws(fn){assert.throws(fn);checks++;}
+const options={Version:3,Profiles:[{Id:'engine',Name:'Office',Protocol:'http',Host:'127.0.0.1',Port:7890,CorePath:'C:\\Apps\\core.exe'},
+{Id:'custom',Name:'Custom name',Protocol:'http',Host:'192.0.2.1',Port:8080},{Id:'socks',Name:'SOCKS',Protocol:'socks5',Host:'127.0.0.1',Port:1080}],Routing:{Adapter:'clash-verge',ProfileId:'engine'}};
+const base={mode:'rule',dns:{enable:true},secret:'test-only-value',proxies:[{name:'original',type:'http',server:'example.org',port:80}],
+'proxy-groups':[{name:'primary',type:'select',proxies:['original']}],rules:['DOMAIN,example.org,DIRECT','MATCH,primary']};
+const entries=[{path:'C:\\Apps\\例子.exe',route:'socks'},{path:'C:\\Apps\\browser.exe',route:'Direct'}];
+const config=r.makeConfig(base,entries,'custom',options,'primary',{present:false});
+check(config.proxies.find(p=>p.name===r.routeName('socks')).type==='socks5','SOCKS proxy emitted');
+check(config.proxies.find(p=>p.name===r.routeName('custom')).server==='192.0.2.1','Custom HTTP host preserved');
+check(config.rules[0]==='PROCESS-PATH,'+entries[0].path+','+r.routeName('socks'),'Program exception has highest priority');
+check(config.rules[2]==='MATCH,'+r.routeName('custom'),'Unified fallback precedes original rules');
+check(config['find-process-mode']==='always','Process identification enabled for exceptions');
+check(base.rules.length===2&&base.proxies.length===1,'Base input untouched');
+assert.deepEqual(config.dns,base.dns);checks++;
+assert.deepEqual(r.makeConfig(config,entries,'custom',options,'primary',{present:false}),config);checks++;
+const unified=r.makeConfig(config,[],'engine',options,'primary',{present:false});
+check(!unified.rules.some(x=>x.startsWith('PROCESS-PATH'))&&unified.rules[0]==='MATCH,'+r.routeName('engine'),'Unified action removes all saved exceptions');
+check(unified['proxy-groups'].find(g=>g.name===r.routeName('engine')).proxies[0]==='primary','Engine routes to original node group without proxy loop');
+assert.deepEqual(r.makeConfig(unified,[],null,options,'primary',{present:false}),base);checks++;
+const original='function main(c) { c.custom=123; return c; }\r\n';
+const script=r.makeScript(original,entries,'custom',options,'primary',{present:false});
+check(r.stripScript(script)===original,'Script cleanup restores original bytes');
+check(r.makeScript(script,entries,'custom',options,'primary',{present:false})===script,'Script rewrite is idempotent');
+check(r.makeScript(script,[],null,options,'primary',{present:false})===original,'Empty routing removes persistent extension');
+const context=vm.createContext({});new vm.Script(script).runInContext(context);const emitted=context.main(structuredClone(base));
+check(emitted.custom===123,'Existing user script retained');
+check(JSON.stringify(emitted.rules)===JSON.stringify(config.rules),'Persistent script matches runtime rules');
+const engineScript=r.makeScript(original,[],'engine',options,'primary',{present:false});const engineVm=vm.createContext({});new vm.Script(engineScript).runInContext(engineVm);
+const another=structuredClone(base);another['proxy-groups'][0].name='new-profile';
+check(engineVm.main(another)['proxy-groups'].find(g=>g.name===r.routeName('engine')).proxies[0]==='new-profile','Profile switches retain managed default');
+check(r.routeOfChains([r.routeName('socks')],options)==='socks','Custom route recognized');
+check(r.routeOfChains(['DIRECT'],options)==='Direct','Direct connection recognized');
+check(r.routeOfChains(['REJECT'],options)==='Blocked','Blocked connection recognized');
+check(r.ruleMatches({type:'ProcessPath',payload:entries[0].path.toUpperCase(),proxy:r.routeName('socks')},entries[0]),'Case-insensitive Windows paths');
+throws(()=>r.normalizeEntry('relative.exe','Direct',options));throws(()=>r.normalizeEntry('C:\\bad,rule.exe','Direct',options));throws(()=>r.normalizeEntry('C:\\a.exe','deleted',options));
+throws(()=>r.makeConfig(base,[{path:options.Profiles[0].CorePath,route:'custom'}],null,options,'primary',{}));
+throws(()=>r.makeSpec([entries[0],entries[0]],null,options,'',null));
+const renamed=structuredClone(options);renamed.Profiles[1].Name='New name';check(r.fingerprint(entries,'custom',options)===r.fingerprint(entries,'custom',renamed),'Renaming does not invalidate route identity');
+renamed.Profiles[1].Port=9090;check(r.fingerprint(entries,'custom',options)!==r.fingerprint(entries,'custom',renamed),'Changed endpoint must reload before claiming loaded');
+const clean={Version:3,Profiles:[],Routing:{Adapter:'none',ProfileId:''}};check(r.normalizeOptions(clean).Profiles.length===0,'Fresh empty install accepted');
+console.log('PASS: '+checks+' routing assertions; no real network writes.');

@@ -21,3 +21,14 @@ My personal website and AI portfolio.
 - [测试记录](codex-switcher/TEST_REPORT.md) · [文件校验清单](codex-switcher/releases/manifest.json)
 
 解压整个目录后双击 EXE。需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x；EXE 不内置 Python。发布包不包含个人服务列表、密钥、登录信息或备份。
+
+## ProxySwitch · 网络代理管家
+
+添加自定义 HTTP / SOCKS5 代理入口，统一切换系统代理，支持可选引擎下的程序分流与实际连接检查。3.0 移除固定 VPN 品牌选项，新增代理管理和统一切换。
+
+- [源码、运行要求与使用说明](proxy-switch/README.md)
+- [下载 Windows 源码运行包 · v3.0.0](proxy-switch/releases/ProxySwitch-v3.0.0-Windows-Source.zip?raw=true)
+- [版本记录](proxy-switch/CHANGELOG.md)
+- [下载与校验说明](proxy-switch/releases/README.md)
+
+解压完整目录后双击「启动代理切换.cmd」。基础 HTTP / 直连切换无需 Node.js；程序分流与 SOCKS5 统一切换需要可选引擎。软件不捆绑 VPN 或代理服务。
