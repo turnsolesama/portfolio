@@ -21,7 +21,7 @@ loader.exec_module(launcher)
 
 class Fixture(unittest.TestCase):
     def setUp(self):
-        self.base = Path(__file__).resolve().parent / "_tmp"
+        self.base = Path(tempfile.gettempdir()) / "aihub-test-fixtures"
         self.base.mkdir(exist_ok=True)
         self.folder = Path(tempfile.mkdtemp(dir=self.base)).resolve()
         self.folder.relative_to(self.base.resolve())

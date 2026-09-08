@@ -22,7 +22,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from aihub import api, config as cfgmod, jobs  # noqa: E402
+from aihub import api, config as cfgmod, jobs, organization  # noqa: E402
 from aihub.db import DB  # noqa: E402
 
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "frontend")
@@ -32,7 +32,7 @@ CFG = {}
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "AIHub/2.2"
+    server_version = "AIHub/2.3"
 
     def log_message(self, fmt, *args):
         sys.stderr.write("[%s] %s\n" % (self.log_date_time_string(), fmt % args))
@@ -65,7 +65,14 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"Content-Type": ctype, "Cache-Control": "no-cache"}, f.read())
 
     # ---------- 请求 ----------
+    def _valid_host(self):
+        port = self.server.server_address[1]
+        return self.headers.get("Host", "") in {f"127.0.0.1:{port}", f"localhost:{port}"}
+
     def do_GET(self):
+        if not self._valid_host():
+            self._send(403, {"Content-Type": "application/json"}, b'{"error":"host not allowed"}')
+            return
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path.startswith("/api/"):
             params = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
@@ -76,6 +83,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send_file(rel)
 
     def do_POST(self):
+        if not self._valid_host():
+            self._send(403, {"Content-Type": "application/json"}, b'{"error":"host not allowed"}')
+            return
         origin = self.headers.get("Origin")
         if origin and urllib.parse.urlparse(origin).netloc != self.headers.get("Host"):
             self._send(403, {"Content-Type": "application/json"}, b'{"error":"origin not allowed"}')
@@ -86,6 +96,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             length = int(self.headers.get("Content-Length") or 0)
+            if length < 0 or length > 2 * 1024 * 1024:
+                self._send(413, {"Content-Type": "application/json"}, b'{"error":"request too large"}')
+                return
             raw = self.rfile.read(length) if length else b""
             body = json.loads(raw.decode("utf-8")) if raw else None
         except Exception:
@@ -105,9 +118,11 @@ def cmd_serve(args):
     DB_OBJ = DB()
     api.APP_DB, api.APP_CFG = DB_OBJ, CFG
 
+    auto_started = organization.startup(DB_OBJ, CFG) if not getattr(args, "no_initial_scan", False) else False
+
     # 首次无数据则自动扫描
     n = DB_OBJ.one("SELECT COUNT(*) c FROM models")["c"]
-    if CFG.get("scan_roots") and not getattr(args, "no_initial_scan", False) and (n == 0 or not DB_OBJ.get_meta("scan_at")):
+    if not auto_started and cfgmod.workspace_status(CFG)["available"] and CFG.get("scan_roots") and not getattr(args, "no_initial_scan", False) and (n == 0 or not DB_OBJ.get_meta("scan_at")):
         print("[AI Hub] 首次运行，开始后台初始化扫描…")
         jobs.run_full_pipeline(DB_OBJ, CFG)
 

@@ -10,7 +10,7 @@ import time
 import urllib.parse
 
 from . import config as cfgmod
-from . import jobs
+from . import jobs, organization, organizer
 from . import updater as upd
 from . import management
 from . import classification
@@ -167,6 +167,7 @@ def overview(db, cfg, params, body):
 
     return _json_bytes({
         "ai_root": cfg.get("ai_root"),
+        "workspace": cfgmod.workspace_status(cfg),
         "disk": {"total": disk.total, "free": disk.free, "used_pct": round(100 * disk.used / disk.total, 1)},
         "parts": parts, "total_size": total_size, "total_size_h": human_size(total_size),
         "unique_size": int(db.get_meta("unique_size") or 0),
@@ -572,10 +573,13 @@ def duplicates(db, cfg, params, body):
 
 
 def scan_start(db, cfg, params, body):
-    if jobs.running("scan"):
-        return _err("扫描已在运行", 409)
-    jobs.run_full_pipeline(db, cfg)
-    return _json_bytes({"ok": True})
+    with organization.LOCK:
+        if organization.busy():
+            return _err("扫描或整理正在运行，请完成后再试", 409)
+        if not cfgmod.workspace_status(cfg)["available"]:
+            return _err("资产目录不可用，请先设置安全区")
+        jobs.run_full_pipeline(db, cfg)
+        return _json_bytes({"ok": True})
 
 
 def jobs_status(db, cfg, params, body):
@@ -584,17 +588,14 @@ def jobs_status(db, cfg, params, body):
 
 def settings_detect(db, cfg, params, body):
     requested = body.get("ai_root") if isinstance(body, dict) else None
-    if not isinstance(requested, str) or not os.path.isabs(requested) or not os.path.isdir(requested):
-        return _err("请填写已经存在的资产文件夹绝对路径")
-    ai_root = os.path.realpath(requested)
-    layout = cfgmod.detect_layout(ai_root)
-    with os.scandir(ai_root) as entries:
-        has_weights = any(entry.is_file(follow_symlinks=False) and os.path.splitext(entry.name)[1].lower() in meta.MODEL_EXTS for entry in entries)
-    if has_weights:
-        layout["scan_roots"] = [ai_root]
-    return _json_bytes({"ai_root": ai_root, "scan_roots": layout["scan_roots"] or [ai_root],
-                        "aliases": layout["aliases"], "output_roots": cfgmod.detect_output_roots(layout["scan_roots"] or [ai_root]),
-                        "catalog_dir": os.path.join(ai_root, "00_Management", "Catalogs")})
+    try:
+        ai_root = cfgmod.validate_asset_root(requested)
+        layout = cfgmod.detect_layout(ai_root)
+        return _json_bytes({**layout, "ai_root": ai_root,
+                            "output_roots": cfgmod.detect_output_roots([ai_root]),
+                            "catalog_dir": os.path.join(ai_root, "00_Management", "Catalogs")})
+    except (ValueError, OSError) as e:
+        return _err(str(e))
 
 
 def settings_get(db, cfg, params, body):
@@ -605,21 +606,127 @@ def settings_get(db, cfg, params, body):
     return _json_bytes(c)
 
 
-def settings_post(db, cfg, params, body):
-    if not isinstance(body, dict):
-        return _err("invalid body")
-    tok = (body.get("network") or {}).get("civitai_token") or ""
-    if "****" in tok:  # 未修改
-        body["network"]["civitai_token"] = cfg.get("network", {}).get("civitai_token", "")
-    for key in ("ai_root", "scan_roots", "output_roots", "aliases", "catalog_dir",
-                "ignore_dirs", "server", "network"):
-        if key in body:
-            cfg[key] = body[key]
-    cfgmod.save_config(cfg)
+def _save_live(cfg, updated):
+    cfgmod.save_config(updated)
+    cfg.clear()
+    cfg.update(updated)
     if APP_CFG is not cfg:
         APP_CFG.clear()
         APP_CFG.update(cfg)
-    return _json_bytes({"ok": True})
+
+
+def settings_post(db, cfg, params, body):
+    if not isinstance(body, dict):
+        return _err("invalid body")
+    with organization.LOCK:
+        if organization.busy():
+            return _err("扫描或整理期间不能更改范围", 409)
+        updated = json.loads(json.dumps(cfg))
+        for key in ("ai_root", "scan_roots", "output_roots", "scan_exclude_paths", "aliases", "catalog_dir",
+                    "ignore_dirs", "network"):
+            if key in body:
+                updated[key] = body[key]
+        try:
+            if "ai_root" in body:
+                updated["ai_root"] = cfgmod.validate_asset_root(body["ai_root"])
+            for key in ("scan_roots", "output_roots", "scan_exclude_paths", "ignore_dirs"):
+                if key in body and (not isinstance(body[key], list) or not all(isinstance(x, str) for x in body[key])):
+                    raise ValueError(key + " 必须是路径或名称数组")
+            if "aliases" in body and (not isinstance(body["aliases"], dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in body["aliases"].items())):
+                raise ValueError("目录别名格式无效")
+            for key in ("scan_roots", "output_roots"):
+                if key in body:
+                    selected = [cfgmod.validate_asset_root(path) for path in body[key]]
+                    root = cfgmod.validate_asset_root(updated.get("ai_root"))
+                    if any(not cfgmod._within(path, root) for path in selected):
+                        raise ValueError("扫描和输出目录必须位于资产安全区内部")
+                    updated[key] = selected
+            if not isinstance(updated.get("network", {}), dict):
+                raise ValueError("网络设置无效")
+            token = updated.get("network", {}).get("civitai_token") or ""
+            if not isinstance(token, str):
+                raise ValueError("Token 格式无效")
+            if "****" in token:
+                updated["network"]["civitai_token"] = cfg.get("network", {}).get("civitai_token", "")
+            if updated.get("ai_root") != cfg.get("ai_root"):
+                layout = cfgmod.detect_layout(updated["ai_root"])
+                for key, value in layout.items():
+                    if key not in body:
+                        updated[key] = value
+                if "output_roots" not in body:
+                    updated["output_roots"] = cfgmod.detect_output_roots([updated["ai_root"]])
+                updated["organizer"] = {"enabled": False, "root": "", "on_startup": False}
+                updated["catalog_dir"] = os.path.join(updated["ai_root"], "00_Management", "Catalogs")
+            _save_live(cfg, updated)
+        except (ValueError, OSError) as e:
+            return _err(str(e))
+        return _json_bytes({"ok": True})
+
+
+def workspace_setup(db, cfg, params, body):
+    if not isinstance(body, dict) or type(body.get("create", False)) is not bool or type(body.get("on_startup", False)) is not bool:
+        return _err("安全区设置格式无效")
+    with organization.LOCK:
+        if organization.busy():
+            return _err("扫描或整理期间不能更换安全区", 409)
+        try:
+            root = cfgmod.validate_asset_root(body.get("root"), must_exist=not body.get("create", False))
+            if body.get("create", False):
+                cfgmod.initialize_root(root)
+            root = organizer.validate_root(root)
+            layout = cfgmod.detect_layout(root)
+            updated = json.loads(json.dumps(cfg))
+            updated.update(layout)
+            updated.update({"ai_root": root, "output_roots": cfgmod.detect_output_roots([root]),
+                            "catalog_dir": os.path.join(root, "00_Management", "Catalogs"),
+                            "organizer": {"enabled": True, "root": root, "on_startup": body.get("on_startup", False)}})
+            _save_live(cfg, updated)
+            return _json_bytes({"ok": True, "root": root, "scan_roots": updated["scan_roots"], "output_roots": updated["output_roots"]})
+        except (ValueError, OSError) as e:
+            return _err(str(e))
+
+
+def organizer_status(db, cfg, params, body):
+    options = cfg.get("organizer") or {}
+    root = options.get("root") or cfg.get("ai_root") or ""
+    try:
+        runs = organizer.list_runs(organization.storage() / "runs", root) if root else []
+    except (ValueError, OSError):
+        runs = []
+    return _json_bytes({"root": root, "enabled": bool(options.get("enabled")),
+                        "on_startup": bool(options.get("on_startup")), "workspace": cfgmod.workspace_status(cfg),
+                        "busy": organization.busy(), "runs": runs})
+
+
+def organizer_plan(db, cfg, params, body):
+    try:
+        return _json_bytes(organization.read_plan(cfg))
+    except (ValueError, OSError) as e:
+        return _err(str(e))
+
+
+def organizer_action(db, cfg, params, body):
+    if body is not None and not isinstance(body, dict):
+        return _err("整理请求格式无效")
+    with organization.LOCK:
+        if organization.busy():
+            return _err("扫描或整理正在运行，请完成后再试", 409)
+        try:
+            action = _q(params, "action")
+            if action == "preview":
+                job = organization.preview(cfg)
+            elif action == "apply":
+                job = organization.apply(db, cfg, (body or {}).get("plan_id"))
+            elif action == "undo":
+                run_id = (body or {}).get("run_id")
+                if not isinstance(run_id, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,100}", run_id):
+                    raise ValueError("整理记录编号无效")
+                job = organization.undo(db, cfg, run_id)
+            else:
+                raise ValueError("整理操作无效")
+            return _json_bytes({"ok": True, "job": job})
+        except (ValueError, OSError) as e:
+            return _err(str(e))
 
 
 def report_generate(db, cfg, params, body):
@@ -742,7 +849,11 @@ def workflow_summary(db, cfg, params, body):
 
 
 ROUTES = [
-    ("GET", r"^/api/health$", lambda db, cfg, params, body: _json_bytes({"app": "ai-hub", "version": "2.2", "jobs_running": any(j["status"] == "running" for j in jobs.get_jobs())})),
+    ("POST", r"^/api/workspace/setup$", workspace_setup),
+    ("GET", r"^/api/organizer/status$", organizer_status),
+    ("GET", r"^/api/organizer/plan$", organizer_plan),
+    ("POST", r"^/api/organizer/(?P<action>preview|apply|undo)$", organizer_action),
+    ("GET", r"^/api/health$", lambda db, cfg, params, body: _json_bytes({"app": "ai-hub", "version": "2.3", "jobs_running": any(j["status"] == "running" for j in jobs.get_jobs())})),
     ("GET", r"^/api/management$", management_summary),
     ("GET", r"^/api/workflows$", workflow_summary),
     ("GET", r"^/api/overview$", overview),

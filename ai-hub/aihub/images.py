@@ -5,7 +5,7 @@ import os
 import sqlite3
 import time
 
-from . import meta
+from . import config as cfgmod, meta
 
 
 def run_image_scan(db, cfg, progress_cb=None):
@@ -55,16 +55,20 @@ def _run_image_scan(db, cfg, progress_cb=None):
     img_total = 0
     visited = set()
     for root in out_roots:
+        if not cfgmod.scan_root_allowed(root, cfg):
+            continue
         root = os.path.realpath(root)
         if not os.path.isdir(root):
             continue
         for dp, _dns, fns in os.walk(root):
-            _dns[:] = [name for name in _dns if not (getattr(os.lstat(os.path.join(dp, name)), "st_file_attributes", 0) & 0x400)]
+            _dns[:] = [name for name in _dns if not cfgmod.scan_excluded(os.path.join(dp, name), cfg)]
             for fn in fns:
                 ext = os.path.splitext(fn)[1].lower()
                 if ext not in meta.IMAGE_EXTS:
                     continue
                 path = os.path.join(dp, fn)
+                if cfgmod.scan_excluded(path, cfg):
+                    continue
                 if os.path.normcase(path) in visited:
                     continue
                 visited.add(os.path.normcase(path))

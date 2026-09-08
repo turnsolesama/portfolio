@@ -6,7 +6,7 @@ import os
 import re
 import time
 
-from . import meta
+from . import meta, config
 
 # codex 目录 category -> 内部 mtype
 CATEGORY_MAP = {
@@ -58,7 +58,7 @@ def scan_all(db, cfg, progress_cb=None):
 def _scan_all(db, cfg, progress_cb=None):
     """完整扫描：返回 {file_count, dir_count, model_groups}，并把 files/dirs 写入数据库。"""
     roots = cfg.get("scan_roots") or [cfg.get("ai_root")]
-    ignore = set(cfg.get("ignore_dirs") or [])
+    ignore = {name.casefold() for name in (cfg.get("ignore_dirs") or [])}
     dirs_agg = {}          # path -> [size, file_count, dir_count]
     dirs_rows_ignored = [] # 被忽略目录的占位行
     files_rows = []
@@ -73,6 +73,8 @@ def _scan_all(db, cfg, progress_cb=None):
             progress_cb(msg)
 
     def visit(dirpath, depth):
+        if config.scan_excluded(dirpath, cfg):
+            return
         try:
             entries = list(os.scandir(dirpath))
         except OSError:
@@ -85,11 +87,13 @@ def _scan_all(db, cfg, progress_cb=None):
                 st = e.stat(follow_symlinks=False)
             except OSError:
                 continue
+            if e.is_symlink() or _is_reparse_stat(st) or config.scan_excluded(e.path, cfg):
+                continue
             if e.is_dir(follow_symlinks=False):
                 if _is_reparse_stat(st):
                     d_acc += 1  # junction/链接：计入但不深入
                     continue
-                if e.name.lower() in ignore:
+                if e.name.casefold() in ignore:
                     sub = _strip_extended(e.path)
                     dirs_rows_ignored.append((sub, dirpath, e.name, depth + 1, 0, 0, 0, 1))
                     d_acc += 1
@@ -136,7 +140,7 @@ def _scan_all(db, cfg, progress_cb=None):
     report("开始扫描目录树…")
     t0 = time.time()
     for r in roots:
-        if os.path.isdir(r):
+        if config.scan_root_allowed(r, cfg):
             visit(os.path.realpath(r), 0)
 
     report(f"目录树完成：{count[0]} 文件 / {len(dirs_agg)} 目录（{time.time()-t0:.0f}s），写入数据库…")
@@ -147,7 +151,7 @@ def _scan_all(db, cfg, progress_cb=None):
         dirs_rows.append((p, parent, os.path.basename(p) or p, depth, s, f, d, 0))
     dirs_rows.extend(dirs_rows_ignored)
     db.replace_scan_tables(dirs_rows, files_rows)
-    root_paths = [os.path.realpath(r) for r in roots if os.path.isdir(r)]
+    root_paths = [os.path.realpath(r) for r in roots if config.scan_root_allowed(r, cfg)]
     dirs_agg_total = sum(dirs_agg.get(rp, [0, 0, 0])[0] for rp in root_paths)
     unique_size = dirs_agg_total - (model_path_bytes[0] - model_unique_bytes[0])
     db.set_meta("unique_size", str(unique_size))

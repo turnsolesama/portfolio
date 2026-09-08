@@ -9,3 +9,6 @@
 - 检查：`python -B -m unittest discover -s tests -v`、`node --check frontend/app.js`、`node --check frontend/navigation.js`、`node --test tests/*.test.js`。
 - 桌面代码变化还需运行 `desktop/build.py --sdk-package <已核对摘要的SDK> --output <临时路径>/AIHub.exe --test`。
 - 使用 `tools/package_release.py` 打包；不把数据、模型、图片、凭据、备份或浏览器配置提交到 GitHub。
+
+- 安全区整理仅在明确配置的本地目录中建立硬链接，不移动原件、不覆盖目标、不跟随重解析点。修改需验证预览陈旧、路径逃逸、冲突、撤销、启动默认关闭及跨电脑路径失效。
+- 测试使用临时夹具；不得用真实用户模型或图库执行整理/撤销。分类库排除出扫描，避免重复统计。

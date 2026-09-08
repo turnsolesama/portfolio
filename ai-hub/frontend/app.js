@@ -228,7 +228,7 @@
 
   // ---------- 路由 ----------
   const titles = { overview: "工作总览", models: "模型资产", workflows: "工作流", updates: "更新中心", analysis: "使用分析",
-    images: "出图图库", llm: "大模型", files: "文件总览", reports: "资料与报告", settings: "设置" };
+    images: "出图图库", llm: "大模型", files: "文件总览", reports: "资料与报告", settings: "设置", organizer: "安全区整理" };
   function parseHash(hash = location.hash) {
     const h = hash.slice(2) || "overview";
     const [page, qs] = h.split("?");
@@ -246,6 +246,7 @@
     if (activePage === 'workflows') state = { state: value('wf-state'), query: value('wf-query') };
     if (activePage === 'reports') state = { path: view?.dataset.report, query: value('report-search') };
     if (activePage === 'files') state = { path: fileState.path, query: value('fs-q') };
+    if (activePage === 'organizer') state = AIHubOrganizer.capture(view);
     return {
       state, top: host.scrollTop, left: host.scrollLeft, search: $('#global-search').value,
       scrolls: scrollSelectors.map(selector => $$(selector, host).map(el => [el.scrollLeft, el.scrollTop])),
@@ -326,11 +327,13 @@
   }
 
   const pages = {};
+  pages.organizer = AIHubOrganizer.createPage({api, icon, heading, toast, pollJobs, openModal, closeModal, refresh: route});
 
   pages.overview = async el => {
     el.innerHTML=skeleton();
     try{
-      const [ov,mg]=await Promise.all([api('/api/overview'),api('/api/management')]);
+      const [ov,mg,organizer]=await Promise.all([api('/api/overview'),api('/api/management'),api('/api/organizer/status')]);
+      if(!el.isConnected)return;
       const palette=['#9daedd','#7688b0','#a7b8d2','#7b9dab','#c0b3d5','#928cab','#709296','#647d9e'];
       const parts=ov.parts.filter(p=>p.size>0).sort((a,b)=>b.size-a.size),total=parts.reduce((s,p)=>s+p.size,0)||1;
       const labels={AI_Models:'模型仓库',AI_Apps:'应用与环境',AI_Agent:'自动化工具','50_Training':'训练资产','70_Output':'输出文件','30_Assets':'素材资源','40_Projects':'创作项目','80_Knowledge':'知识资料','90_Archive':'归档'};
@@ -338,7 +341,7 @@
       const metric=(label,value,foot,ic)=>`<div class="metric"><div class="metric-top">${label}<span class="metric-icon">${icon(ic,17)}</span></div><div class="metric-value">${String(value).replace(/ ([KMGT]iB|B)$/,'<small>$1</small>')}</div><div class="metric-foot">${foot}</div></div>`;
       const action=(ic,title,detail,page,query,tone='')=>`<div class="attention-row"><span class="attention-icon ${tone}">${icon(ic,17)}</span><div class="attention-content"><strong>${title}</strong><p>${detail}</p></div><button class="action" data-nav="${page}" data-query="${esc(query||'')}">查看 ${icon('arrow',13)}</button></div>`;
       el.innerHTML=heading('工作空间','模型、出图与资料，在同一处管理。','WORKSPACE OVERVIEW')+`
-      ${!ov.ai_root?`<section class="setup-banner"><h3>欢迎使用 AI Hub</h3><p>先设置存放模型和出图的资产文件夹，再开始建立索引。</p><button class="btn primary" data-nav="settings">设置资产目录 ${icon('arrow',14)}</button></section>`:''}
+      ${AIHubOrganizer.workspaceBanner(organizer)}
       <section class="workspace-banner"><div class="workspace-context">${icon('folder',20)} <b>${esc(ov.ai_root)}</b><span>本机资产工作空间</span></div><div class="workspace-actions"><button class="btn primary" data-nav="models">${icon('layers',14)} 浏览模型</button><button class="btn" data-nav="images">${icon('image',14)} 打开图库</button></div></section>
       <div class="metric-grid">${metric('中央主模型',(ov.central_counts.Checkpoint||0)+(ov.central_counts.Diffusion||0),'当前索引 · Checkpoint / Diffusion','layers')}${metric('中央 LoRA',ov.central_counts.LoRA||0,'当前索引 · 架构、用途与训练信息','cpu')}${metric('文件占用',fmtSize(ov.unique_size),`扫描范围去重 · 可用 ${fmtSize(ov.disk.free)}`,'disk')}${metric('出图记录',ov.image_count.toLocaleString(),`其中 <em>${ov.image_with_meta}</em> 张包含生成元数据`,'image')}</div>
       <div class="content-grid"><section class="panel"><div class="panel-head"><h3>资产维护</h3><span class="health-score">${mg.check.status==='passed'?'最近检查通过':'尚无检查记录'}</span></div><div class="body">
@@ -750,6 +753,7 @@
     el.innerHTML = `<div class="muted">加载中…</div>`;
     return api("/api/settings").then(c => {
       el.innerHTML = `
+        <section class="setup-banner organizer-settings-entry"><div><h3>安全区与自动分类</h3><p>换电脑后，从这里选择本机目录、预览分类入口并设置启动整理。</p></div><a class="btn" href="#/organizer">管理安全区 ${icon('arrow',14)}</a></section>
         <div class="panel"><h3>🌐 网络与更新源</h3><div class="body">
           <div class="form-row"><div class="k">Civitai API 地址</div><input class="inp" id="s-cbase" value="${esc(c.network.civitai_base)}"></div>
           <div class="form-row"><div class="k">Civitai Token（可选）</div><input class="inp" id="s-token" type="password" autocomplete="off" value="${esc(c.network.civitai_token || "")}" placeholder="用于提高限流额度"></div>
