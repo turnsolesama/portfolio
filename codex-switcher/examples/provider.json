@@ -1,0 +1,1 @@
+{"profiles":[{"id":"example","name":"示例服务","base_url":"https://api.example/v1","env_key":"EXAMPLE_API_KEY","model":"your-model","wire_api":"responses"}]}

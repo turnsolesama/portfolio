@@ -1,0 +1,10 @@
+profiles.json
+switcher-backups/
+backups/
+runtime/
+__pycache__/
+*.log
+.env
+*.bak
+*.tmp
+releases/

@@ -1,0 +1,6 @@
+model = "your-model"
+[model_providers.example]
+name = "示例服务"
+base_url = "https://api.example/v1"
+env_key = "EXAMPLE_API_KEY"
+wire_api = "responses"

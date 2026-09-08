@@ -1,0 +1,94 @@
+{
+  "version": "2.1.0",
+  "package": "Codex-Switcher-v2.1.0-Windows-x64.zip",
+  "bytes": 115831,
+  "sha256": "eb49305ebfa0b7ce26eb8ca85446b8d18644c54bb90b9942a688a5336218635c",
+  "contains_user_data": false,
+  "files": [
+    {
+      "path": "codex_switcher.pyw",
+      "bytes": 30474,
+      "sha256": "5a933cf31dca4186ff1dd04925ec1cd88ec950850d5f3606905a8a157e3d4a49"
+    },
+    {
+      "path": "switcher_core.py",
+      "bytes": 13925,
+      "sha256": "dc19b60c8bf2ddc11e07b5fce5726e9c0f594189f3a837141a1ab475a383a148"
+    },
+    {
+      "path": "switcher_ui.py",
+      "bytes": 9220,
+      "sha256": "8694dacf39b7587ce27fcc557bee56d92e2f0cb5fc008c5846c9cdf505980705"
+    },
+    {
+      "path": "test_switcher.py",
+      "bytes": 9681,
+      "sha256": "4db8df9bd10c221724321d545d4d627c63d234ade5fb500f98f1a2161d092c63"
+    },
+    {
+      "path": "test_switcher_ui.py",
+      "bytes": 9748,
+      "sha256": "87d8bbd9e6adeec298bade6df014d5ed1fcfef20708cee37c9c9ab20136b1836"
+    },
+    {
+      "path": "Launcher.cs",
+      "bytes": 2429,
+      "sha256": "2a572de34456694e4a69f99b76e1e89f9a0cdb0b5bf43d8a6d67946e8ab9f0f1"
+    },
+    {
+      "path": "build.py",
+      "bytes": 581,
+      "sha256": "fc32a1a45010438b618bab110a6eb8215bb810199d3f1959716960374d93de2b"
+    },
+    {
+      "path": "package_release.py",
+      "bytes": 1727,
+      "sha256": "323c8f2d011fa725c1fe381880ab7aeebf682a82cef9ded33056ab9374c640fa"
+    },
+    {
+      "path": "Codex Switcher.exe",
+      "bytes": 367616,
+      "sha256": "973f01bfd426df811bb647c45d7a73d53aa8cd0422e330d8626a713c66bdc79d"
+    },
+    {
+      "path": "switcher.ico",
+      "bytes": 361102,
+      "sha256": "40f57e7ef61b3be3abfeb93e6221b037163f46466377665edc40abe7d08b31e7"
+    },
+    {
+      "path": "README.md",
+      "bytes": 5326,
+      "sha256": "63a731c33aeb8d6a7e473720a9ec11bcb9bb80a8d28210e08b445d77bb360e47"
+    },
+    {
+      "path": "TEST_REPORT.md",
+      "bytes": 1586,
+      "sha256": "581377f5cc6e03ff2f625d079c7b524341a75257fc92f8a09264702c41feed94"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 1127,
+      "sha256": "bf022105252a9839b7dac433c4ef10fb69aff4bda1a2b75c9163f5dc19296433"
+    },
+    {
+      "path": ".gitignore",
+      "bytes": 96,
+      "sha256": "2f6ed4d62cf162564266241171925800eee4220b166db279e5f4a231438b781f"
+    },
+    {
+      "path": "examples/provider.json",
+      "bytes": 162,
+      "sha256": "5908d9d4727aae979e8849820baf514d0f8edc0c1e276494c3d6d2f43a93f8c4"
+    },
+    {
+      "path": "examples/codex.toml",
+      "bytes": 156,
+      "sha256": "5a223a204e478ad92786a472b8b83f63c0fcfe5fd84f01efc9c51048821eea9b"
+    },
+    {
+      "path": "examples/provider.env",
+      "bytes": 63,
+      "sha256": "4689db5af8c6f7491dec45357041f074c5d8c1a9cb554888b3aa0ffcf00bd7a0"
+    }
+  ]
+}
