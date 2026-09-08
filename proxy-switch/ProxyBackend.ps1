@@ -165,16 +165,16 @@ function Get-SystemKey($Snapshot) {
     if ($key -eq 'Unset') { return 'Other' }
     return $key
 }
-function Get-Listener($Profile) {
+function Get-Listener($Profile,[switch]$ProbeRemote) {
     if($Profile.Host -in @('localhost','127.0.0.1','::1')){
         $entries=@(Get-NetTCPConnection -State Listen -LocalPort $Profile.Port -ErrorAction SilentlyContinue | Where-Object {$_.LocalAddress -in @('127.0.0.1','0.0.0.0','::','::1')})
         foreach($entry in $entries){
             $owner=Get-Process -Id $entry.OwningProcess -ErrorAction SilentlyContinue
             if($owner -and (-not $Profile.CorePath -or $owner.Path -ieq $Profile.CorePath)){return [pscustomobject]@{PID=$owner.Id;Name=$owner.ProcessName}}
         }
-    }else{
-        $tcp=New-Object Net.Sockets.TcpClient
-        try{$connect=$tcp.BeginConnect($Profile.Host,$Profile.Port,$null,$null);if($connect.AsyncWaitHandle.WaitOne(800)){$tcp.EndConnect($connect);return [pscustomobject]@{PID=0;Name='TCP'}}}catch{}finally{$tcp.Close()}
+    }elseif($ProbeRemote){
+        $tcp=New-Object Net.Sockets.TcpClient;$connect=$null
+        try{$connect=$tcp.BeginConnect($Profile.Host,$Profile.Port,$null,$null);if($connect.AsyncWaitHandle.WaitOne(800)){$tcp.EndConnect($connect);return [pscustomobject]@{PID=0;Name='TCP'}}}catch{}finally{if($connect){$connect.AsyncWaitHandle.Close()};$tcp.Close()}
     }
     return $null
 }
@@ -209,7 +209,7 @@ function Get-LiveConnections {
     foreach($group in ($items | Group-Object PID,Route)){$c=$group.Group[0];[pscustomobject]@{Process=$processes[$c.PID];PID=$c.PID;Route=$c.Route;Count=$group.Count}}
 }
 
-function Get-ProxyStatus {
+function Get-ProxyStatus($RoutingStatus=$null) {
     $snapshot=Get-SystemSnapshot;$key=Get-SystemKey $snapshot;$envValues=Get-UserProxyEnv;$selection=Get-Selection
     $aligned=($key -ne 'Other');$envConflict=($key -eq 'Other');$environment=@()
     foreach($name in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY')){
@@ -218,12 +218,18 @@ function Get-ProxyStatus {
         if(($key -eq 'Direct' -and $route -ne 'Unset') -or ($key -ne 'Direct' -and $route -ne $key)){$aligned=$false}
         if($route -ne 'Unset' -and $route -ne $key){$envConflict=$true}
     }
-    $listeners=@();foreach($id in (Get-ProfileKeys)){$p=Get-Profile $id;$l=Get-Listener $p;$listeners+=[pscustomobject]@{Key=$id;Name=$p.Name;Protocol=$p.Protocol;Port=$p.Port;Ready=($null -ne $l)}}
-    $ready=($key -eq 'Direct' -or @($listeners | Where-Object {$_.Key -eq $key -and $_.Ready}).Count -gt 0)
+    $listeners=@();foreach($id in (Get-ProfileKeys)){
+        $p=Get-Profile $id;$remote=$p.Host -notin @('localhost','127.0.0.1','::1');$l=Get-Listener $p
+        $listeners+=[pscustomobject]@{Key=$id;Name=$p.Name;Protocol=$p.Protocol;Port=$p.Port;Remote=$remote;Ready=$(if($remote){$null}else{$null -ne $l})}
+    }
+    $ready=$key -eq 'Direct'
+    if($key -ne 'Direct'){$entry=$listeners | Where-Object {$_.Key -eq $key} | Select-Object -First 1;$ready=$(if($entry){$entry.Ready}else{$null})}
     $live=@(Get-LiveConnections);$warnings=@(Get-ClientWarnings)+@(Get-OverrideWarnings $key)
     $drift=($null -ne $selection -and $selection.Key -and $selection.Key -ne $key)
     $oldConnections=@($live | Where-Object {$_.Route -ne $key})
-    $network=$key;if($selection.NetworkKey -and -not $drift){$network=$selection.NetworkKey}
+    # Historical intent is not evidence of the engine's live route.
+    $network=$key
+    if($key -eq (Get-GatewayKey) -and $RoutingStatus.Available -and $RoutingStatus.DefaultLoaded -and $RoutingStatus.DefaultRoute){$network=$RoutingStatus.DefaultRoute}
     [pscustomobject]@{Key=$key;Current=(Get-RouteName $key);NetworkKey=$network;NetworkName=(Get-RouteName $network);Server=(Protect-Endpoint $snapshot.Server);Flags=$snapshot.Flags;Environment=$environment;Aligned=$aligned;EnvConflict=$envConflict;EndpointReady=$ready;Listeners=$listeners;Selected=$selection;Drift=[bool]$drift;Connections=$live;OldConnections=$oldConnections;Warnings=$warnings;GatewayKey=(Get-GatewayKey);CheckedAt=(Get-Date).ToString('HH:mm:ss')}
 }
 
@@ -258,7 +264,7 @@ function Test-HttpEndpoint($Profile,[string]$Url) {
 }
 function Test-ProxyRoute([string]$Key) {
     $profile=Get-Profile $Key
-    if (-not (Get-Listener $profile)) { throw ($profile.Name + ' 入口未就绪，请启动关联程序或检查地址与端口。未修改代理。') }
+    if (-not (Get-Listener $profile -ProbeRemote)) { throw ($profile.Name + ' 入口未就绪，请启动关联程序或检查地址与端口。未修改代理。') }
     $results=@()
     foreach ($url in @('https://www.google.com/generate_204','https://api.openai.com/v1/models','https://chatgpt.com/')) {
         $results += Test-HttpEndpoint $profile $url
@@ -304,24 +310,42 @@ function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSyst
     if($null -ne $BeforeRouting -and -not (Test-SameRouting $BeforeRouting (Get-RoutingSnapshot))){throw '程序规则被其他窗口改动，请刷新后重试。'}
     $beforeSelection=Get-Selection
     $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=$BeforeSystem;Environment=$BeforeEnv;Selection=$beforeSelection;Routing=$BeforeRouting})
-    $routesWritten=$false;$nativeStarted=$false
+    $routesWritten=$false;$nativeStarted=$false;$systemStarted=$false
     try{
         if($null -ne $TargetRouting){Set-RoutingSnapshot $TargetRouting;$routesWritten=$true}
         if($VerifyAction){& $VerifyAction | Out-Null}
         # A controller reload can take seconds; recheck before touching Windows settings.
         if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $BeforeEnv (Get-UserProxyEnv))){throw '重载期间系统入口发生变化，请重试。'}
-        $nativeStarted=$true;Set-UserProxyEnv $TargetEnv;Set-SystemSnapshot $TargetSystem
+        $nativeStarted=$true;Set-UserProxyEnv $TargetEnv
+        if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot))){throw '写入变量期间其他程序改动了系统代理。'}
+        $systemStarted=$true;Set-SystemSnapshot $TargetSystem
         if(-not (Test-SameSnapshot $TargetSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $TargetEnv (Get-UserProxyEnv))){throw '写入后校验失败，或其他客户端改写了入口。'}
         Save-Selection $Selection
     }catch{
-        $errorText=$_.Exception.Message;$rollbackErrors=@()
-        if($routesWritten -and $null -ne $BeforeRouting){try{Set-RoutingSnapshot $BeforeRouting}catch{$rollbackErrors+='程序规则'}}
+        $errorText=$_.Exception.Message;$rollbackErrors=@();$preserved=@()
+        if($routesWritten -and $null -ne $BeforeRouting){
+            try{if(Test-SameRouting (Get-RoutingSnapshot) $TargetRouting){Set-RoutingSnapshot $BeforeRouting}else{$preserved+='程序规则'}}catch{$rollbackErrors+='程序规则'}
+        }
         if($nativeStarted){
-            try{Set-UserProxyEnv $BeforeEnv}catch{$rollbackErrors+='环境变量'}
-            try{Set-SystemSnapshot $BeforeSystem}catch{$rollbackErrors+='系统代理'}
+            # Restore only values still owned by this transaction; preserve outside choices.
+            try{
+                $currentEnv=Get-UserProxyEnv;$rollbackEnv=[ordered]@{}
+                foreach($name in $script:ProxyNames){
+                    if([string]$currentEnv.$name -ceq [string]$TargetEnv.$name){$rollbackEnv[$name]=$BeforeEnv.$name}
+                    else{$rollbackEnv[$name]=$currentEnv.$name;if([string]$currentEnv.$name -cne [string]$BeforeEnv.$name){$preserved+='环境变量'}}
+                }
+                if(-not (Test-SameEnv $currentEnv ([pscustomobject]$rollbackEnv))){Set-UserProxyEnv ([pscustomobject]$rollbackEnv)}
+            }catch{$rollbackErrors+='环境变量'}
+            if($systemStarted){try{
+                $currentSystem=Get-SystemSnapshot
+                if(Test-SameSnapshot $currentSystem $TargetSystem){Set-SystemSnapshot $BeforeSystem}
+                elseif(-not (Test-SameSnapshot $currentSystem $BeforeSystem)){$preserved+='系统代理'}
+            }catch{$rollbackErrors+='系统代理'}}
+            elseif(-not (Test-SameSnapshot (Get-SystemSnapshot) $BeforeSystem)){$preserved+='系统代理'}
             try{Save-Selection $beforeSelection}catch{$rollbackErrors+='选择记录'}
         }
         if($rollbackErrors.Count){throw ($errorText+'；回滚未完成：'+($rollbackErrors -join '、')+'。备份：'+$backup)}
+        if($preserved.Count){throw ($errorText+'；已撤销本次可回滚的更改，保留其他程序的最新设置：'+(($preserved | Select-Object -Unique) -join '、')+'。')}
         throw ($errorText+'；已恢复切换前配置。')
     }
     return $backup
@@ -343,7 +367,7 @@ function Get-UnifiedPlan([string]$Key,$BeforeRouting) {
     if($BeforeRouting.installed -and -not $useEngine){throw '已有程序规则需要撤回，但分流引擎未运行。请启动引擎后再统一切换。'}
     $entrance=$Key;$default=$null
     if($Key -ne 'Direct'){
-        if($useEngine){$entrance=$gateway;$default=$Key}
+        if($useEngine -and ($Key -eq $gateway -or (Get-Profile $Key).Protocol -ne 'http')){$entrance=$gateway;$default=$Key}
         elseif((Get-Profile $Key).Protocol -ne 'http'){throw 'SOCKS5 统一切换需要本地分流引擎提供 HTTP 入口，请在代理管理设置引擎。'}
     }
     [pscustomobject]@{Entrance=$entrance;NetworkKey=$Key;Routing=[pscustomobject]@{entries=@();defaultRoute=$default};ClearedRules=@($BeforeRouting.entries).Count}
@@ -360,13 +384,15 @@ function Set-SelectedProxy([string]$Key) {
             if(Select-String -LiteralPath $verge -Pattern '^(enable_tun_mode|enable_proxy_guard):\s*true\s*$' -Quiet){throw '请先关闭正在运行的分流引擎的 TUN / 代理守卫，再统一切换。'}
         }
         $server='';$flags=1
-        if($plan.Entrance -ne 'Direct'){$p=Get-Profile $plan.Entrance;if(-not (Get-Listener $p)){throw '所选入口已退出，保留原设置。'};$server=Get-EndpointAddress $p;$flags=3}
+        if($plan.Entrance -ne 'Direct'){$p=Get-Profile $plan.Entrance;if(-not (Get-Listener $p -ProbeRemote)){throw '所选入口已退出，保留原设置。'};$server=Get-EndpointAddress $p;$flags=3}
         $target=[pscustomobject]@{Flags=$flags;Server=$server;Bypass=$before.Bypass}
         $selection=[pscustomobject]@{Key=$plan.Entrance;NetworkKey=$Key;Unified=$true;ChangedAt=(Get-Date).ToString('o')}
         $rules=$plan.Routing
         if(-not $beforeRules.installed -and -not $rules.defaultRoute){$rules=$null}
-        $verify=$null
-        if($rules.defaultRoute){$verify={if(-not (Test-ProxyRoute $plan.Entrance).Usable){throw '统一线路的实际检测未通过。'}}}
+        $verify={
+            if($rules.defaultRoute -and -not (Test-ProxyRoute $plan.Entrance).Usable){throw '统一线路的实际检测未通过。'}
+            if($plan.Entrance -ne 'Direct' -and -not (Get-Listener (Get-Profile $plan.Entrance) -ProbeRemote)){throw '提交前入口已退出，未写入失效端口。'}
+        }
         $backup=Invoke-ProxyTransaction $target (New-EnvTarget $beforeEnv $plan.Entrance) $selection $before $beforeEnv $rules $beforeRules $verify
         [pscustomobject]@{Key=$Key;Backup=$backup;Test=$test;Message=('已统一切换到「'+(Get-RouteName $Key)+'」，同步系统代理与命令行变量，撤销 '+$plan.ClearedRules+' 条程序专用规则。现有连接需刷新或重开程序。')}
     }
@@ -379,12 +405,24 @@ function Restore-ProxyBackup {
         $saved=Get-Content -LiteralPath $latest.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
         if($saved.Version -notin @(2,3) -or -not $saved.System -or -not $saved.Environment){throw '备份格式不兼容，未修改设置。'}
         $key=Get-SystemKey $saved.System
-        if($key -in (Get-ProfileKeys) -and -not (Get-Listener (Get-Profile $key))){throw '备份指向的入口未就绪，请先启动它。'}
+        if($key -in (Get-ProfileKeys) -and -not (Get-Listener (Get-Profile $key) -ProbeRemote)){throw '备份指向的入口未就绪，请先启动它。'}
         if($key -eq 'Other'){throw '备份指向的代理已不在当前列表，请先恢复对应代理配置。'}
+        Assert-RestorableEnvironment $saved.Environment
         $routing=$null;$beforeRules=$null
         if($saved.Version -eq 3 -and $null -ne $saved.Routing){$routing=$saved.Routing;$beforeRules=Get-RoutingSnapshot}
         $backup=Invoke-ProxyTransaction $saved.System $saved.Environment $saved.Selection (Get-SystemSnapshot) (Get-UserProxyEnv) $routing $beforeRules
         [pscustomobject]@{Message='已恢复切换前的系统代理、环境变量与已备份的程序规则。现有连接可能需要重开。';Backup=$backup}
+    }
+}
+
+function Assert-RestorableEnvironment($Values) {
+    foreach($name in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY')){
+        $value=[string]$Values.$name;if(-not $value){continue}
+        try{$uri=[uri]$(if($value -match '^[a-z]+://'){$value}else{'http://'+$value})}catch{throw ('备份的 '+$name+' 地址无效，未恢复。')}
+        if($uri.Host.Trim('[',']') -in @('localhost','127.0.0.1','::1')){
+            $profile=[pscustomobject]@{Host=$uri.Host.Trim('[',']');Port=$uri.Port;CorePath=''}
+            if(-not (Get-Listener $profile)){throw ('备份的 '+$name+' 指向未监听的本地端口 '+$uri.Port+'，未恢复任何设置。')}
+        }
     }
 }
 

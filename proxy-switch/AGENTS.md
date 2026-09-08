@@ -25,7 +25,11 @@
 - HTTP 与直连的基础统一切换不依赖 Node.js 或任何 VPN 品牌；SOCKS5 统一切换和按程序分流需要可选引擎。
 - 独立集成测试可设置 PROXY_SWITCH_TEST_ENGINE_DIR 和 PROXY_SWITCH_TEST_PIPE；后者必须以 \\.\pipe\ProxySwitch-Test- 开头。使用专门的回环端口、独立状态目录和测试进程，退出时结束自己启动的引擎，不修改用户实例。
 
-- 3.0.1 的 ProxyDiscovery.ps1 通过有界本地协议探测发现入口；自动发现只补充本机 Profiles，不写系统代理、用户代理变量或程序路由。
+- 3.0.2 启动、刷新、退出必须被动：不发起 TCP/协议探测、不写网络设置或代理列表、不重新应用历史选择。仅明确点击检测或 CLI -Discover 才发现代理；候选范围仅限已配置入口和已识别代理客户端，不扫描游戏或无关用户程序。
 - 保留用户已有标识、名称、Routing 和 DiscoveryIgnored。探测后须在互斥锁内重新读取配置，去重后再保存；删除本地入口时记入忽略列表。
 - 后台状态响应需携带同一配置目录的 Settings，UI 同步下拉框与列表；SmokeTest 不运行自动发现，断言配置数量与列表数量一致。
 - 新增验证：powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-ProxyDiscovery.ps1（真实回环应答与隔离配置，不写真实网络）。
+
+- HTTP 统一选择直接使用所选入口；只有引擎自身或 SOCKS5 需要托管默认 MATCH。回滚前检查设置仍属于本次操作，保留外部更改。撤回必须检查本地代理环境变量端口。
+- `Test-Compatibility.ps1` 验证被动状态、游戏端口排除、并发回滚、失效备份和 SynSent；不得读取游戏进程内存或自动重启游戏来测试。
+- 界面回归：`Test-PassiveLifecycle.ps1`（72 秒，隔离状态与套接字哨兵）和 `Test-DiscoveryUI.ps1`（手动发现、外部配置刷新、删除与重扫）。

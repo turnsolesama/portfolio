@@ -6,7 +6,7 @@ if(Test-Path -LiteralPath $destinationPath){throw '输出目录已存在，请�
 $files=@(
     'ProxySwitch.ps1','ProxyBackend.ps1','ProxyWindow.ps1','AppRouting.ps1','AppRouter.cjs','Preferences.ps1','ProxyDiscovery.ps1',
     'config.defaults.json','启动代理切换.cmd','Install-Shortcut.ps1','Test-All.ps1','Test-ProxySwitch.ps1','Test-AppRouter.cjs','Test-Preferences.ps1','Test-ProxyDiscovery.ps1',
-    'Build-Release.ps1','README.md','CHANGELOG.md','LICENSE','THIRD_PARTY_NOTICES.md','AGENTS.md','.gitignore','.gitattributes',
+    'Build-Release.ps1','Test-Compatibility.ps1','Test-PassiveLifecycle.ps1','Test-DiscoveryUI.ps1','README.md','CHANGELOG.md','LICENSE','THIRD_PARTY_NOTICES.md','AGENTS.md','.gitignore','.gitattributes',
     'assets/ProxySwitch.ico','assets/screenshot.png','assets/program-menu.png','assets/proxy-management.png',
     'vendor/js-yaml/package.json','vendor/js-yaml/LICENSE','vendor/js-yaml/dist/js-yaml.cjs.js'
 )
@@ -20,7 +20,7 @@ foreach($relative in $files){
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $tree 'manifest.json') -Encoding UTF8
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive=Join-Path $destinationPath 'ProxySwitch-v3.0.1-Windows-Source.zip'
+$archive=Join-Path $destinationPath 'ProxySwitch-v3.0.2-Windows-Source.zip'
 [IO.Compression.ZipFile]::CreateFromDirectory($tree,$archive,[IO.Compression.CompressionLevel]::Optimal,$true)
 $hash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $destinationPath 'SHA256SUMS.txt'),($hash+'  '+[IO.Path]::GetFileName($archive)+"`r`n"),(New-Object Text.UTF8Encoding($false)))

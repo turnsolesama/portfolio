@@ -24,8 +24,9 @@ function Get-ProxyDiscoveryListeners {
         try{$exe=[string]$owner.Path}catch{}
         $known=@($script:Profiles.Profiles | Where-Object {$_.Host -in @('localhost','127.0.0.1','::1') -and $_.Port -eq $row.LocalPort}).Count -gt 0
         $hint=$known -or $name -match '(?i)clash|mihomo|sing.?box|v2ray|xray|upnet|ss-local|shadowsocks|gost|hiddify|nekoray'
-        # Unknown user applications are probed too; system services are not scanned indiscriminately.
-        if(-not $hint -and (-not $owner -or $owner.SessionId -eq 0 -or $name -match '^(System|Idle|lsass|services|svchost|wininit|winlogon)$')){continue}
+        # Never send proxy handshakes to unrelated applications (games, launchers, IPC).
+        # An unfamiliar proxy must be explicitly added by address before probing it.
+        if(-not $hint){continue}
         $result+=[pscustomobject]@{Host=$address;Port=[int]$row.LocalPort;Name=$(if($name){$name}else{'本机代理'});Path=$exe;Priority=$(if($hint){0}else{1})}
     }
     @($result | Sort-Object Priority,Port,Host | Select-Object -First 48)
