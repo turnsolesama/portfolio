@@ -2,6 +2,16 @@
 
 先选择要完成的创作，再选择模型类型和兼容架构。
 
+## 独立维度与入库状态
+
+所属范围 `scope`（中央 / 应用私有 / 训练 / 归档 / 待确认）、模型角色 `model_role`（主模型、LoRA、编码器、检测组件等）、创作用途 `domain`、LoRA 多用途 `purposes`、兼容架构 `architecture` 分开计算。未知角色使用 `Unknown`，不会自动变成 `Private`；旧的 Private 记录只作为历史数据保留，界面按独立维度显示。`detection` 目录提供检测组件角色证据，不因文件叫 YOLO 就断言具体架构或效果。
+
+人工覆盖始终优先，旧版只有 domain / purposes 的标签继续有效。手动填写架构标记为 `architecture_source=manual`，不能称为结构验证通过。清除某维覆盖只恢复该维自动建议。
+
+三个状态彼此独立：`indexed` 表示现场索引有记录；`registered` 表示当前稳定 models.json 台账按 ID、路径或实际文件身份命中；`classification_pending` 表示范围、角色、用途或架构仍有待确认项（LoRA 还包括用途待补充）。已登记不等于已经完成分类。`registration_status` 为 discovered / indexed / registered，不把索引记录伪装为稳定登记。
+
+浏览与整理预览共用分类输入。硬链接或兼容路径根据当前文件的设备号和 inode 合并显示，并保留 `compatibility_paths` 和别名行号；同名文件不会合并，无法取得身份的路径不会因缺少 inode 被合并。兼容路径上的人工标签按同一文件身份应用；多条标签冲突时使用更新时间较新的记录。这些操作只调整展示，不迁移、合并或删除用户记录。
+
 | 功能入口 | 包含的资产 |
 | --- | --- |
 | 图片创作 | 绘图、图像编辑、图片 LoRA、已绑定架构的配套模型 |

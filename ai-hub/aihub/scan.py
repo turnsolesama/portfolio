@@ -6,7 +6,7 @@ import os
 import re
 import time
 
-from . import meta, config
+from . import meta, config, classification
 
 # codex 目录 category -> 内部 mtype
 CATEGORY_MAP = {
@@ -107,15 +107,17 @@ def _scan_all(db, cfg, progress_cb=None):
                 path = _strip_extended(e.path)
                 ext = os.path.splitext(e.name)[1].lower()
                 category, mtype = meta.classify_file(ext, parent_name)
+                if category == "model":
+                    mtype = mtype or meta.model_type(path) or "Unknown"
                 if category == "model" and TRAINING_STATE_RE.match(e.name):
                     category = "training"  # 训练状态文件，不入模型库
                 ino_key = ""
                 if category == "model":
                     try:
                         fst = os.stat(e.path, follow_symlinks=False)  # 完整 stat 才有真实 st_ino
-                        ino_key = f"{fst.st_dev}:{fst.st_ino}"
-                        if (fst.st_dev, fst.st_ino) not in seen_inodes:
-                            seen_inodes[(fst.st_dev, fst.st_ino)] = st.st_size
+                        ino_key = f"{fst.st_dev}:{fst.st_ino}" if fst.st_ino else "path:" + classification.path_key(path)
+                        if ino_key not in seen_inodes:
+                            seen_inodes[ino_key] = st.st_size
                             model_unique_bytes[0] += st.st_size
                         model_path_bytes[0] += st.st_size
                         g = groups.setdefault(ino_key, {"paths": [], "size": st.st_size,
@@ -127,11 +129,6 @@ def _scan_all(db, cfg, progress_cb=None):
                                    category, mtype, ino_key))
                 size_acc += st.st_size
                 f_acc += 1
-                if category == "model":
-                    ino = f"{st.st_dev}:{st.st_ino}"
-                    g = groups.setdefault(ino, {"paths": [], "size": st.st_size,
-                                                "mtime": st.st_mtime, "ext": ext})
-                    g["paths"].append(path)
                 count[0] += 1
                 if count[0] % 20000 == 0:
                     report(f"已扫描 {count[0]} 个文件…")
@@ -167,6 +164,7 @@ def build_models(db, cfg, scan_result, progress_cb=None):
     stats = {"catalog": 0, "filesystem": 0, "missing": 0}
     groups = scan_result["model_groups"]
     known_paths = set()
+    catalog_identities = set()
 
     def report(msg):
         if progress_cb:
@@ -223,7 +221,7 @@ def build_models(db, cfg, scan_result, progress_cb=None):
             "filename": filename,
             "norm_name": filename.lower(),
             "ext": os.path.splitext(canon)[1].lower(),
-            "mtype": mtype or "Private",
+            "mtype": mtype or meta.model_type(canon) or "Unknown",
             "family": ent.get("family") or None,
             "family_conf": ent.get("family_confidence") or None,
             "scope": ent.get("scope") or "central",
@@ -244,6 +242,9 @@ def build_models(db, cfg, scan_result, progress_cb=None):
         }
         db.upsert_model(row)
         known_paths.add(canon.lower())
+        identity = classification.file_identity(canon)
+        if identity:
+            catalog_identities.add(identity)
         stats["catalog"] += 1
     report(f"目录清单导入完成：{stats['catalog']} 条（文件缺失 {stats['missing']}）")
 
@@ -251,7 +252,7 @@ def build_models(db, cfg, scan_result, progress_cb=None):
     for _ino, g in groups.items():
         paths = g["paths"]
         primary = sorted(paths, key=_pref)[0]
-        if primary.lower() in known_paths:
+        if primary.lower() in known_paths or classification.file_identity(primary) in catalog_identities:
             continue
         known_paths.add(primary.lower())
         db.upsert_model(_model_row_from_fs(primary, g, paths))
@@ -294,6 +295,7 @@ def _model_row_from_fs(primary, g, all_paths):
     ext = os.path.splitext(filename)[1].lower()
     parent = os.path.basename(os.path.dirname(primary))
     _category, mtype = meta.classify_file(ext, parent)
+    mtype = mtype or meta.model_type(primary)
     hdr_meta, _tensor_count = (None, 0)
     raw_meta = None
     if ext == ".safetensors":
@@ -311,12 +313,12 @@ def _model_row_from_fs(primary, g, all_paths):
         "filename": filename,
         "norm_name": filename.lower(),
         "ext": ext,
-        "mtype": mtype or "Private",
+        "mtype": mtype or "Unknown",
         "family": family,
-        "scope": "app-private" if "\\ai_apps\\" in primary.lower() else "central",
+        "scope": classification.scope_for(primary),
         "size": g["size"],
         "mtime": g["mtime"],
-        "inode": None,
+        "inode": classification.file_identity(primary),
         "alt_paths": json.dumps([p for p in all_paths if p != primary], ensure_ascii=False),
         "header_meta": json.dumps(hdr_meta, ensure_ascii=False) if hdr_meta else None,
         "trigger_words": meta.extract_trigger_words(raw_meta or {}),

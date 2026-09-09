@@ -39,7 +39,7 @@ _PRIVATE_FILES = {"auth.json", "profiles.json", "config.json", "settings.json", 
 _SAFE_DOCS = {".md", ".txt", ".pdf", ".docx", ".doc", ".csv", ".xlsx"}
 _MEDIA_CATS = {"image": "02_Images", "video": "03_Videos", "audio": "04_Audio",
                "workflow": "05_Workflows", "doc": "06_Documents"}
-_KINDS = set(meta.DIR_TYPE_MAP.values()) | {"Unknown"}
+_KINDS = set(classification.MODEL_ROLES)
 _DOMAINS = set(classification.DOMAINS)
 _PURPOSES = set(classification.PURPOSES) | {"multiple"}
 
@@ -120,7 +120,7 @@ def validate_root(root):
     home = Path(os.path.abspath(os.path.expanduser("~")))
     if path == Path(path.anchor) or path in {home, home.parent}:
         raise ValueError("安全区不能是整个磁盘、用户根或所有用户目录")
-    if _excluded_name(path.name):
+    if _excluded_name(path.name) and path.name.casefold() not in {"library", "runtime", "packages"}:
         raise ValueError("程序、训练、隐私和已有分类目录不能设置为安全区")
     blocked = [os.environ.get(key) for key in ("WINDIR", "SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")]
     if any(value and _inside(path, Path(os.path.abspath(value))) for value in blocked):
@@ -165,7 +165,7 @@ def _workflow(path, size):
         return False
 
 
-def _classify(path, info, root):
+def _classify(path, info, root, model_context=None):
     ext = path.suffix.casefold()
     if path.name.casefold() in _PRIVATE_FILES or path.name.startswith(".") or _PRIVATE.search(path.name):
         return None
@@ -181,9 +181,11 @@ def _classify(path, info, root):
             header = header if isinstance(header, dict) else {}
             if header.get("ss_network_module") or "lora" in str(header.get("modelspec.architecture", "")).lower():
                 kind = "LoRA"
-        result = classification.classify({"filename": path.name, "path": str(path), "alt_paths": [str(path)],
-                                          "mtype": kind, "header_meta": header})
-        architecture = str(header.get("modelspec.architecture") or header.get("ss_base_model_version") or "未确认")[:160]
+        inputs = classification.context_for(model_context, path, {"filename": path.name, "path": str(path),
+                                             "alt_paths": [str(path)], "mtype": kind, "header_meta": header})
+        result = classification.classify(**inputs)
+        kind = result["model_role"]
+        architecture = result["architecture"]
         purposes = result["purposes"]
         purpose = purposes[0] if len(purposes) == 1 else "multiple" if purposes else "uncategorized"
         category = "/".join(("01_Models", result["domain"], kind))
@@ -192,8 +194,8 @@ def _classify(path, info, root):
         reason = result["domain_evidence"]
         if kind == "LoRA":
             reason += "；" + "、".join(result["purpose_labels"])
-        return category, reason, {"domain": result["domain"], "purposes": purposes,
-                                  "architecture": architecture, "evidence": result["domain_source"]}
+        return category, reason, {**result, "architecture": architecture, "evidence": result["domain_source"],
+                                  "classification_input": inputs}
     category, _ = meta.classify_file(ext, path.parent.name)
     if category == "doc" and ext not in _SAFE_DOCS:
         return None
@@ -222,7 +224,27 @@ def _target(root, source, category):
     return root / LIBRARY_NAME / Path(category) / filename
 
 
-def build_plan(root, app_dir, ignore_dirs=(), max_files=50000):
+def library_policy(root):
+    """An existing model library is a read-only virtual view, not another tree."""
+    path = _normal(root)
+    names = {"20_models", "library", "runtime", "packages"}
+    found = []
+    if path.name.casefold() in names:
+        found.append(str(path))
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                if entry.name.casefold() in names and entry.is_dir(follow_symlinks=False):
+                    found.append(entry.path)
+    except OSError:
+        pass
+    existing = bool(found)
+    return {"strategy": "existing_library_view" if existing else "portable_hardlinks",
+            "apply_allowed": not existing, "existing_libraries": sorted(found),
+            "policy_reason": "检测到已有模型库；仅提供统一分类视图，需单独审查实体目标策略" if existing else "便携安全区：预览后可建立可撤销硬链接入口"}
+
+
+def build_plan(root, app_dir, ignore_dirs=(), max_files=50000, model_context=None):
     """Read only: budget new candidates separately from bounded traversal.
 
     Existing entries do not consume max_files, so subsequent runs can advance.
@@ -230,6 +252,8 @@ def build_plan(root, app_dir, ignore_dirs=(), max_files=50000):
     package markers; reaching the traversal cap never promotes a partial list.
     """
     root = Path(validate_root(root))
+    policy = library_policy(root)
+    virtual = not policy["apply_allowed"]
     if isinstance(max_files, bool) or not isinstance(max_files, int) or not 1 <= max_files <= 50000:
         raise ValueError("单次新增整理数量必须为 1 至 50000")
     ignore = [_normal(app_dir)] if app_dir else []
@@ -238,18 +262,23 @@ def build_plan(root, app_dir, ignore_dirs=(), max_files=50000):
         ignore.append(_normal(value if value.is_absolute() else root / value))
     summary = {"scanned": 0, "planned": 0, "already_linked": 0, "excluded": 0, "unknown": 0,
                "logical_bytes": 0, "categories": {}, "traversed": 0,
-               "candidate_limited": False, "traversal_limited": False}
-    plan = {"version": VERSION, "id": uuid.uuid4().hex, "root": str(root), "library": str(root / LIBRARY_NAME),
+               "candidate_limited": False, "traversal_limited": False, "compatibility_entries": 0,
+               "indexed": 0, "registered": 0, "classification_pending": 0}
+    plan = {"version": VERSION, "id": uuid.uuid4().hex, "root": str(root), "library": None if virtual else str(root / LIBRARY_NAME),
+            **policy,
             "created_at": _now(), "root_identity": _identity(_chain(root)), "items": [], "summary": summary,
             "warnings": [], "app_dir": str(ignore[0]) if app_dir else "", "ignore_dirs": [str(p) for p in ignore]}
     queue = [root]
     counts = collections.Counter()
     examined = 0
+    seen = {}
+    def excluded(name):
+        return _excluded_name(name) and not (virtual and name.casefold() in {"library", "runtime", "packages"})
     while queue:
         folder = queue.pop()
         try:
             _chain(folder)
-            if any(_inside(folder, path) for path in ignore) or (folder != root and _excluded_name(folder.name)):
+            if any(_inside(folder, path) for path in ignore) or (folder != root and excluded(folder.name)):
                 summary["excluded"] += 1
                 continue
             with os.scandir(folder) as iterator:
@@ -276,25 +305,36 @@ def build_plan(root, app_dir, ignore_dirs=(), max_files=50000):
                 path = Path(entry.path)
                 try:
                     info = entry.stat(follow_symlinks=False)
-                    if _is_reparse(info) or _excluded_name(entry.name):
+                    if _is_reparse(info) or excluded(entry.name):
                         summary["excluded"] += 1
                     elif stat.S_ISDIR(info.st_mode):
                         queue.append(path)
                     elif stat.S_ISREG(info.st_mode):
+                        if virtual and any(p.casefold() in {"library", "runtime", "packages"} for p in path.parent.relative_to(root).parts) and path.suffix.casefold() not in meta.MODEL_EXTS - {".bin"}:
+                            summary["excluded"] += 1
+                            continue
                         summary["scanned"] += 1
                         # Windows DirEntry.stat() can report zero inode/device;
                         # use an explicit lstat for durable file identity.
                         info = _chain(path)
-                        classified = _classify(path, info, root)
+                        classified = _classify(path, info, root, model_context)
                         if not classified:
                             summary["unknown"] += 1
                             continue
                         category, reason, details = classified
-                        target = _target(root, path, category)
-                        current = _chain(target, missing=True)
+                        identity = (info.st_dev, info.st_ino) if info.st_ino else str(path)
+                        if identity in seen:
+                            prior = seen[identity]
+                            if str(path) not in prior["compatibility_paths"]:
+                                prior["compatibility_paths"].append(str(path))
+                            summary["compatibility_entries"] += 1
+                            continue
+                        target = None if virtual else _target(root, path, category)
+                        current = _chain(target, missing=True) if target else None
                         if current is not None:
                             if _matches(current, _stamp(info)):
                                 summary["already_linked"] += 1
+                                seen[identity] = {"compatibility_paths": [str(path)]}
                             else:
                                 summary["excluded"] += 1
                                 plan["warnings"].append("分类入口冲突，已跳过：" + str(target.relative_to(root)))
@@ -304,8 +344,14 @@ def build_plan(root, app_dir, ignore_dirs=(), max_files=50000):
                             plan["warnings"].insert(0, f"本轮已列出 {max_files} 个新增入口；执行本轮后再次预览，将跳过已建立的入口并继续后续候选")
                             queue.clear()
                             break
-                        plan["items"].append({"source": str(path), "target": str(target), "category": category,
-                                               "reason": reason, **_stamp(info), **details})
+                        item = {"source": str(path), "target": str(target) if target else None, "category": category,
+                                "reason": reason, **_stamp(info), **details}
+                        item.setdefault("compatibility_paths", [])
+                        item["compatibility_paths"] = [p for p in item["compatibility_paths"] if classification.path_key(p) != classification.path_key(path)]
+                        plan["items"].append(item)
+                        seen[identity] = item
+                        for key in ("indexed", "registered", "classification_pending"):
+                            summary[key] += bool(item.get(key))
                         summary["logical_bytes"] += info.st_size
                         counts[category] += 1
                 except (OSError, ValueError) as exc:
@@ -314,6 +360,48 @@ def build_plan(root, app_dir, ignore_dirs=(), max_files=50000):
         except (OSError, ValueError) as exc:
             summary["excluded"] += 1
             plan["warnings"].append("目录检查失败：" + str(folder.relative_to(root)) + "（" + type(exc).__name__ + "）")
+    summary["planned"] = len(plan["items"])
+    if virtual:
+        # Existing package directories are deliberately not traversed. Indexed
+        # weights inside them still appear through the same read-only identity
+        # context used by the browser, without parsing package configuration.
+        unique_inputs = {id(value): value for value in (model_context or {}).get("paths", {}).values()}
+        for inputs in unique_inputs.values():
+            model = inputs["model"]
+            candidates = [model.get("path"), *classification._object(model.get("alt_paths"), [])]
+            for candidate in candidates:
+                if not candidate:
+                    continue
+                try:
+                    source = _normal(candidate)
+                    if not _inside(source, root) or any(_inside(source, p) for p in ignore):
+                        continue
+                    info = _chain(source)
+                    if not stat.S_ISREG(info.st_mode) or not info.st_ino:
+                        continue
+                    identity = (info.st_dev, info.st_ino)
+                    if identity in seen:
+                        break
+                    if len(plan["items"]) >= max_files:
+                        summary["candidate_limited"] = True
+                        break
+                    result = classification.classify(**inputs)
+                    category = "/".join(("01_Models", result["domain"], result["model_role"]))
+                    if result["model_role"] == "LoRA":
+                        purposes = result["purposes"]
+                        category += "/" + (purposes[0] if len(purposes) == 1 else "multiple" if purposes else "uncategorized")
+                    item = {"source": str(source), "target": None, "category": category,
+                            "reason": result["domain_evidence"], **_stamp(info), **result,
+                            "classification_input": inputs, "evidence": result["domain_source"]}
+                    plan["items"].append(item)
+                    seen[identity] = item
+                    summary["logical_bytes"] += info.st_size
+                    for key in ("indexed", "registered", "classification_pending"):
+                        summary[key] += bool(result.get(key))
+                    counts[category] += 1
+                    break
+                except (OSError, ValueError):
+                    continue
     summary["planned"] = len(plan["items"])
     summary["traversed"] = min(examined, MAX_TRAVERSED_ENTRIES)
     summary["categories"] = dict(counts)
@@ -373,7 +461,7 @@ def _append(handle, event):
     os.fsync(handle.fileno())
 
 
-def _check_item(item, root, ignore=(), pack_cache=None):
+def _check_item(item, root, ignore=(), pack_cache=None, model_context=None):
     if not isinstance(item, dict):
         raise ValueError("计划项目格式无效")
     source, target = _normal(item.get("source")), _normal(item.get("target"))
@@ -388,9 +476,14 @@ def _check_item(item, root, ignore=(), pack_cache=None):
     info = _chain(source)
     if not _matches(info, item):
         raise ValueError("源文件在预览后发生变化，已跳过")
-    classified = _classify(source, info, root)
+    if model_context is None and item.get("classification_input"):
+        model_context = {"paths": {classification.path_key(source): item["classification_input"]}}
+    classified = _classify(source, info, root, model_context)
     if not classified or classified[0] != item.get("category"):
         raise ValueError("源文件分类与计划不一致，请重新预览")
+    if item.get("classification_input") and any(classified[2].get(key) != item.get(key)
+                                                for key in ("scope", "model_role", "domain", "purposes", "architecture")):
+        raise ValueError("分类维度在预览后发生变化，请重新预览")
     _chain(target, missing=True)
     # Directory packages may have gained markers after the preview.
     for folder in (source.parent, *source.parent.parents):
@@ -416,11 +509,13 @@ def _check_item(item, root, ignore=(), pack_cache=None):
     return source, target
 
 
-def apply_plan(plan, journal_dir):
+def apply_plan(plan, journal_dir, model_context=None):
     """Create entries from a reviewed plan, without overwrites or source changes."""
     if not isinstance(plan, dict) or plan.get("version") != VERSION or not _ID.fullmatch(str(plan.get("id", ""))):
         raise ValueError("整理计划格式无效")
     root = Path(validate_root(plan.get("root")))
+    if plan.get("strategy") == "existing_library_view" or plan.get("apply_allowed") is False or not library_policy(root)["apply_allowed"]:
+        raise ValueError("已有模型库当前仅供虚拟预览，尚未批准实体目标策略，不能执行整理")
     if _identity(_chain(root)) != plan.get("root_identity"):
         raise ValueError("安全区已被替换，请重新预览")
     items = plan.get("items")
@@ -439,12 +534,12 @@ def apply_plan(plan, journal_dir):
                 try:
                     if _identity(_chain(root)) != plan["root_identity"]:
                         raise ValueError("安全区身份已改变")
-                    source, target = _check_item(item, root, ignore, pack_cache)
+                    source, target = _check_item(item, root, ignore, pack_cache, model_context)
                     if os.path.lexists(target):
                         result["skipped"] += 1
                         continue
                     _mkdir(target.parent)
-                    source, target = _check_item(item, root, ignore, pack_cache)
+                    source, target = _check_item(item, root, ignore, pack_cache, model_context)
                     if _chain(target.parent).st_dev != item["dev"]:
                         raise ValueError("硬链接只支持同一磁盘卷")
                     _append(handle, {"event": "intent", "index": index, "item": item})

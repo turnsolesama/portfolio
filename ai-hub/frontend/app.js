@@ -85,7 +85,7 @@
     close:'<path d="m6 6 12 12M6 18 18 6"/>'
   };
   const icon = (name,size=18) => `<svg class="ico" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ICONS.layers}</svg>`;
-  const scopes = {central:'中央模型库',training:'训练产物',archive:'历史归档','app-private':'应用私有'};
+  const scopes = {central:'中央模型库',training:'训练产物',archive:'历史归档','app-private':'应用私有',unknown:'范围待确认'};
   const heading = (title,sub,eyebrow='ASSET WORKSPACE') => `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h2>${esc(title)}</h2><p>${esc(sub)}</p></div><div class="toolbar-note">${icon('shield',15)} 本地资产 · 按需检索</div></div>`;
   const skeleton = () => `<div class="loading-skeleton"><div class="skeleton hero-skeleton"></div><div class="metric-grid">${'<div class="skeleton"></div>'.repeat(4)}</div></div>`;
   const empty = (title,detail='试试调整筛选条件，或刷新本地索引。') => `<div class="results-empty">${icon('search',32)}<h3>${esc(title)}</h3><p>${esc(detail)}</p></div>`;
@@ -108,8 +108,8 @@
     return {words:[...new Set(words)].join('，'),evidence:[...new Set(evidence)].join('；')};
   }
   function loraIntro(m){
-    if(m.mtype!=='LoRA')return '';
-    const a=m.audit||{}, family=a.family||m.family||'尚未确认', md={...(m.header_meta||{}),...(a.metadata||{})};
+    if((m.classification?.model_role||m.mtype)!=='LoRA')return '';
+    const a=m.audit||{}, family=m.classification?.architecture||a.family||m.family||'尚未确认', md={...(m.header_meta||{}),...(a.metadata||{})};
     const base=m.training_base||md.ss_sd_model_name;
     const authorDescription=md['modelspec.description'];
     const trigger=triggerInfo(m);
@@ -155,7 +155,7 @@
   }
   function classificationSection(m) {
     const c=m.classification;if(!c)return '';
-    return `<section class="classification-card"><div class="classification-head"><h3>${icon('folder',16)} 功能与用途</h3><button class="btn small" id="edit-classification">调整分类</button></div>${classificationSummary(c)}<details class="classification-evidence"><summary>查看分类依据</summary><p>${esc(c.domain_evidence)}</p>${Object.entries(c.purpose_evidence).map(([id,reason])=>`<p>${esc(m.classification_options.purposes[id])}：${esc(reason)}</p>`).join('')}</details></section>`;
+    return `<section class="classification-card"><div class="classification-head"><h3>${icon('folder',16)} 功能与用途</h3><button class="btn small" id="edit-classification">调整分类</button></div>${classificationSummary(c)}<dl class="classification-dimensions"><dt>所属范围</dt><dd>${esc(c.scope_label)}</dd><dt>模型角色</dt><dd>${esc(c.model_role_label)}</dd><dt>兼容架构</dt><dd>${esc(c.architecture||'待确认')} · ${c.architecture_source==='manual'?'人工记录，未代表结构验证':'已有记录'}</dd><dt>入库状态</dt><dd>${c.registered?'已登记':'已索引'}${c.classification_pending?' · 分类待确认':''}</dd></dl>${c.compatibility_paths?.length?`<details><summary>${c.compatibility_paths.length} 个兼容 / 同一文件入口</summary>${c.compatibility_paths.map(p=>`<p class="pathline">${esc(p)}</p>`).join('')}</details>`:''}<details class="classification-evidence"><summary>查看分类依据</summary><p>${esc(c.domain_evidence)}</p>${Object.entries(c.purpose_evidence).map(([id,reason])=>`<p>${esc(m.classification_options.purposes[id])}：${esc(reason)}</p>`).join('')}</details></section>`;
   }
   function openCategoryEditor(ids,options,current,onSaved) {
     if(!ids.length||!options)return;
@@ -163,6 +163,8 @@
     const chosen=new Set(current?.purposes||[]),showPurposes=bulk||current?.purpose_source!=='none';
     openModal(`<div class="category-editor"><div class="eyebrow">ORGANIZE ASSETS</div><h2>${bulk?'批量分类 · '+ids.length+' 个模型':'调整模型分类'}</h2><p class="muted">保存后会优先使用你的分类。模型文件仍在原来的位置。</p><label class="category-field">创作用途<select id="category-domain">${bulk?'<option value="keep">保持原分类</option>':''}<option value="auto" ${!bulk&&domain==='auto'?'selected':''}>自动识别</option>${Object.entries(options.domains).map(([id,d])=>`<option value="${esc(id)}" ${!bulk&&domain===id?'selected':''}>${esc(d.label)}</option>`).join('')}</select></label><label class="category-field">LoRA 用途<select id="category-mode">${bulk?'<option value="keep">保持原用途</option>':''}<option value="auto" ${!bulk&&mode==='auto'?'selected':''}>使用自动建议</option><option value="set" ${!bulk&&mode==='set'?'selected':''}>手动指定（可多选）</option></select></label><div class="category-checks">${Object.entries(options.purposes).map(([id,label])=>`<label><input type="checkbox" data-category-purpose="${esc(id)}" ${chosen.has(id)?'checked':''}><span>${esc(label)}</span></label>`).join('')}</div><p class="caption-note">LoRA 用途只应用于所选的 LoRA；勾选用途后会切换为手动指定。</p><p class="dialog-error" id="category-error" role="alert"></p><div class="dialog-actions"><button class="btn ghost" id="category-reset">恢复自动分类</button><button class="btn" id="category-cancel">取消</button><button class="btn primary" id="category-save">保存分类</button></div></div>`);
     const editor=$('.category-editor'),error=$('#category-error',editor);
+    const dimension=(key,label,values)=>`<label class="category-field">${label}<select id="category-${key}">${bulk?'<option value="keep">保持原值</option>':''}<option value="auto">使用已有记录</option>${Object.entries(values||{}).map(([id,text])=>`<option value="${esc(id)}" ${current?.['manual_'+key]===id?'selected':''}>${esc(text)}</option>`).join('')}</select></label>`;
+    error.insertAdjacentHTML('beforebegin',dimension('scope','所属范围',options.scopes)+dimension('model_role','模型角色',options.roles)+`<label class="category-field">兼容架构（人工记录）<input id="category-architecture" value="${esc(current?.manual_architecture||'')}" placeholder="${bulk?'留空保持原值':'留空使用已有记录'}"></label>`);
     if(!showPurposes){$('#category-mode',editor).closest('label').hidden=true;$('.category-checks',editor).hidden=true;$('.caption-note',editor).hidden=true;}
     $$('[data-category-purpose]',editor).forEach(check=>check.onchange=()=>{
       $('#category-mode',editor).value='set';
@@ -176,10 +178,25 @@
         const domain=$('#category-domain',editor).value,mode=$('#category-mode',editor).value;
         if(domain!=='keep')body.domain=domain==='auto'?null:domain;
         if(showPurposes&&mode!=='keep')body.purposes=mode==='auto'?null:$$('[data-category-purpose]:checked',editor).map(c=>c.dataset.categoryPurpose);
+        for(const key of ['scope','model_role']) {const value=$('#category-'+key,editor).value;if(value!=='keep')body[key]=value==='auto'?null:value;}
+        const architecture=$('#category-architecture',editor).value.trim();if(architecture||!bulk)body.architecture=architecture||null;
         if(Object.keys(body).length===1){error.textContent='请选择要调整的分类。';return;}
       }
       $$('button',editor).forEach(b=>b.disabled=true);error.textContent='';
-      try{const r=await api('/api/models/classify',{body});if(editor.isConnected){closeModal();onSaved?.();}toast(`已更新 ${r.updated} 个模型的分类`,'ok');}
+      try{
+        const result=await api('/api/models/classify',{body:{...body,preview:true}});if(!editor.isConnected)return;
+        openModal(`<h2>确认分类预览</h2><p>以下只更新人工分类记录，原文件保持原位置。</p>${result.items.map(item=>`<section class="intro"><h3>${esc(item.name)}</h3><p>原分类：${esc([item.before.scope_label,item.before.model_role_label,item.before.domain_label,item.before.architecture].filter(Boolean).join(' · '))}</p><p>新分类：${esc([item.after.scope_label,item.after.model_role_label,item.after.domain_label,item.after.architecture].filter(Boolean).join(' · '))}</p><p>LoRA 用途：${esc(item.after.purpose_labels.join(' / '))}</p></section>`).join('')}<p class="dialog-error" id="category-preview-error"></p><div class="dialog-actions"><button class="btn" id="category-preview-back">返回修改</button><button class="btn primary" id="category-confirm">保存人工分类</button></div>`);
+        $('#category-preview-back').onclick=()=>{
+          if(ids.length===1)openCategoryEditor(ids,options,result.items[0].after,onSaved);
+          else {
+            openCategoryEditor(ids,options,null,onSaved);
+            for(const key of ['domain','scope','model_role'])if(key in body)$('#category-'+key).value=body[key]||'auto';
+            if('architecture' in body)$('#category-architecture').value=body.architecture||'';
+            if('purposes' in body){$('#category-mode').value=body.purposes===null?'auto':'set';$$('[data-category-purpose]').forEach(c=>c.checked=(body.purposes||[]).includes(c.dataset.categoryPurpose));}
+          }
+        };
+        const confirm=$('#category-confirm');confirm.onclick=async()=>{confirm.disabled=true;try{const r=await api('/api/models/classify',{body});if(confirm.isConnected){closeModal();onSaved?.();toast(`已更新 ${r.updated} 个模型的分类`,'ok');}}catch(e){if(confirm.isConnected){$('#category-preview-error').textContent=e.message;confirm.disabled=false;}}};
+      }
       catch(e){if(editor.isConnected){error.textContent=e.message;$$('button',editor).forEach(b=>b.disabled=false);}}
     };
     $('#category-save',editor).onclick=()=>save(false);$('#category-reset',editor).onclick=()=>save(true);
@@ -228,7 +245,7 @@
 
   // ---------- 路由 ----------
   const titles = { overview: "工作总览", models: "模型资产", workflows: "工作流", updates: "更新中心", analysis: "使用分析",
-    images: "出图图库", llm: "大模型", files: "文件总览", reports: "资料与报告", settings: "设置", organizer: "安全区整理" };
+    images: "出图图库", llm: "大模型", files: "文件总览", reports: "知识与报告", projects:"项目与运行", settings: "设置", organizer: "安全区整理" };
   function parseHash(hash = location.hash) {
     const h = hash.slice(2) || "overview";
     const [page, qs] = h.split("?");
@@ -244,9 +261,10 @@
     if (activePage === 'images') state = { ...imgState };
     if (activePage === 'analysis') state = { type: value('an-type') || pages.analysis._type };
     if (activePage === 'workflows') state = { state: value('wf-state'), query: value('wf-query') };
-    if (activePage === 'reports') state = { path: view?.dataset.report, query: value('report-search') };
+    if (activePage === 'reports') state = { path: view?.dataset.report, query: value('report-search'), group:value('report-group-filter') };
     if (activePage === 'files') state = { path: fileState.path, query: value('fs-q') };
     if (activePage === 'organizer') state = AIHubOrganizer.capture(view);
+    if (activePage === 'projects') state = AIHubRegistry.capture(view);
     return {
       state, top: host.scrollTop, left: host.scrollLeft, search: $('#global-search').value,
       scrolls: scrollSelectors.map(selector => $$(selector, host).map(el => [el.scrollLeft, el.scrollTop])),
@@ -328,6 +346,8 @@
 
   const pages = {};
   pages.organizer = AIHubOrganizer.createPage({api, icon, heading, toast, pollJobs, openModal, closeModal, refresh: route});
+  const registryEnv={api,heading,toast,openModal,closeModal,refresh:route,nav,copyPath};
+  pages.projects=AIHubRegistry.createProjects(registryEnv);
 
   pages.overview = async el => {
     el.classList.add('overview-page');
@@ -352,18 +372,18 @@
       ${action('copy',`${mg.duplicate_groups} 组文件待确认重复`,`${fmtSize(mg.duplicate_candidate_bytes)} 候选额外占用 · 未做完整哈希确认`,'reports','path='+encodeURIComponent(mg.verification_report))}
       </div></section><section class="panel"><div class="panel-head"><h3>存储分布</h3><a class="link" href="#/files">文件空间 ${icon('arrow',13)}</a></div><div class="body"><div class="storage-summary"><b>${fmtSize(ov.unique_size)}</b><span>扫描范围 · 文件去重后</span></div><div class="segment-bar" aria-label="目录逻辑体积分布">${parts.map((p,i)=>`<span style="width:${100*p.size/total}%;background:${palette[i%palette.length]}" title="${esc(p.name)} ${fmtSize(p.size)}"></span>`).join('')}</div><div class="storage-list">${parts.slice(0,8).map((p,i)=>`<div class="storage-item"><span class="dot" style="background:${palette[i%palette.length]}"></span><button data-nav="files" data-query="path=${encodeURIComponent(p.path)}" title="${esc(p.path)}">${esc(labels[p.name]||p.name.replace(/^\d+_/,''))}</button><b>${fmtSize(p.size)}</b></div>`).join('')}</div><p class="footnote">分区显示逻辑体积，共享硬链接会重复计入；实际文件占用参考上方去重值。</p></div></section></div>
 
-      <section class="panel"><div class="panel-head"><h3>最近修改的模型</h3><a href="#/models" class="link">查看全部 ${icon('arrow',13)}</a></div><div class="table-wrap"><table class="tbl recent-table"><thead><tr><th>模型名称</th><th>类型</th><th>架构</th><th>大小</th><th class="hide-small">文件修改</th></tr></thead><tbody>${ov.recent_models.slice(0,5).map(m=>`<tr><td><div class="file-label"><span class="type-icon">${icon('layers',15)}</span><button class="model-link" data-id="${m.rowid_pk}" title="${esc(m.filename)}">${esc(m.filename)}</button></div></td><td>${typeBadge(m.mtype)}</td><td class="muted">${esc(m.family||'未确认')}</td><td class="muted">${fmtSize(m.size)}</td><td class="muted hide-small">${fmtDate(m.mtime)}</td></tr>`).join('')}</tbody></table></div></section>
-      <div class="caption-note">整理台账 ${mg.catalog_records.toLocaleString()} 条 · 当前索引 ${ov.model_count.toLocaleString()} 条（含现场发现、训练产物及应用私有文件）。<br>最近扫描 ${esc(ov.scan_at||'尚未扫描')} · ${ov.total_files.toLocaleString()} 个文件；扫描排除环境缓存等目录，与全量整理盘点的范围不同。</div>`;
+      <section class="panel"><div class="panel-head"><h3>最近修改的模型</h3><a href="#/models" class="link">查看全部 ${icon('arrow',13)}</a></div><div class="table-wrap"><table class="tbl recent-table"><thead><tr><th>模型名称</th><th>类型</th><th>架构</th><th>大小</th><th class="hide-small">文件修改</th></tr></thead><tbody>${ov.recent_models.slice(0,5).map(m=>`<tr><td><div class="file-label"><span class="type-icon">${icon('layers',15)}</span><button class="model-link" data-id="${m.rowid_pk}" title="${esc(m.filename)}">${esc(m.filename)}</button></div></td><td>${typeBadge(m.classification?.model_role||m.mtype)}</td><td class="muted">${esc(m.classification?.architecture||m.family||'未确认')}</td><td class="muted">${fmtSize(m.size)}</td><td class="muted hide-small">${fmtDate(m.mtime)}</td></tr>`).join('')}</tbody></table></div></section>
+      <div class="caption-note">稳定台账 ${mg.catalog_records.toLocaleString()} 条（${esc(mg.updated_at||'时间未记录')}） · 当前索引 ${(ov.indexed_records??ov.model_count).toLocaleString()} 条 / ${(ov.unique_model_files??ov.model_count).toLocaleString()} 个文件身份（含现场发现、训练产物及应用私有文件）。<br>最近扫描 ${esc(ov.scan_at||'尚未扫描')} · ${ov.total_files.toLocaleString()} 个文件；扫描排除环境缓存等目录，与全量整理盘点的范围不同。</div>`;
       bindNavigation(el);bindModelLinks(el);
     }catch(e){failPage(el,e);}
   };
 
   function bindModelLinks(el) { $$(".model-link", el).forEach(n => n.onclick = () => openModelDrawer(+n.dataset.id)); }
 
-  const modelState={page:1,size:40,type:'',family:'',state:'',usage:'',q:'',sort:'name',scope:'central',kind:'',view:'all',domain:'image',purpose:''};
+  const modelState={page:1,size:40,type:'',family:'',state:'',usage:'',q:'',sort:'name',scope:'central',kind:'',view:'all',domain:'image',purpose:'',intake:''};
   pages.models=(el,params=new URLSearchParams(),restored)=>{
     if(restored)Object.assign(modelState,restored);
-    else if(params.size){Object.assign(modelState,{page:1,type:'',family:'',state:'',usage:'',q:'',scope:'central',kind:'',view:'all',domain:'',purpose:''});for(const key of Object.keys(modelState))if(params.has(key))modelState[key]=['page','size'].includes(key)?Math.max(1,+params.get(key)||1):params.get(key);}
+    else if(params.size){Object.assign(modelState,{page:1,type:'',family:'',state:'',usage:'',q:'',scope:'central',kind:'',view:'all',domain:'',purpose:'',intake:''});for(const key of Object.keys(modelState))if(params.has(key))modelState[key]=['page','size'].includes(key)?Math.max(1,+params.get(key)||1):params.get(key);}
     const tabs=[['all','全部类型',{kind:'',type:''}],['base','主模型',{kind:'base',type:''}],['lora','LoRA',{kind:'',type:'LoRA'}],['components','配套组件',{kind:'components',type:''}],['favorites','我的收藏',{kind:'',type:''}]];
     el.innerHTML=heading('模型资产','先选择创作用途，再查找模型与适合的 LoRA。','MODEL LIBRARY')+`
       <div class="catalog-section-label"><span>按创作用途</span><small id="domain-scope">当前范围 · 全部类型</small></div>
@@ -372,7 +392,7 @@
       <section class="purpose-section hidden" id="lora-purposes"><div class="catalog-section-label"><span>LoRA 用途</span><small>同一模型可以有多个用途</small></div><div class="purpose-chips" id="purpose-chips" role="group" aria-label="LoRA 用途筛选"></div></section>
       <div class="filterbar" id="model-filters"><input id="f-q" type="search" aria-label="搜索模型" placeholder="搜索名称、训练底模或触发词…" value="${esc(modelState.q)}"></div>
       <section class="panel"><div class="table-heading"><span id="model-results">正在读取模型…</span><button class="btn small" id="batch-classify" disabled>${icon('folder',14)} 批量分类 <span id="selected-count"></span></button></div>
-      <div class="table-wrap"><table class="tbl catalog-table"><thead><tr><th><input type="checkbox" id="models-select-all" aria-label="选择本页所有模型"></th><th>模型 / 类型</th><th>功能与用途</th><th>兼容架构 / 训练底模</th><th>已有引用</th><th>大小</th><th>版本状态</th></tr></thead><tbody id="model-rows"></tbody></table></div><div id="models-empty"></div></section><div id="models-pager"></div>
+      <div class="table-wrap"><table class="tbl catalog-table"><thead><tr><th><input type="checkbox" id="models-select-all" aria-label="选择本页所有模型"></th><th>模型 / 类型</th><th>功能与用途</th><th>兼容架构 / 训练底模</th><th>已有引用</th><th>大小</th><th>入库 / 版本状态</th></tr></thead><tbody id="model-rows"></tbody></table></div><div id="models-empty"></div></section><div id="models-pager"></div>
       <p class="caption-note">自动分类参考架构记录、原目录与模型描述；用途建议可以在详情或批量分类中调整。分类不会移动模型文件。</p>`;
     let sequence=0,filtersReady=false,options=null;
     const selected=new Set();
@@ -400,12 +420,12 @@
         $$('[data-purpose]',el).forEach(b=>b.onclick=()=>nav('models',{...modelState,purpose:b.dataset.purpose,type:'LoRA',kind:'',view:'lora',page:1},{force:true}));
         if(!filtersReady){
           const select=(id,label,values,value)=>`<select id="${id}" aria-label="${label}">${values.map(([v,t])=>`<option value="${esc(v)}" ${v===value?'selected':''}>${esc(t)}</option>`).join('')}</select>`;
-          $('#model-filters',el).insertAdjacentHTML('beforeend',select('f-type','模型类型',[['','所有类型'],...d.facets.types.map(t=>[t,t])],modelState.type)+select('f-family','兼容架构',[['','所有兼容架构'],...[...new Set([...d.facets.families,'Unknown'])].sort().map(f=>[f,f==='Unknown'?'架构待确认':f])],modelState.family)+select('f-scope','资产范围',[['','所有位置'],...Object.entries(scopes)],modelState.scope)+select('f-sort','排序方式',[['name','按名称'],['mtime','最近修改'],['size','按体积'],['usage','按引用次数']],modelState.sort));
-          for(const key of ['type','family','scope','sort'])$('#f-'+key,el).onchange=e=>{modelState[key]=e.target.value;modelState.page=1;if(key==='type'){modelState.kind='';if(modelState.type!=='LoRA')modelState.purpose='';}modelState.view='custom';$$('[data-tab]',el).forEach(b=>b.classList.remove('active'));load();};
+          $('#model-filters',el).insertAdjacentHTML('beforeend',select('f-type','模型类型',[['','所有类型'],...d.facets.types.map(t=>[t,t])],modelState.type)+select('f-family','兼容架构',[['','所有兼容架构'],...[...new Set([...d.facets.families,'未确认'])].sort().map(f=>[f,f==='未确认'?'架构待确认':f])],modelState.family)+select('f-scope','资产范围',[['','所有位置'],...Object.entries(scopes)],modelState.scope)+select('f-sort','排序方式',[['name','按名称'],['mtime','最近修改'],['size','按体积'],['usage','按引用次数']],modelState.sort)+select('f-intake','入库状态',[['','所有入库状态'],['indexed','已索引'],['registered','已登记'],['pending','分类待确认']],modelState.intake));
+          for(const key of ['type','family','scope','sort','intake'])$('#f-'+key,el).onchange=e=>{modelState[key]=e.target.value;modelState.page=1;if(key==='type'){modelState.kind='';if(modelState.type!=='LoRA')modelState.purpose='';}modelState.view='custom';$$('[data-tab]',el).forEach(b=>b.classList.remove('active'));load();};
           filtersReady=true;
         }
-        $('#model-results',el).textContent=`找到 ${d.total.toLocaleString()} 个资产 · ${scopes[modelState.scope]||'全部位置'}`;
-        $('#model-rows',el).innerHTML=d.items.map(m=>`<tr><td><input type="checkbox" data-select="${m.rowid_pk}" aria-label="选择 ${esc(m.filename)}"></td><td class="model-name"><div class="catalog-model-name"><button class="star-btn ${favorites.has(m.rowid_pk)?'active':''}" data-favorite="${m.rowid_pk}" aria-label="${favorites.has(m.rowid_pk)?'取消收藏':'收藏'} ${esc(m.filename)}" aria-pressed="${favorites.has(m.rowid_pk)}">${favorites.has(m.rowid_pk)?'★':'☆'}</button><button class="model-link" data-id="${m.rowid_pk}">${esc(m.filename)}</button></div><span class="file-sub">${typeBadge(m.mtype)} ${esc(scopes[m.scope]||m.scope||'待分类')}</span></td><td>${classificationSummary(m.classification)}</td><td class="training-base">${esc(m.family||'架构待确认')}<span class="file-sub" title="${esc(m.training_base||'')}">${esc(m.training_base||'训练底模未记录')}</span>${m.lrank?`<span class="file-sub">rank ${esc(m.lrank)} · alpha ${esc(m.lalpha??'—')}</span>`:''}</td><td class="num">${m.img_count||0}<span class="file-sub">张图片</span></td><td class="num">${fmtSize(m.size)}</td><td>${stateBadge(m.update_state)}${m.missing?'<span class="badge b-red">文件缺失</span>':''}</td></tr>`).join('');
+        $('#model-results',el).textContent=`找到 ${d.total.toLocaleString()} 个资产 · ${scopes[modelState.scope]||'全部位置'} · 按文件身份去重`;
+        $('#model-rows',el).innerHTML=d.items.map(m=>`<tr><td><input type="checkbox" data-select="${m.rowid_pk}" aria-label="选择 ${esc(m.filename)}"></td><td class="model-name"><div class="catalog-model-name"><button class="star-btn ${favorites.has(m.rowid_pk)?'active':''}" data-favorite="${m.rowid_pk}" aria-label="${favorites.has(m.rowid_pk)?'取消收藏':'收藏'} ${esc(m.filename)}" aria-pressed="${favorites.has(m.rowid_pk)}">${favorites.has(m.rowid_pk)?'★':'☆'}</button><button class="model-link" data-id="${m.rowid_pk}">${esc(m.filename)}</button></div><span class="file-sub">${typeBadge(m.classification?.model_role||m.mtype)} ${esc(m.classification?.scope_label||scopes[m.scope]||'范围待确认')}</span></td><td>${classificationSummary(m.classification)}</td><td class="training-base">${esc(m.classification?.architecture||m.family||'架构待确认')}<span class="file-sub" title="${esc(m.training_base||'')}">${esc(m.training_base||'训练底模未记录')}</span>${m.lrank?`<span class="file-sub">rank ${esc(m.lrank)} · alpha ${esc(m.lalpha??'—')}</span>`:''}</td><td class="num">${m.img_count||0}<span class="file-sub">张图片</span></td><td class="num">${fmtSize(m.size)}</td><td><span class="badge">${m.classification?.registered?'已登记':'已索引'}</span>${m.classification?.classification_pending?'<span class="badge b-yellow">分类待确认</span>':''}<span class="file-sub">${stateBadge(m.update_state)}</span>${m.missing?'<span class="badge b-red">文件缺失</span>':''}</td></tr>`).join('');
         $('#models-empty',el).innerHTML=d.items.length?'':empty(modelState.view==='favorites'?'还没有匹配的收藏':'没有找到匹配的资产','试试其他用途、兼容架构，或把位置切换为“所有位置”。');
         $('#models-pager',el).replaceChildren(pager(d.total,d.page,d.size,p=>{modelState.page=p;load();}));
         bindModelLinks(el);
@@ -439,8 +459,8 @@
     openDrawer(`
       <button class="btn small close" aria-label="关闭详情">${icon("close",16)}</button>
       <h2>${esc(m.filename)}</h2>
-      <div>${typeBadge(m.mtype)} <span class="badge">${esc(m.family || "家族未知")}</span>
-        ${`<span class="badge">${esc(scopes[m.scope]||m.scope||"位置未分类")}</span>`}
+      <div>${typeBadge(m.classification?.model_role||m.mtype)} <span class="badge">${esc(m.classification?.architecture || m.family || "架构待确认")}</span>
+        ${`<span class="badge">${esc(m.classification?.scope_label||scopes[m.scope]||m.scope||"范围待确认")}</span>`}
         ${m.missing ? '<span class="badge b-red">文件缺失</span>' : ""} ${stateBadge(m.update_state)}</div>
       ${loraIntro(m)}
       ${classificationSection(m)}
@@ -545,7 +565,7 @@
         <div class="panel" style="overflow-x:auto"><h3>⬆️ 待更新列表</h3><div class="body" style="padding:0">
         <table class="tbl"><thead><tr><th>文件名</th><th>类型</th><th>本地时间</th><th>远端最新</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>${lst.items.length ? lst.items.map(m => `<tr>
-          <td title="${esc(m.path)}">${esc(m.filename)}</td><td>${typeBadge(m.mtype)}</td>
+          <td title="${esc(m.path)}">${esc(m.filename)}</td><td>${typeBadge(m.classification?.model_role||m.mtype)}</td>
           <td class="muted">${fmtDate(m.mtime)}</td>
           <td class="upd-${esc(m.update_state)}">${esc(m.latest_version_name || "-")}${m.latest_version_date ? `<div class="muted" style="font-size:11px">${esc(m.latest_version_date.slice(0, 10))}</div>` : ""}</td>
           <td>${stateBadge(m.update_state)}${m.source_conf === "search" ? '<span class="badge">低置信</span>' : ""}</td>
@@ -581,7 +601,7 @@
           </div>`).join("") || "暂无数据"}</div></div>
         <div class="panel"><h3>💤 当前索引未发现引用（${esc(type)}，含新入库）</h3><div class="body">${d.unused.map(m => `
           <div class="flat-row"><span class="nm model-link" data-id="${m.rowid_pk}" title="${esc(m.path)}">${esc(m.filename)}</span>
-          ${tagBadge(m.value_tag)}<span class="sub">${esc(m.family || "")}</span>
+          ${tagBadge(m.value_tag)}<span class="sub">${esc(m.classification?.architecture||m.family || "")}</span>
           <span class="num">${m.size_h}</span><span class="sub">${fmtDate(m.mtime)}</span></div>`).join("") || "当前筛选中的模型均有引用记录"}</div></div>`;
       $("#an-type", el).onchange = e => { pages.analysis._type = e.target.value; route(); };
       bindModelLinks(el);
@@ -642,7 +662,7 @@
         <div class="body" style="padding:0"><table class="tbl">
           <thead><tr><th>文件</th><th>家族</th><th>量化</th><th>参数量</th><th>大小</th><th>位置</th><th>修改时间</th></tr></thead>
           <tbody>${items.map(m => `<tr class="rowbtn model-link" data-id="${m.rowid_pk}">
-            <td>${esc(m.filename)}</td><td><span class="badge b-blue">${esc(m.family || "其他")}</span></td>
+            <td>${esc(m.filename)}</td><td><span class="badge b-blue">${esc(m.classification?.architecture||m.family || "其他")}</span></td>
             <td>${esc(m.quant || "-")}</td><td>${esc(m.params || "-")}</td>
             <td class="num">${m.size_h}</td><td class="muted mono" title="${esc(m.path)}" style="max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.path)}</td>
             <td class="muted">${fmtDate(m.mtime)}</td></tr>`).join("")}</tbody></table></div></div>`).join("")
@@ -707,7 +727,7 @@
       if(!el.isConnected)return;
       let selected=restored?.path||params.get('path')||data.items.find(r=>r.name==='START_HERE.md')?.path||data.items[0]?.path;
       const groups={};data.items.forEach(r=>(groups[r.group]??=[]).push(r));
-      el.innerHTML=heading('知识与报告','目录规则、模型说明与项目档案，在这里统一查阅。','KNOWLEDGE BASE')+`<div class="report-layout"><aside class="report-list" aria-label="报告列表"><input class="inp" id="report-search" aria-label="搜索报告" placeholder="搜索报告标题…">${Object.entries(groups).map(([group,items])=>`<div class="report-group">${esc(group)}</div>${items.map(r=>`<button class="report-item" data-report="${esc(r.path)}" title="${esc(r.path)}">${icon('document',15)}<span>${esc(r.name.replace(/\.md$/,''))}</span></button>`).join('')}`).join('')}<button class="btn small" id="rep-gen" style="margin:15px 10px">生成索引报告</button></aside><article class="report-reader" id="report-reader"></article></div>`;
+      el.innerHTML=heading('知识与报告','目录规则、模型说明与项目档案，在这里统一查阅。','KNOWLEDGE BASE')+`<div class="report-layout"><aside class="report-list" aria-label="报告列表"><input class="inp" id="report-search" aria-label="搜索报告" placeholder="搜索报告标题…"><select class="inp" id="report-group-filter" aria-label="知识分组"><option value="">所有资料分组</option>${Object.keys(groups).map(g=>`<option value="${esc(g)}">${esc(g)}</option>`).join('')}</select><button class="btn small" id="knowledge-register">登记知识入口</button>${Object.entries(groups).map(([group,items])=>`<div class="report-group">${esc(group)}</div>${items.map(r=>`<button class="report-item" data-report="${esc(r.path)}" data-report-group="${esc(r.group)}" title="${esc(r.path)}">${icon('document',15)}<span>${esc(r.name.replace(/\.md$/,''))}</span></button>`).join('')}`).join('')}<button class="btn small" id="rep-gen" style="margin:15px 10px">生成索引报告</button></aside><article class="report-reader" id="report-reader"></article></div>`;
       let request=0;
       const show=async path=>{
         selected=path;el.dataset.report=path;const serial=++request,reader=$('#report-reader',el),record=data.items.find(r=>r.path===path);
@@ -721,8 +741,11 @@
         }catch(e){reader.innerHTML=empty('这份报告暂时无法读取',e.message);}
       };
       $$('[data-report]',el).forEach(b=>b.onclick=()=>nav('reports',{path:b.dataset.report,q:$('#report-search',el).value}));
-      const filter=()=>{const q=$('#report-search',el).value.trim().toLowerCase();$$('[data-report]',el).forEach(b=>b.hidden=!b.textContent.toLowerCase().includes(q));};
+      const filter=()=>{const q=$('#report-search',el).value.trim().toLowerCase();$$('[data-report]',el).forEach(b=>b.hidden=!b.textContent.toLowerCase().includes(q)||!!$('#report-group-filter',el).value&&b.dataset.reportGroup!==$('#report-group-filter',el).value);};
       $('#report-search',el).value=restored?.query??params.get('q')??'';
+      $('#report-group-filter',el).value=restored?.group??params.get('group')??'';
+      $('#report-group-filter',el).onchange=filter;
+      $('#knowledge-register',el).onclick=async()=>{try{const snapshot=await api('/api/registry');if(el.isConnected)AIHubRegistry.editor(registryEnv,'knowledge',{},snapshot,route);}catch(e){toast(e.message,'err');}};
       $('#report-search',el).oninput=filter;filter();
       $('#rep-gen',el).onclick=async()=>{try{const r=await api('/api/report/generate',{body:{}});toast('索引报告已生成','ok');nav('reports',{path:r.path});}catch(e){toast(e.message,'err');}};
       if(selected)await show(selected);else $('#report-reader',el).innerHTML=empty('尚未发现管理报告');
@@ -733,15 +756,16 @@
     el.innerHTML=skeleton();
     try{
       const d=await api('/api/workflows');if(!el.isConnected)return;let state=restored?.state??params.get('state')??'',query=restored?.query?.trim().toLowerCase()||'';
-      const labels={path_checked:'路径记录齐全',reviewed_copy:'有路径修正版',needs_review:'需核对模型'};
-      el.innerHTML=heading('工作流','查看模型依赖与路径记录，定位可用副本。','WORKFLOW LIBRARY')+`<div class="filterbar"><input id="wf-query" aria-label="搜索工作流" placeholder="搜索工作流名称或模型…"><select id="wf-state" aria-label="工作流状态"><option value="">所有状态 · ${d.items.length}</option>${Object.entries(labels).map(([value,label])=>`<option value="${value}" ${state===value?'selected':''}>${label} · ${d.counts[value]||0}</option>`).join('')}</select></div><p class="warning-note">这里展示静态路径检查记录。修正版保留原稿，仅调整模型路径；尚未代表生成运行通过。</p><section class="panel table-wrap"><table class="tbl"><thead><tr><th>工作流</th><th>路径状态</th><th>依赖与待核对</th><th>操作</th></tr></thead><tbody id="workflow-rows"></tbody></table><div id="workflow-empty"></div></section>`;
+      const labels=AIHubRegistry.STATES;const verificationState=w=>w.verification_state||'pending';if(state==='needs_review')state='pending';
+      el.innerHTML=heading('工作流','查看模型依赖与路径记录，定位可用副本。','WORKFLOW LIBRARY')+`<div class="filterbar"><input id="wf-query" aria-label="搜索工作流" placeholder="搜索工作流名称或模型…"><select id="wf-state" aria-label="工作流状态"><option value="">所有状态 · ${d.items.length}</option>${Object.entries(labels).map(([value,label])=>`<option value="${value}" ${state===value?'selected':''}>${label} · ${d.verification_counts?.[value]||0}</option>`).join('')}</select></div><p class="warning-note">验证结论按版本、日期和证据分别记录。仅路径检查与历史执行均不代表当前可运行。</p><section class="panel table-wrap"><table class="tbl"><thead><tr><th>工作流</th><th>验证状态 / 日期</th><th>证据与待核对</th><th>操作</th></tr></thead><tbody id="workflow-rows"></tbody></table><div id="workflow-empty"></div></section>`;
       const render=()=>{
-        const filtered=d.items.filter(w=>(!state||w.status===state)&&(!query||JSON.stringify([w.name,w.missing,w.dependencies]).toLowerCase().includes(query)));
-        $('#workflow-rows',el).innerHTML=filtered.map(w=>`<tr><td class="workflow-name">${esc(w.name)}<span class="file-sub">${w.dependencies.length} 个模型引用</span></td><td><span class="badge ${w.status==='needs_review'?'b-yellow':w.status==='reviewed_copy'?'b-green':''}">${labels[w.status]}</span></td><td class="workflow-missing">${w.status==='reviewed_copy'?`${w.changes.length} 处路径修正 · ${w.copy_exists?'副本可访问':'副本当前不可访问'}`:esc(w.missing.join('；')||'记录中未发现缺失模型')}</td><td><button class="btn small" data-workflow="${esc(w.path)}">依赖详情</button></td></tr>`).join('');
+        const filtered=d.items.filter(w=>(!state||verificationState(w)===state)&&(!query||JSON.stringify([w.name,w.missing,w.dependencies]).toLowerCase().includes(query)));
+        $('#workflow-rows',el).innerHTML=filtered.map(w=>`<tr><td class="workflow-name">${esc(w.name)}<span class="file-sub">${w.dependencies.length} 个模型引用</span></td><td>${AIHubRegistry.verificationBadge(verificationState(w))}<span class="file-sub">${esc(w.validation?.date||'无验证日期')}</span></td><td class="workflow-missing"><span class="file-sub">${esc(w.verification_reason||'暂无执行证据')}</span>${w.status==='reviewed_copy'?`${w.changes.length} 处路径修正 · ${w.copy_exists?'副本可访问':'副本当前不可访问'}`:esc(w.missing.join('；')||'记录中未发现缺失模型')}</td><td><button class="btn small" data-workflow="${esc(w.path)}">依赖详情</button></td></tr>`).join('');
         $('#workflow-empty',el).innerHTML=filtered.length?'':empty('没有匹配的工作流');
         $$('[data-workflow]',el).forEach(b=>b.onclick=()=>{
           const w=d.items.find(x=>x.path===b.dataset.workflow);
-          openModal(`<h2>${esc(w.name)}</h2><div class="warning-note">${d.coverage}</div><div class="kv"><div class="k">原稿</div><div class="pathline">${esc(w.path)}</div>${w.copy?`<div class="k">修正版</div><div class="pathline">${esc(w.copy)}</div>`:''}</div><div class="copy-paths"><button class="btn small" id="copy-wf-original">复制原稿路径</button>${w.copy?'<button class="btn small primary" id="copy-wf-reviewed">复制修正版路径</button>':''}</div><div class="workflow-details">${w.dependencies.map(p=>`<div class="dependency"><span class="badge ${p.exists?'b-green':'b-yellow'}">${p.exists?'原路径有记录':'原路径需核对'}</span><div>${esc(p.name)}<span class="file-sub">${esc(p.type)}</span></div></div>`).join('')}</div>${w.changes.length?`<div class="intro"><h3>路径修正记录</h3>${w.changes.map(c=>`<p>${esc(c.from)}<br>→ ${esc(c.to)}</p>`).join('')}</div>`:''}`);
+          openModal(`<h2>${esc(w.name)}</h2><div class="warning-note">${d.coverage}</div><div class="kv"><div class="k">原稿</div><div class="pathline">${esc(w.path)}</div>${w.copy?`<div class="k">修正版</div><div class="pathline">${esc(w.copy)}</div>`:''}</div>${AIHubRegistry.verificationBadge(verificationState(w))}<p>${esc(w.verification_reason||'暂无执行证据')}</p><div class="copy-paths"><button class="btn small" id="workflow-register">登记验证证据</button><button class="btn small" id="copy-wf-original">复制原稿路径</button>${w.copy?'<button class="btn small primary" id="copy-wf-reviewed">复制修正版路径</button>':''}</div><div class="workflow-details">${w.dependencies.map(p=>`<div class="dependency"><span class="badge ${p.exists?'b-green':'b-yellow'}">${p.exists?'原路径有记录':'原路径需核对'}</span><div>${esc(p.name)}<span class="file-sub">${esc(p.type)}</span></div></div>`).join('')}</div>${w.changes.length?`<div class="intro"><h3>路径修正记录</h3>${w.changes.map(c=>`<p>${esc(c.from)}<br>→ ${esc(c.to)}</p>`).join('')}</div>`:''}`);
+          $('#workflow-register').onclick=async()=>{try{const snapshot=await api('/api/registry');if(!el.isConnected)return;AIHubRegistry.editor(registryEnv,'workflow',(snapshot.workflows||[]).find(r=>r.path===w.path)||{path:w.path},snapshot,route);}catch(e){toast(e.message,'err');}};
           $('#copy-wf-original').onclick=()=>copyPath(w.path);if(w.copy)$('#copy-wf-reviewed').onclick=()=>copyPath(w.copy);
         });
       };

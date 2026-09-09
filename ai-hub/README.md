@@ -1,5 +1,7 @@
 # AI Hub
 
+2.5.0：补齐项目与知识入口，统一分类、人工覆盖和工作流验证状态。[结构升级](docs/STRUCTURE_2.5.md)。
+
 2.4.1：采用新生成的叠层资产图标，统一 EXE、窗口、侧栏及 favicon。[图标方案](docs/BRAND_2.4.1.md)。
 
 2.4 视觉更新：紧凑导航、常用创作入口、用途分类和统计区，以及炭灰 / 冰蓝配色。[设计与验证](docs/VISUAL_2.4.md)。
@@ -18,9 +20,9 @@ Windows 桌面包包含 `AI Hub.exe`、完整程序源码和使用说明。解�
 - [Microsoft WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)
 - `start.vbs` 为备用浏览器入口；`debug.bat` 用于需要控制台输出的诊断。
 
-首次使用：进入 **安全区整理**，选择本机资产目录；需要时创建标准目录，保存后预览自动分类结果并建立分类入口。可选启动时自动整理。新安装没有预设他人的盘符，目录失效时会提示重新设置。详细规则见 [安全区与自动整理](docs/SAFE_ZONE.md)。
+首次使用：进入 **安全区整理**，选择本机资产目录；需要时创建标准目录，保存后预览自动分类结果并建立分类入口。已有模型库仅提供分类预览；便携散落资产区可选启动时自动整理。新安装没有预设他人的盘符，目录失效时会提示重新设置。详细规则见 [安全区与自动整理](docs/SAFE_ZONE.md)。
 
-当前发行版 **2.4.1**：[Windows 桌面包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.4.1-Windows-x64.zip) · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.4.1-Source.zip) · [SHA-256](releases/AI-Hub-v2.4.1-SHA256.txt)。
+当前发行版 **2.5.0**：[Windows 桌面包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip) · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Source.zip) · [SHA-256](https://github.com/turnsolesama/portfolio/blob/main/ai-hub/releases/AI-Hub-v2.5.0-SHA256.txt)。
 
 ## 常用功能
 
@@ -71,3 +73,8 @@ python -B tools/package_release.py --exe "AI Hub.exe" --output releases
 打包采用文件白名单，生成 Windows 包、源码包和 SHA-256 清单；不会纳入运行数据、模型、图片、备份、浏览器配置、凭据或本机快捷方式。
 
 第三方组件说明：[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本项目尚未指定额外的开源许可证，WebView2 组件按随附的微软许可分发。
+
+
+## 2.5 分类与项目登记
+
+应用与前端版本为 2.5.0；桌面壳沿用 2.4.1（本次未修改桌面功能）。新增项目、知识、运行登记与四级工作流证据状态，详见 [结构升级说明](docs/STRUCTURE_2.5.md) 和 [登记格式](docs/REGISTRY.md)。

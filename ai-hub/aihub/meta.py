@@ -27,10 +27,19 @@ DIR_TYPE_MAP = {
     "upscale_models": "Upscaler", "upscaler": "Upscaler", "latent_upscale_models": "Upscaler",
     "sam2": "Vision", "sams": "Vision", "insightface": "Vision", "birefnet": "Vision",
     "grounding-dino": "Vision", "florence2": "Vision",
+    "detection": "Detection", "detectors": "Detection",
     "llm": "LLM", "llms": "LLM", "language": "LLM",
     "tts": "TTS", "speech": "TTS", "audio": "TTS",
     "video": "VideoAI",
 }
+
+
+def model_type(path):
+    """Use directory roles only; file-name hints do not prove architecture."""
+    for part in reversed(re.split(r"[\\/]", str(path))[:-1]):
+        if part.casefold() in DIR_TYPE_MAP:
+            return DIR_TYPE_MAP[part.casefold()]
+    return None
 # 输入参数键 -> 引用角色
 KEY_ROLE_RULES = [
     (re.compile(r"lora", re.I), "LoRA"),

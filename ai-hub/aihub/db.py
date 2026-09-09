@@ -5,6 +5,8 @@ import sqlite3
 import threading
 import time
 import os
+from pathlib import Path
+import uuid
 
 from . import config
 
@@ -48,7 +50,8 @@ CREATE INDEX IF NOT EXISTS idx_models_type ON models(mtype);
 CREATE INDEX IF NOT EXISTS idx_models_family ON models(family);
 CREATE INDEX IF NOT EXISTS idx_models_state ON models(update_state);
 CREATE TABLE IF NOT EXISTS model_labels(
-  model_path TEXT PRIMARY KEY, domain TEXT, purposes TEXT, updated_at TEXT
+  model_path TEXT PRIMARY KEY, domain TEXT, purposes TEXT, updated_at TEXT,
+  scope TEXT, model_role TEXT, architecture TEXT
 );
 CREATE TABLE IF NOT EXISTS images(
   path TEXT PRIMARY KEY, name TEXT, parent TEXT,
@@ -82,7 +85,9 @@ class DB:
         self.asset_lock = threading.RLock()
         self.conn = connect()
         with self.lock:
+            self.migration_backup = migrate_labels(self.conn, config.DB_PATH)
             self.conn.executescript(SCHEMA)
+            migrate_labels(self.conn, config.DB_PATH)
             self.conn.commit()
 
     # ---------- meta ----------
@@ -162,6 +167,37 @@ class DB:
 
 def dict_from_row(row) -> dict:
     return {k: row[k] for k in row.keys()}
+
+
+def migrate_labels(conn, path):
+    """Add independent manual dimensions; back up a legacy database with its WAL.
+
+    No model rows, ratings, notes, sources, or existing manual values are rewritten.
+    A failed ALTER transaction leaves the original schema intact.
+    """
+    columns = {r[1] for r in conn.execute('PRAGMA table_info(model_labels)')}
+    if not columns:
+        return None
+    missing = [key for key in ('scope', 'model_role', 'architecture') if key not in columns]
+    if not missing:
+        return None
+    conn.commit()
+    folder = Path(path).parent / 'migrations'
+    folder.mkdir(parents=True, exist_ok=True)
+    backup = folder / ('before-label-dimensions-' + time.strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8] + '.sqlite')
+    target = sqlite3.connect(str(backup))
+    try:
+        conn.backup(target)
+        if target.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
+            raise RuntimeError('迁移前备份校验失败，未修改数据库。')
+    finally:
+        target.close()
+    with conn:
+        conn.execute('BEGIN IMMEDIATE')
+        for key in missing:
+            conn.execute('ALTER TABLE model_labels ADD COLUMN ' + key + ' TEXT')
+        conn.execute("INSERT INTO meta(key,value) VALUES('label_schema','2') ON CONFLICT(key) DO UPDATE SET value='2'")
+    return str(backup)
 
 
 def jload(s, default):

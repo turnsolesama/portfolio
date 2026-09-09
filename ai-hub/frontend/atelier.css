@@ -186,3 +186,18 @@ body { background:#101214; letter-spacing:0; font-size:14px; }
 /* Generated brand icon: its own tile supplies the frame. */
 .logo-mark.app-icon { width:40px; height:40px; background:none; border:0; border-radius:0; box-shadow:none; }
 .logo-mark.app-icon img { display:block; width:100%; height:100%; object-fit:contain; }
+.registry-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.registry-field {display:flex;flex-direction:column;gap:8px;min-width:0;color:var(--text-muted,#a8b1c0)}
+.registry-field input,.registry-field select,.registry-field textarea {width:100%;min-width:0;padding:10px;background:#20252d;color:#e4e9f0;border:1px solid #38414e;border-radius:6px;font:inherit}
+.registry-field.wide,.registry-fields>.wide {grid-column:1/-1}
+.registry-json {max-height:48vh;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:16px;background:#15191f}
+.registry-backups {display:flex;gap:12px;flex-wrap:wrap}
+.project-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));gap:18px;margin:18px 0}
+.project-card {padding:22px;min-width:0}.project-card-heading,.project-card-actions {display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.project-card h3 {margin:16px 0 8px}.project-card>p {color:#a9b2c0;line-height:1.6}
+.project-card dl {display:grid;grid-template-columns:76px minmax(0,1fr);gap:10px;font-size:13px;margin:18px 0}
+.project-card dt {color:#94a0b3}.project-card dd {margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.project-templates {padding:20px;margin-top:18px}.project-templates summary {cursor:pointer;font-weight:600}
+.classification-dimensions {display:grid;grid-template-columns:95px minmax(0,1fr);gap:10px;margin:16px 0}
+.classification-dimensions dt {color:#a5afbd}.classification-dimensions dd {margin:0;overflow-wrap:anywhere}
+@media(max-width:680px){.registry-fields{grid-template-columns:1fr}.registry-field.wide{grid-column:auto}}

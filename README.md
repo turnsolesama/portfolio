@@ -4,7 +4,7 @@
 
 | 独立文件夹 | 软件用途 | 最新版本 | 下载本软件 |
 | --- | --- | --- | --- |
-| **[AI Hub](ai-hub/)** | 管理本地模型、LoRA、图库与工作流 | 2.4.1 | **[下载 Windows 包 · 0.98 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.4.1-Windows-x64.zip)** |
+| **[AI Hub](ai-hub/)** | 管理模型、LoRA、项目、工作流与出图 | 2.5.0 | **[下载 Windows 包 · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | **[Codex Switcher](codex-switcher/)** | 管理、导入和切换 Codex API 服务配置 | 2.4.1 | **[下载 Windows 包 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
 | **[流向 FlowSwitch](proxy-switch/)** | 发现与管理代理、统一出口、按程序分流及旧连接重连 | 3.3.2 | **[下载 Windows 包 · 354 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-x64.zip)** |
 

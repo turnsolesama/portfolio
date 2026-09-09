@@ -143,12 +143,6 @@ def overview(db, cfg, params, body):
     total_size = sum(p["size"] for p in parts)
     total_files = sum(p["files"] for p in parts)
 
-    mtype_counts = {r["mtype"] or "未分类": r["c"] for r in
-                    db.query("SELECT mtype, COUNT(*) c FROM models GROUP BY mtype")}
-    family_counts = [(r["family"] or "未知", r["c"]) for r in
-                     db.query("SELECT family, COUNT(*) c FROM models WHERE mtype IN "
-                              "('Checkpoint','LoRA','Diffusion','TextEncoder','VAE','ControlNet') "
-                              "GROUP BY family ORDER BY c DESC LIMIT 12")]
     state_counts = {r["update_state"]: r["c"] for r in
                     db.query("SELECT update_state, COUNT(*) c FROM models GROUP BY update_state")}
     img_stats = db.one("SELECT COUNT(*) n, SUM(has_meta) m FROM images")
@@ -164,6 +158,13 @@ def overview(db, cfg, params, body):
     pending = db.one("SELECT COUNT(*) c FROM models WHERE update_state IN ('available','maybe')")["c"]
     all_models = db.query("SELECT * FROM models")
     categories = classification.decorate(all_models, management.catalog(cfg), db.query("SELECT * FROM model_labels"))
+    distinct = classification.deduplicate_models(all_models)
+    mtype_counts = collections.Counter(categories[r['rowid_pk']]['model_role'] for r in distinct)
+    family_counts = collections.Counter(categories[r['rowid_pk']]['architecture'] or '未知' for r in distinct).most_common(12)
+    central_counts = collections.Counter(categories[r['rowid_pk']]['model_role'] for r in distinct if categories[r['rowid_pk']]['scope']=='central')
+    for items in (top_used, recent):
+        for item in items:
+            item['classification'] = categories[item['rowid_pk']]
 
     return _json_bytes({
         "ai_root": cfg.get("ai_root"),
@@ -174,8 +175,11 @@ def overview(db, cfg, params, body):
         "unique_size_h": human_size(int(db.get_meta("unique_size") or 0)),
         "total_files": total_files,
         "model_count": sum(mtype_counts.values()),
-        "functional_categories": classification.facets(all_models, categories),
-        "central_counts": {r["mtype"]: r["c"] for r in db.query("SELECT mtype,COUNT(*) c FROM models WHERE scope='central' GROUP BY mtype")},
+        "functional_categories": classification.facets(distinct, categories),
+        "central_counts": central_counts,
+        "indexed_records": len(all_models), "unique_model_files": len(distinct),
+        "registered_models": sum(categories[r['rowid_pk']]['registered'] for r in distinct),
+        "classification_pending": sum(categories[r['rowid_pk']]['classification_pending'] for r in distinct),
         "mtype_counts": mtype_counts, "family_counts": family_counts,
         "state_counts": state_counts, "pending_updates": pending,
         "image_count": img_stats["n"] or 0, "image_with_meta": img_stats["m"] or 0,
@@ -195,22 +199,10 @@ def models_list(db, cfg, params, body):
     if purpose and purpose not in classification.PURPOSES:
         return _err("未知的 LoRA 用途")
     conds, args = [], []
-    if _q(params, "kind") == "core":
-        conds.append("mtype IN ('Checkpoint','Diffusion','LoRA')")
-    elif _q(params, "kind") == "base":
-        conds.append("mtype IN ('Checkpoint','Diffusion','LLM','TTS','Package')")
-    elif _q(params, "kind") == "components":
-        conds.append("mtype NOT IN ('Checkpoint','Diffusion','LLM','TTS','Package','LoRA')")
     if _q(params, "ids") is not None:
         ids = [int(value) for value in str(_q(params, "ids")).split(",") if value.isdigit()][:500]
         conds.append("rowid_pk IN (" + ",".join("?" for _ in ids) + ")" if ids else "0=1")
         args += ids
-    if _q(params, "type"):
-        conds.append("mtype=?"); args.append(_q(params, "type"))
-    if _q(params, "family"):
-        conds.append("family=? COLLATE NOCASE"); args.append(_q(params, "family"))
-    if _q(params, "scope"):
-        conds.append("scope=?"); args.append(_q(params, "scope"))
     st = _q(params, "state")
     if st == "pending":
         conds.append("update_state IN ('available','maybe')")
@@ -237,25 +229,48 @@ def models_list(db, cfg, params, body):
     all_rows = db.query("SELECT * FROM models")
     categories = classification.decorate(all_rows, management.catalog(cfg), db.query("SELECT * FROM model_labels"))
     rows = db.query(f"SELECT * FROM models {where} ORDER BY {order}, rowid_pk", args)
+    kind = _q(params, "kind")
+    base_roles = {"Checkpoint", "Diffusion", "LLM", "TTS", "Package"}
+    if kind in ("core", "base", "components"):
+        roles = {"Checkpoint", "Diffusion", "LoRA"} if kind == "core" else base_roles
+        if kind == "components":
+            rows = [r for r in rows if categories[r["rowid_pk"]]["model_role"] not in base_roles | {"LoRA"}]
+        else:
+            rows = [r for r in rows if categories[r["rowid_pk"]]["model_role"] in roles]
+    for parameter, field in (("type", "model_role"), ("family", "architecture"), ("scope", "scope")):
+        selected = _q(params, parameter)
+        if parameter == "family" and selected and selected.casefold() in {"unknown", "unconfirmed", "未知", "待确认"}:
+            selected = "未确认"
+        if selected:
+            rows = [r for r in rows if str(categories[r["rowid_pk"]].get(field) or "Unknown").casefold() == selected.casefold()]
+    intake = _q(params, "intake")
+    if intake not in (None, "", "indexed", "registered", "pending"):
+        return _err("未知的入库状态")
+    if intake == "registered":
+        rows = [r for r in rows if categories[r["rowid_pk"]].get("registered")]
+    elif intake == "pending":
+        rows = [r for r in rows if categories[r["rowid_pk"]].get("classification_pending")]
     if domain:
         rows = [r for r in rows if categories[r["rowid_pk"]]["domain"] == domain]
+    rows = classification.deduplicate_models(rows)
     purpose_counts = collections.Counter(p for r in rows for p in categories[r["rowid_pk"]]["purposes"])
     if purpose:
         rows = [r for r in rows if purpose in categories[r["rowid_pk"]]["purposes"]]
+    rows = classification.deduplicate_models(rows)
     total = len(rows)
     page = min(page, max(1, (total + size - 1) // size))
     items = [_row_json(r) for r in rows[(page - 1) * size:page * size]]
     for it in items:
         it["partition"] = _partition_of(cfg, it["path"])
         it["classification"] = categories[it["rowid_pk"]]
-    scope_rows = [r for r in all_rows if not _q(params, "scope") or r["scope"] == _q(params, "scope")]
+    scope_rows = classification.deduplicate_models([r for r in all_rows if not _q(params, "scope") or categories[r["rowid_pk"]]["scope"] == _q(params, "scope")])
     facet_rows = [r for r in scope_rows if not domain or categories[r["rowid_pk"]]["domain"] == domain]
     facets = {
-        "types": sorted({r["mtype"] for r in facet_rows if r["mtype"]}),
-        "families": sorted({r["family"] for r in facet_rows if r["family"] and r["family"] != 'Unknown'}, key=str.casefold),
+        "types": sorted({categories[r["rowid_pk"]]["model_role"] for r in facet_rows}),
+        "families": sorted({categories[r["rowid_pk"]]["architecture"] for r in facet_rows if categories[r["rowid_pk"]]["architecture"]}, key=str.casefold),
         "domains": classification.facets(scope_rows, categories),
         "purposes": [{"id": key, "label": value, "count": purpose_counts[key]} for key, value in classification.PURPOSES.items()],
-        "options": {"domains": classification.DOMAINS, "purposes": classification.PURPOSES},
+        "options": classification_options(),
     }
     return _json_bytes({"total": total, "page": page, "size": size,
                         "items": items, "facets": facets})
@@ -292,9 +307,14 @@ def model_detail(db, cfg, params, body):
     d["partition"] = _partition_of(cfg, d["path"])
     d["audit"] = management.audit_for_model(cfg, d)
     labels = db.one("SELECT * FROM model_labels WHERE model_path=?", (d["path"],))
-    d["classification"] = classification.classify(d, d["audit"], dict(labels) if labels else None)
-    d["classification_options"] = {"domains": classification.DOMAINS, "purposes": classification.PURPOSES}
+    d["classification"] = classification.decorate(db.query("SELECT * FROM models"), management.catalog(cfg), db.query("SELECT * FROM model_labels"))[mid]
+    d["classification_options"] = classification_options()
     return _json_bytes(d)
+
+
+def classification_options():
+    return {"domains": classification.DOMAINS, "purposes": classification.PURPOSES,
+            "scopes": classification.SCOPES, "roles": classification.MODEL_ROLES}
 
 
 def models_classify(db, cfg, params, body):
@@ -304,11 +324,13 @@ def models_classify(db, cfg, params, body):
     if not ids or len(ids) > 200 or any(type(i) is not int or i < 1 for i in ids):
         return _err("每次请选择 1 至 200 个有效模型")
     ids = list(dict.fromkeys(ids))
-    if set(body) - {"ids", "domain", "purposes", "reset"}:
+    if set(body) - {"ids", "domain", "purposes", "reset", "scope", "model_role", "architecture", "preview"}:
         return _err("不支持的分类字段")
     if "reset" in body and type(body["reset"]) is not bool:
         return _err("恢复自动分类参数无效")
-    if not any(key in body for key in ("domain", "purposes")) and not body.get("reset"):
+    if "preview" in body and type(body["preview"]) is not bool:
+        return _err("分类预览参数无效")
+    if not any(key in body for key in ("domain", "purposes", "scope", "model_role", "architecture")) and not body.get("reset"):
         return _err("请选择要调整的分类")
     domain = body.get("domain")
     if domain is not None and (not isinstance(domain, str) or domain not in classification.DOMAINS):
@@ -319,24 +341,55 @@ def models_classify(db, cfg, params, body):
         return _err("未知的 LoRA 用途")
     if purposes and "uncategorized" in purposes and len(set(purposes)) > 1:
         return _err("待补充不能与其他用途同时选择")
+    for field, choices in (("scope", classification.SCOPES), ("model_role", classification.MODEL_ROLES)):
+        if body.get(field) is not None and (not isinstance(body[field], str) or body[field] not in choices):
+            return _err("未知的分类字段：" + field)
+    architecture = body.get("architecture")
+    if architecture is not None and (not isinstance(architecture, str) or not 1 <= len(architecture.strip()) <= 120 or any(ord(c) < 32 for c in architecture)):
+        return _err("架构需为 1 至 120 字符的说明")
     with db.lock:
         rows = db.query("SELECT path,mtype FROM models WHERE rowid_pk IN (" + ",".join("?" for _ in ids) + ")", ids)
         if len(rows) != len(ids):
             return _err("部分模型已不在索引中，请刷新后重试", 404)
-        with db.conn:
-            for row in rows:
-                if body.get("reset"):
-                    db.conn.execute("DELETE FROM model_labels WHERE model_path=?", (row["path"],))
-                    continue
-                previous = db.one("SELECT * FROM model_labels WHERE model_path=?", (row["path"],))
-                value = dict(previous) if previous else {"domain": None, "purposes": None}
-                if "domain" in body:
-                    value["domain"] = domain
-                if "purposes" in body and row["mtype"] == "LoRA":
+        all_models = db.query("SELECT * FROM models")
+        labels = db.query("SELECT * FROM model_labels")
+        context = classification.classification_context(all_models, management.catalog(cfg), labels)
+        pending = []
+        for row in rows:
+            effective = classification.context_for(context, row["path"])
+            model, audit = effective["model"], effective["audit"]
+            value = {"domain": None, "purposes": None, **effective["manual"]}
+            if body.get("reset"):
+                value = {}
+            else:
+                for field in ("domain", "scope", "model_role", "architecture"):
+                    if field in body:
+                        value[field] = body[field].strip() if isinstance(body[field], str) else None
+                if "purposes" in body and classification.classify(model,audit,value)["model_role"] == "LoRA":
                     value["purposes"] = json.dumps(list(dict.fromkeys(purposes)), ensure_ascii=False) if purposes is not None else None
-                db.conn.execute("INSERT INTO model_labels(model_path,domain,purposes,updated_at) VALUES(?,?,?,?) "
-                                "ON CONFLICT(model_path) DO UPDATE SET domain=excluded.domain,purposes=excluded.purposes,updated_at=excluded.updated_at",
-                                (row["path"], value["domain"], value["purposes"], time.strftime("%Y-%m-%d %H:%M:%S")))
+            identity = classification.file_identity(row["path"])
+            keys = {classification.path_key(p) for p in [row["path"], model.get("path"), *model.get("compatibility_paths", [])] if p}
+            alias_paths = {row["path"]}
+            for label in labels:
+                candidate = label["model_path"]
+                candidate_identity = classification.file_identity(candidate)
+                if candidate_identity:
+                    if identity and candidate_identity == identity:
+                        alias_paths.add(candidate)
+                elif classification.path_key(candidate) in keys:
+                    alias_paths.add(candidate)
+            pending.append((model,audit,value,alias_paths,effective["manual"]))
+        if body.get("preview"):
+            return _json_bytes({"preview":True,"items":[{"name":m["filename"],"before":classification.classify(m,a,old),"after":classification.classify(m,a,v)} for m,a,v,paths,old in pending],"asset_files_modified":False})
+        with db.conn:
+            for model,audit,value,paths,old in pending:
+                for path in paths:
+                    if body.get("reset"):
+                        db.conn.execute("DELETE FROM model_labels WHERE model_path=?", (path,))
+                    else:
+                        db.conn.execute("INSERT INTO model_labels(model_path,domain,purposes,updated_at,scope,model_role,architecture) VALUES(?,?,?,?,?,?,?) "
+                                        "ON CONFLICT(model_path) DO UPDATE SET domain=excluded.domain,purposes=excluded.purposes,updated_at=excluded.updated_at,scope=excluded.scope,model_role=excluded.model_role,architecture=excluded.architecture",
+                                        (path, value.get("domain"), value.get("purposes"), time.strftime("%Y-%m-%d %H:%M:%S"), value.get("scope"), value.get("model_role"), value.get("architecture")))
     return _json_bytes({"ok": True, "updated": len(rows)})
 
 
@@ -494,19 +547,21 @@ def image_delete(db, cfg, params, body):
 def usage_ranking(db, cfg, params, body):
     mtype = _q(params, "type") or "LoRA"
     limit = min(100, max(5, _int(_q(params, "limit"), 30)))
-    rows = db.query("SELECT * FROM models WHERE mtype=? AND missing=0 ORDER BY img_count DESC LIMIT ?",
-                    (mtype, limit))
-    unused = [_row_json(r) for r in db.query(
-        "SELECT * FROM models WHERE mtype=? AND missing=0 AND (img_count=0 OR img_count IS NULL) "
-        "ORDER BY mtime DESC LIMIT 20", (mtype,))]
-    return _json_bytes({"type": mtype, "ranking": [_row_json(r) for r in rows],
-                        "unused": [_row_json(r) for r in unused]})
+    items = _classified_rows(db,cfg)
+    items = [r for r in items if r['classification']['model_role']==mtype and not r['missing']]
+    rows = sorted(items,key=lambda r:r.get('img_count') or 0,reverse=True)[:limit]
+    unused = sorted([r for r in items if not r.get('img_count')],key=lambda r:r.get('mtime') or 0,reverse=True)[:20]
+    return _json_bytes({"type":mtype,"ranking":rows,"unused":unused})
+
+
+def _classified_rows(db,cfg):
+    rows = db.query('SELECT * FROM models')
+    categories = classification.decorate(rows,management.catalog(cfg),db.query('SELECT * FROM model_labels'))
+    return [{**_row_json(row),'classification':categories[row['rowid_pk']]} for row in classification.deduplicate_models(rows)]
 
 
 def llm_list(db, cfg, params, body):
-    rows = db.query("SELECT * FROM models WHERE mtype IN ('LLM','TTS','Package') AND missing=0 "
-                    "ORDER BY mtype, family, size DESC")
-    items = [_row_json(r) for r in rows]
+    items = [r for r in _classified_rows(db,cfg) if not r['missing'] and r['classification']['model_role'] in ('LLM','TTS','Package')]
     for it in items:
         import aihub.meta as meta
         info = meta.llm_info(it["filename"])
@@ -674,6 +729,9 @@ def workspace_setup(db, cfg, params, body):
             if body.get("create", False):
                 cfgmod.initialize_root(root)
             root = organizer.validate_root(root)
+            policy = organizer.library_policy(root)
+            if body.get("on_startup") and not policy["apply_allowed"]:
+                raise ValueError("已有 Library / Runtime / Packages 模型库只提供统一分类预览，不能启用启动整理。")
             layout = cfgmod.detect_layout(root)
             updated = json.loads(json.dumps(cfg))
             updated.update(layout)
@@ -693,7 +751,8 @@ def organizer_status(db, cfg, params, body):
         runs = organizer.list_runs(organization.storage() / "runs", root) if root else []
     except (ValueError, OSError):
         runs = []
-    return _json_bytes({"root": root, "enabled": bool(options.get("enabled")),
+    policy = organizer.library_policy(root) if root and os.path.isdir(root) else {}
+    return _json_bytes({"root": root, "enabled": bool(options.get("enabled")), "policy": policy,
                         "on_startup": bool(options.get("on_startup")), "workspace": cfgmod.workspace_status(cfg),
                         "busy": organization.busy(), "runs": runs})
 
@@ -714,7 +773,7 @@ def organizer_action(db, cfg, params, body):
         try:
             action = _q(params, "action")
             if action == "preview":
-                job = organization.preview(cfg)
+                job = organization.preview(cfg, db)
             elif action == "apply":
                 job = organization.apply(db, cfg, (body or {}).get("plan_id"))
             elif action == "undo":
@@ -778,8 +837,10 @@ def report_content(db, cfg, params, body):
     if not management.is_report(cfg, cfgmod.REPORTS_DIR, path):
         return _err("path not allowed", 403)
     try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return _json_bytes({"name": os.path.basename(path), "content": f.read(400 * 1024)})
+        content = management.read_report(cfg, cfgmod.REPORTS_DIR, path)
+        return _json_bytes({"name": os.path.basename(path), "content": content})
+    except ValueError as e:
+        return _err(str(e), 403)
     except OSError as e:
         return _err(str(e), 404)
 
@@ -848,12 +909,39 @@ def workflow_summary(db, cfg, params, body):
     return _json_bytes(management.workflows(cfg))
 
 
+def registry_request(db, cfg, params, body):
+    action = _q(params, "action")
+    if not isinstance(body, dict):
+        return _err("登记请求必须是对象")
+    with organization.LOCK:
+        if organization.busy():
+            return _err("后台任务运行期间暂不能修改登记", 409)
+        try:
+            if action == "preview":
+                result = management.registration_preview(cfg, body.get("kind"), body.get("record"))
+            elif action == "evidence":
+                result = management.evidence_preview(cfg, body)
+            elif action == "restore-preview":
+                result = management.registration_restore_preview(cfg, body.get("backup_id"))
+            elif action == "save":
+                result = management.registration_save(cfg, body.get("token"))
+            else:
+                return _err("未知登记操作")
+            return _json_bytes(result)
+        except (ValueError, OSError) as error:
+            return _err(str(error))
+
+
 ROUTES = [
+    ("GET", r"^/api/projects$", lambda db, cfg, params, body: _json_bytes(management.projects(cfg))),
+    ("GET", r"^/api/registry$", lambda db, cfg, params, body: _json_bytes(management.registry_snapshot(cfg))),
+    ("GET", r"^/api/registry/backups$", lambda db, cfg, params, body: _json_bytes(management.registration_backups(cfg))),
+    ("POST", r"^/api/registry/(?P<action>preview|save|restore-preview|evidence)$", registry_request),
     ("POST", r"^/api/workspace/setup$", workspace_setup),
     ("GET", r"^/api/organizer/status$", organizer_status),
     ("GET", r"^/api/organizer/plan$", organizer_plan),
     ("POST", r"^/api/organizer/(?P<action>preview|apply|undo)$", organizer_action),
-    ("GET", r"^/api/health$", lambda db, cfg, params, body: _json_bytes({"app": "ai-hub", "version": "2.3", "jobs_running": any(j["status"] == "running" for j in jobs.get_jobs())})),
+    ("GET", r"^/api/health$", lambda db, cfg, params, body: _json_bytes({"app": "ai-hub", "version": "2.5.0", "desktop_shell_version": "2.4.1", "jobs_running": any(j["status"] == "running" for j in jobs.get_jobs())})),
     ("GET", r"^/api/management$", management_summary),
     ("GET", r"^/api/workflows$", workflow_summary),
     ("GET", r"^/api/overview$", overview),
