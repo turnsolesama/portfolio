@@ -1,9 +1,12 @@
 ﻿$ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms
+[Windows.Forms.Application]::SetUnhandledExceptionMode([Windows.Forms.UnhandledExceptionMode]::ThrowException)
 $qaSource=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('discovery-ui-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+[void][IO.Directory]::CreateDirectory((Join-Path $qaRoot 'assets'))
+Copy-Item -LiteralPath (Join-Path $qaSource 'assets/FlowSwitch.ico') -Destination (Join-Path $qaRoot 'assets/FlowSwitch.ico')
 # Isolated Windows fixtures must not contend with the real manager or other test windows.
 $qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
 $qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
@@ -33,7 +36,7 @@ $qaTimer.Add_Tick({
     $global:discoveryTicks++
     try{
         if($global:discoveryTicks -gt 120){throw 'Discovery UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.2*'} | Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like '*FlowSwitch*'} | Select-Object -First 1
         if(-not $main){return}
         $combo=Find-QAType $main ([Windows.Forms.ComboBox]) | Select-Object -First 1
         $list=Find-QAType $main ([Windows.Forms.ListView]) | Where-Object {$_.Columns.Count -eq 6} | Select-Object -First 1

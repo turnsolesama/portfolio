@@ -1,3 +1,5 @@
+80f005d6ce6264384831b3317cd4bcefb5e7a0b8928e89d73512a380d9d11b08  FlowSwitch-v3.2.1-Windows-x64.zip
+a8781de2e48f0aae403983e503c0f747a6b0be9e08f08a979bda7d77e9cdaeae  FlowSwitch-v3.2.1-Windows-Source.zip
 357c5d3328a9db96c71cb7858b03faa1515f428c869fde5fda510f7ea0575e9b  ProxySwitch-v3.1.2-Windows-x64.zip
 55325b0e4f3f811b420b4bc099030a7760d8f9fe23a3e32e13a3a59525fa7eed  ProxySwitch-v3.1.2-Windows-Source.zip
 5b979ae7933b657ecdc15dd4bc39268ba61b8772f36b470bdf69ddebf701738d  ProxySwitch-v3.1.1-Windows-Source.zip
@@ -6,3 +8,4 @@ c63c85824fb422b0efe6445305a83eeccd928e95d2a2448b92d710d99457682c  ProxySwitch-v3
 ba53ce74e7412055421752e93fde3de3a535c6a2e5df0b4bf67be00bc673aff4  ProxySwitch-v3.0.2-Windows-Source.zip
 29a306d464cef0ee0ffb4113c11beec77ee078d4833b72b888bc8c5a9834300f  ProxySwitch-v3.0.1-Windows-Source.zip
 ccb68e03711aacf0f62503b4aa48fe09cfb21a0552101f5e63bc930f586081b1  ProxySwitch-v3.0.0-Windows-Source.zip
+

@@ -1,7 +1,7 @@
 # 网络代理切换器
 
 - Windows PowerShell 5.1 / WinForms。程序分流使用已安装的 Node.js 与本目录 vendor/js-yaml 5.4.1（保留 MIT 许可证）。不自动更新依赖。
-- `ProxySwitch.ps1` 是脚本入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。Windows 程序包由编译后的 `ProxySwitch.exe` 启动 `app/ProxySwitch.ps1`。
+- `ProxySwitch.ps1` 是脚本入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。Windows 程序包由编译后的 `FlowSwitch.exe` 启动 `app/ProxySwitch.ps1`。
 - `Preferences.ps1` 提供本机设置、快捷方式解析、汇总诊断；`Storage.ps1` 解析共享目录，数据默认保存到 `%USERPROFILE%\.proxyswitch`，避免 MSIX AppData 重定向产生不同文件视图。代码目录仅保留 `config.defaults.json` 默认模板。测试可用 `PROXY_SWITCH_DATA_DIR` 指定隔离目录。
 - `Build-Release.ps1 -Destination <新目录>` 通过显式文件清单打包；不得把本机 config.json、selection.json、app-rules.json、备份或实机截图加入清单。
 - `assets` 中的截图使用 `-Demo` 演示数据生成；不要用用户真实进程列表作为公开截图。
@@ -48,3 +48,10 @@
 - `Test-Storage.ps1` 验证共享目录解析、迁移完整性、备份索引重定位、旧入口兼容和失败保留。`last-program-launch.json`、`storage-layout.json` 及程序配置和记录只存本机，不能加入发布清单。实机桌面入口验收必须由桌面实际启动，打包父进程下的成功运行不能代替。
 - 3.1.2 同时发布 Windows x64 程序包与源码包。`Build-WindowsPackage.ps1 -Destination <新目录>` 使用 Windows 自带 .NET Framework csc 编译 `Launcher.cs` 为 WinExe，按运行文件白名单打包，不下载依赖；保留 `app` 目录，不将 EXE 宣称为无依赖的单文件程序。
 - `Test-WindowsPackage.ps1 -PackageDirectory <包目录>` 校验文件哈希、移动后的 Unicode/空格路径、EXE SmokeTest、显式数据目录和缺失文件处理。测试安装脚本只在临时副本中替换桌面目录，不能创建或覆盖真实桌面图标。
+
+- 3.2.0 的 Routing.UnifiedMode 为 system（旧默认）或 gateway（用户选择固定入口）；gateway 要求引擎就绪，HTTP/SOCKS5/Direct 均保持同一本地入口，不能离线时偷偷回退到其他端口。
+- 普通 Set-ApplicationRoute 始终设置引擎规则，不再默认调用启动适配或创建快捷方式。旧启动适配只保留兼容记录，迁移某条引擎规则时相应启动目标设为 Follow。
+- 按程序重连必须先预览并由用户点击确认，只 DELETE 已预览且仍匹配 EXE、连接 ID、开始时间、旧线路的连接。不得调用全局 DELETE /connections，不自动重连/退出对话、浏览器或游戏。
+- Test-GatewayControl.ps1 检查固定入口计划与无快捷方式副作用；Test-GatewayIntegration.cjs <已安装内核绝对路径> 使用独立配置、命名管道、两个测试 EXE 和本地 HTTP/SOCKS5 上游验证真实连接，不下载依赖。
+
+- 3.2.1 品牌为流向 FlowSwitch；DesktopBranding.cs 提供运行窗口任务栏标识和重开属性。发布图标为 assets/FlowSwitch.ico，PNG 只随源码发布。保留 ProxySwitch.ps1、.proxyswitch 与 PSW-App-* 内部兼容标识。

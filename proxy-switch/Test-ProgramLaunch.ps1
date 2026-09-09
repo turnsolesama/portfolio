@@ -52,9 +52,11 @@ try{$link=$shell.CreateShortcut($shortcut);$link.TargetPath=$exe;$link.WorkingDi
 $originalHash=(Get-FileHash -LiteralPath $shortcut).Hash
 $realShortcut=${function:Install-ProgramProxyShortcut}
 function Install-ProgramProxyShortcut($Executable){& $realShortcut $Executable $desktop}
-$result=Set-ApplicationRoute $exe 'upstream'
+$result=Set-ProgramLaunchRoute $exe 'upstream'
 Check (@(Get-ProgramLaunchEntries).Count -eq 1 -and (Get-ProgramLaunchEntries).route -eq 'upstream') 'Program route saves without any Clash engine or Windows proxy write'
 $record=Get-ProgramShortcutRecords|Select-Object -First 1
+Check ($result.Message.Contains($shortcut) -and $result.Message -notmatch '原图标|原入口已备份') 'Route result identifies the actual managed entry without promising every original launcher was replaced'
+Check (@(Get-VerifiedProgramShortcuts $exe).Count -eq 1) 'Verified entry reads the shortcut target and arguments'
 Check ($record.shortcut -eq $shortcut -and (Get-FileHash -LiteralPath $record.originalBackup).Hash -eq $originalHash) 'Original desktop shortcut is backed up byte for byte'
 $shell=New-Object -ComObject WScript.Shell
 try{$link=$shell.CreateShortcut($shortcut);Check ($link.Arguments -match '-LaunchProgram' -and $link.IconLocation -eq ($exe+',0') -and $link.WorkingDirectory -eq $directory) 'Managed shortcut preserves the program icon and working directory';[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)}
@@ -105,4 +107,14 @@ $row=(Get-ApplicationRoutes).Rows|Where-Object Path -eq $exe
 Check (-not $row.Loaded -and $row.Status -match '子进程连接待验证') 'Main-process traffic alone does not certify an idle helper'
 Set-ProgramLaunchEntries @()
 Check ((Get-FileHash -LiteralPath $shortcut).Hash -eq $originalHash) 'Removing a native route restores the original desktop entry byte for byte'
+$newExe=Join-Path $directory 'StoreApp.exe';Copy-Item -LiteralPath $exe -Destination $newExe
+$newResult=Set-ProgramLaunchRoute $newExe 'upstream'
+$newShortcut=Join-Path $desktop 'StoreApp（指定代理）.lnk'
+Check ($newResult.Shortcuts -contains $newShortcut -and $newResult.Message.Contains($newShortcut)) 'App without a matching desktop entry explicitly reports the separately created proxy launcher'
+Check (@(Get-VerifiedProgramShortcuts $newExe).Count -eq 1) 'New separate launcher is verified'
+$shell=New-Object -ComObject WScript.Shell
+try{$link=$shell.CreateShortcut($newShortcut);$link.Arguments='-NoProfile';$link.Save();[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)}
+Check (@(Get-VerifiedProgramShortcuts $newExe).Count -eq 0) 'Independently edited entry is not recommended as a working proxy launcher'
+Set-ProgramLaunchEntries @()
+Check (Test-Path -LiteralPath $newShortcut) 'Removing the rule preserves a user-modified shortcut'
 Write-Output ('PASS: '+$script:Pass+' program launch and child-process assertions; isolated shortcuts, files and processes only.')

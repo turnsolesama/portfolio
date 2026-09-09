@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.1.2'
+$script:ProductVersion='3.2.1'
 . (Join-Path $PSScriptRoot 'Storage.ps1')
 $script:LegacyDataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 $script:DataRoot=Resolve-ProxyDataDirectory $DataDirectory $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA
@@ -46,7 +46,11 @@ function ConvertTo-ValidProfileSettings($Value) {
         if(-not $engine -or $engine.Protocol -ne 'http' -or $engine.Host -notin @('localhost','127.0.0.1','::1') -or -not $engine.CorePath){throw '分流引擎需要本地 HTTP / 混合入口与 Clash Verge 内核路径。'}
     }
     $ignored=@($Value.DiscoveryIgnored | Where-Object {$_ -match '^loopback:[0-9]{1,5}$'} | Select-Object -Unique -First 128)
-    [pscustomobject]@{Version=3;Profiles=@($items);Routing=[pscustomobject]@{Adapter=$adapter;ProfileId=$gateway};DiscoveryIgnored=$ignored}
+    $unifiedMode=[string]$Value.Routing.UnifiedMode
+    if(-not $unifiedMode){$unifiedMode='system'}
+    if($unifiedMode -notin @('system','gateway')){throw '统一切换模式无效。'}
+    if($unifiedMode -eq 'gateway' -and $adapter -eq 'none'){throw '固定入口模式需要配置分流引擎。'}
+    [pscustomobject]@{Version=3;Profiles=@($items);Routing=[pscustomobject]@{Adapter=$adapter;ProfileId=$gateway;UnifiedMode=$unifiedMode};DiscoveryIgnored=$ignored}
 }
 function Read-ProfileSettings {
     $path=$script:ConfigPath;if(-not (Test-Path -LiteralPath $path)){$path=Join-Path $PSScriptRoot 'config.defaults.json'}
@@ -74,7 +78,7 @@ function Save-ProfileSettings($Value) {
         $saved=Get-RoutingSnapshot;$selection=Get-Selection
         $inUse=@($saved.entries | ForEach-Object route)+@($saved.launchEntries | ForEach-Object route)+@($saved.defaultRoute,$selection.Key,$selection.NetworkKey,(Get-SystemKey (Get-SystemSnapshot)))
         foreach($id in $inUse){if($id -and $id -notin @('Direct','Other','Follow') -and $id -notin @($clean.Profiles | ForEach-Object Id)){throw '该代理仍被当前入口或程序规则使用，请先统一切换到其他线路再删除。'}}
-        if($saved.installed -and ($clean.Routing.Adapter -ne $script:Profiles.Routing.Adapter -or $clean.Routing.ProfileId -ne $script:Profiles.Routing.ProfileId)){throw '请先统一切换到直连，撤除已加载的分流规则，再更换分流引擎。'}
+        if($saved.installed -and ($clean.Routing.Adapter -ne $script:Profiles.Routing.Adapter -or $clean.Routing.ProfileId -ne $script:Profiles.Routing.ProfileId)){throw '请先取消固定入口模式并保存，再统一切换到直连以撤除规则，然后更换分流引擎。'}
         if(Test-Path -LiteralPath $script:ConfigPath){[void][IO.Directory]::CreateDirectory($script:BackupDir);Copy-Item -LiteralPath $script:ConfigPath -Destination (Join-Path $script:BackupDir ('settings-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')+'.json'))}
         Write-LocalJson $script:ConfigPath $clean;$script:Profiles=$clean
     }

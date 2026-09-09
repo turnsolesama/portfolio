@@ -61,6 +61,17 @@ function Get-ProgramShortcutRecords {
     $path=Join-Path $script:DataRoot 'program-shortcuts.json'
     if(Test-Path -LiteralPath $path){@((Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json).entries)}else{@()}
 }
+function Get-VerifiedProgramShortcuts([string]$Executable) {
+    $shell=New-Object -ComObject WScript.Shell
+    try{
+        foreach($record in @(Get-ProgramShortcutRecords | Where-Object {$_.program -ieq $Executable})){
+            if(-not (Test-Path -LiteralPath $record.shortcut -PathType Leaf)){continue}
+            $link=$shell.CreateShortcut($record.shortcut)
+            try{if($link.TargetPath -ieq $record.managedTarget -and $link.Arguments -ceq $record.managedArguments){$record.shortcut}}
+            finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}
+        }
+    }finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)}
+}
 function Restore-ProgramProxyShortcuts([string]$Executable) {
     $records=@(Get-ProgramShortcutRecords);$keep=@();$shell=New-Object -ComObject WScript.Shell
     try{
@@ -128,7 +139,7 @@ function Set-ProgramLaunchRoute([string]$Executable,[string]$Route) {
         $before=@(Get-ProgramLaunchEntries);$next=@($before|Where-Object {$_.path -ine $Executable})+@([pscustomobject]@{path=$Executable;route=$Route;adapter='chromium'})
         $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=(Get-SystemSnapshot);Environment=(Get-UserProxyEnv);Selection=(Get-Selection);Routing=(Get-RoutingSnapshot)})
         try{Set-ProgramLaunchEntries $next;$shortcuts=@(Install-ProgramProxyShortcut $Executable)}catch{Set-ProgramLaunchEntries $before;throw}
-        [pscustomobject]@{Backup=$backup;Message=('已为「'+[IO.Path]::GetFileNameWithoutExtension($Executable)+'」指定「'+(Get-RouteName $Route)+'」。桌面入口已更新，原入口已备份。请保存任务并退出该程序，再从桌面原图标打开；正在运行的进程尚未应用新启动设置。');Shortcuts=$shortcuts}
+        [pscustomobject]@{Backup=$backup;Message=('已保存「'+[IO.Path]::GetFileNameWithoutExtension($Executable)+'」的目标「'+(Get-RouteName $Route)+'」，尚未验证生效。请保存任务并完整退出，再使用以下代理入口，或右键选择「按指定线路打开」：'+"`r`n"+($shortcuts -join "`r`n")+"`r`n"+'其他入口（开始菜单、任务栏、Listary 等）未接入此启动设置，重复从那些入口重开不会应用这里保存的代理。');Shortcuts=$shortcuts}
     }
 }
 function Start-ManagedProgram([string]$Executable) {

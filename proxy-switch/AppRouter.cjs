@@ -99,7 +99,8 @@ function applyRouting(config,spec){
     return config;
   }
   var used={};spec.entries.forEach(function(e){used[e.route]=true;});if(spec.defaultRoute)used[spec.defaultRoute]=true;
-  if(used.Direct)config.proxies.push({name:name('Direct'),type:'direct'});
+  var guards=spec.guardPaths||[];
+  if(used.Direct||guards.length)config.proxies.push({name:name('Direct'),type:'direct'});
   spec.profiles.forEach(function(p){
     if(!used[p.Id])return;
     if(p.Id===spec.gateway){
@@ -111,10 +112,10 @@ function applyRouting(config,spec){
       config['proxy-groups'].push({name:name(p.Id),type:'select',proxies:[primary]});
     }else{config.proxies.push({name:name(p.Id),type:p.Protocol,server:p.Host,port:p.Port});}
   });
-  var rules=spec.entries.map(function(e){return 'PROCESS-PATH,'+e.path+','+name(e.route);});
+  var rules=guards.map(function(p){return 'PROCESS-PATH,'+p+','+name('Direct');}).concat(spec.entries.map(function(e){return 'PROCESS-PATH,'+e.path+','+name(e.route);}));
   if(spec.defaultRoute)rules.push('MATCH,'+name(spec.defaultRoute));
   config.rules=rules.concat(config.rules);
-  if(spec.entries.length)config['find-process-mode']='always';
+  if(spec.entries.length||guards.length)config['find-process-mode']='always';
   else if(spec.originalFind&&spec.originalFind.present)config['find-process-mode']=spec.originalFind.value;else delete config['find-process-mode'];
   return config;
 }
@@ -128,7 +129,9 @@ function makeSpec(entries,defaultRoute,options,primary,originalFind){
   }
   if(defaultRoute&&!validRoute(defaultRoute,options))throw new Error('统一线路无效。');
   const used=new Set(entries.map(e=>e.route));if(defaultRoute)used.add(defaultRoute);
-  return {entries,defaultRoute:defaultRoute||null,primary,originalFind,gateway:options.Routing.ProfileId,
+  const guardPaths=options.Routing.UnifiedMode==='gateway'?[...new Set(options.Profiles.flatMap(p=>[p.CorePath,p.AppPath]).filter(Boolean))]:[];
+  for(const p of guardPaths)normalizeEntry(p,'Direct',options);
+  return {entries,defaultRoute:defaultRoute||null,primary,originalFind,gateway:options.Routing.ProfileId,guardPaths,
     profiles:options.Profiles.filter(p=>used.has(p.Id)).map(p=>({Id:p.Id,Protocol:p.Protocol,Host:p.Host,Port:p.Port}))};
 }
 function makeConfig(base,entries,defaultRoute,options,primary,originalFind){return applyRouting(structuredClone(base),makeSpec(entries,defaultRoute,options,primary,originalFind));}
@@ -161,7 +164,9 @@ async function status(){
     if(options.Routing.Adapter==='none')throw new Error('尚未设置程序分流引擎。HTTP 统一切换与直连仍可使用。');
     const [config,connections,rules]=await Promise.all([api('GET','/configs'),api('GET','/connections'),api('GET','/rules')]);
     const current=state.fingerprint===fingerprint(state.entries,state.defaultRoute,options);
-    return {available:true,mode:config.mode,defaultRoute:state.defaultRoute,defaultLoaded:!state.defaultRoute||(current&&config.mode==='rule'&&rules.rules.some(r=>r.type==='Match'&&r.proxy===routeName(state.defaultRoute))),
+    const gateway=options.Profiles.find(p=>p.Id===options.Routing.ProfileId);
+    if(Number(config['mixed-port'])!==gateway.Port&&Number(config.port)!==gateway.Port)throw new Error('所选引擎端口与控制接口不一致，未接管该入口。');
+    return {available:true,mode:config.mode,tunEnabled:!!config.tun?.enable,defaultRoute:state.defaultRoute,defaultLoaded:!state.defaultRoute||(current&&config.mode==='rule'&&rules.rules.some(r=>r.type==='Match'&&r.proxy===routeName(state.defaultRoute))),
       entries:state.entries.map(e=>({...e,loaded:current&&config.mode==='rule'&&rules.rules.some(r=>ruleMatches(r,e))})),
       connections:(connections.connections||[]).map(c=>({path:c.metadata?.processPath||'',sourcePort:Number(c.metadata?.sourcePort),route:routeOfChains(c.chains||[],options),managed:ownedName(c.chains?.at(-1)),rule:c.rule||''}))};
   }catch(e){return {available:false,error:e.message,defaultRoute:state.defaultRoute,defaultLoaded:false,entries:state.entries.map(e=>({...e,loaded:false})),connections:[]};}
@@ -175,6 +180,7 @@ async function transaction(entries,defaultRoute=null){
   const before={runtime:read(RUNTIME),script:read(SCRIPT),state:read(STATE)};
   if(!before.runtime||before.script===null)throw new Error('未找到分流引擎的运行配置与全局脚本。');
   const base=yaml.load(before.runtime),core=await api('GET','/configs');
+  if(Number(core['mixed-port'])!==gateway.Port&&Number(core.port)!==gateway.Port)throw new Error('所选引擎端口与控制接口不一致，保留原配置。');
   if(core.mode!=='rule')throw new Error('请先将分流引擎切回规则模式。');
   if(!state.installed&&((base.proxies||[]).some(p=>ownedName(p.name))||(base['proxy-groups']||[]).some(p=>ownedName(p.name))||(base.rules||[]).some(ownedRule)))throw new Error('检测到未归属本工具的路由名称，已停止更改。');
   const groups=(base['proxy-groups']||[]).filter(p=>!ownedName(p.name));
@@ -194,7 +200,9 @@ async function transaction(entries,defaultRoute=null){
     atomicWrite(RUNTIME,output);atomicWrite(SCRIPT,script);atomicWrite(STATE,JSON.stringify(next,null,2));
     await api('PUT','/configs?force=true',{path:RUNTIME});
     const actual=await api('GET','/rules');
-    const expected=entries.length+(defaultRoute?1:0);
+    const guards=(entries.length||defaultRoute)?makeSpec(entries,defaultRoute,options,primary,originalFind).guardPaths:[];
+    const expected=entries.length+(defaultRoute?1:0)+guards.length;
+    if(!guards.every(p=>actual.rules.some(r=>ruleMatches(r,{path:p,route:'Direct'}))))throw new Error('代理程序防回路规则核对失败。');
     if(!entries.every(e=>actual.rules.some(r=>ruleMatches(r,e)))||actual.rules.filter(r=>ownedName(r.proxy)).length!==expected|| (defaultRoute&&!actual.rules.some(r=>r.type==='Match'&&r.proxy===routeName(defaultRoute))))throw new Error('规则重载核对失败。');
     return {ok:true,message:'线路规则已保存并载入，新连接生效。',entries,defaultRoute};
   }catch(e){
@@ -203,9 +211,33 @@ async function transaction(entries,defaultRoute=null){
     throw new Error('规则应用失败，已恢复修改前配置。');
   }
 }
+function selectReconnectConnections(connections, executable, wanted, options){
+  return connections.filter(c=>samePath(c.metadata?.processPath,executable)&&typeof c.id==='string'&&/^[a-zA-Z0-9-]{1,100}$/.test(c.id)&&c.start&&routeOfChains(c.chains||[],options)!==wanted)
+    .map(c=>({id:c.id,start:c.start,route:routeOfChains(c.chains||[],options)}));
+}
+async function reconnectPlan(executable){
+  const options=readOptions(),state=readState(options),entry=normalizeEntry(executable,'Follow',options);
+  if(options.Profiles.some(p=>[p.CorePath,p.AppPath].some(x=>x&&samePath(x,entry.path))))throw new Error('不能重连代理引擎或上游代理自身的连接。');
+  const live=await status(),rule=live.entries.find(e=>samePath(e.path,entry.path));
+  const wanted=rule?.route||state.defaultRoute;
+  if(!live.available||!wanted||(rule?!rule.loaded:!live.defaultLoaded))throw new Error('目标规则尚未载入，不能重连。请先完成线路设置。');
+  const connections=(await api('GET','/connections')).connections||[];
+  return {path:entry.path,wanted,fingerprint:state.fingerprint,createdAt:Date.now(),connections:selectReconnectConnections(connections,entry.path,wanted,options)};
+}
+async function reconnect(plan){
+  if(!plan||!Array.isArray(plan.connections)||plan.connections.length>1024||!Number.isFinite(plan.createdAt)||Date.now()-plan.createdAt>60000||plan.createdAt>Date.now()+1000)throw new Error('重连预览已失效，请重新查看。');
+  const current=await reconnectPlan(plan.path);
+  if(current.fingerprint!==plan.fingerprint||current.wanted!==plan.wanted)throw new Error('线路已改变，请重新查看重连预览。');
+  const targets=current.connections.filter(c=>plan.connections.some(p=>p.id===c.id&&p.start===c.start&&p.route===c.route));
+  let closed=0,failed=0;
+  for(const c of targets){try{await api('DELETE','/connections/'+encodeURIComponent(c.id));closed++;}catch{failed++;}}
+  return {ok:true,closed,failed,Message:`已关闭 ${closed} 条所选程序的旧线路连接${failed?`，${failed} 条未完成`:''}。应用是否自动重连取决于应用自身；新连接请查看实际出口。其他程序和已经使用目标线路的连接未处理。`};
+}
 async function main(){
   let raw='';for await(const chunk of process.stdin)raw+=chunk;const input=JSON.parse(raw.replace(/^\uFEFF/,''));
   if(input.action==='status')return status();
+  if(input.action==='reconnect-plan')return reconnectPlan(input.path);
+  if(input.action==='reconnect')return withMutationLock(()=>reconnect(input.plan));
   if(input.action==='replace')return withMutationLock(()=>transaction(input.entries,input.defaultRoute||null));
   if(input.action==='sync')return withMutationLock(()=>{const state=readState();return transaction(state.entries,state.defaultRoute);});
   if(input.action==='set')return withMutationLock(()=>{
@@ -244,4 +276,4 @@ if(require.main===module)main().then(value=>process.stdout.write(JSON.stringify(
   const message=['YAMLException','SyntaxError'].includes(error.name)?'配置格式校验失败，未应用更改。':error.message;
   process.stdout.write(JSON.stringify({ok:false,error:message}));process.exitCode=1;
 });
-module.exports={api,normalizeOptions,normalizeEntry,routeName,makeConfig,makeScript,stripScript,ownedRule,routeOfChains,ruleMatches,status,fingerprint,makeSpec};
+module.exports={api,normalizeOptions,normalizeEntry,routeName,makeConfig,makeScript,stripScript,ownedRule,routeOfChains,ruleMatches,status,fingerprint,makeSpec,selectReconnectConnections,reconnectPlan,reconnect,transaction};

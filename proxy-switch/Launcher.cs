@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -7,11 +7,11 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("ProxySwitch")]
-[assembly: AssemblyDescription("Windows proxy manager")]
-[assembly: AssemblyProduct("ProxySwitch")]
-[assembly: AssemblyVersion("3.1.2.0")]
-[assembly: AssemblyFileVersion("3.1.2.0")]
+[assembly: AssemblyTitle("流向 · FlowSwitch")]
+[assembly: AssemblyDescription("FlowSwitch Windows proxy manager")]
+[assembly: AssemblyProduct("流向 · FlowSwitch")]
+[assembly: AssemblyVersion("3.2.1.0")]
+[assembly: AssemblyFileVersion("3.2.1.0")]
 
 internal static class Launcher
 {
@@ -36,9 +36,9 @@ internal static class Launcher
     {
         string[] required = {
             "ProxySwitch.ps1", "ProxyWindow.ps1", "ProxyBackend.ps1", "Preferences.ps1",
-            "Storage.ps1", "ProgramLaunch.ps1", "ProcessInventory.ps1", "ProxyDiscovery.ps1",
+            "Storage.ps1", "DesktopBranding.cs", "ProgramLaunch.ps1", "ProcessInventory.ps1", "ProxyDiscovery.ps1",
             "AppRouting.ps1", "AppRouter.cjs", "config.defaults.json", "Install-Shortcut.ps1",
-            "assets/ProxySwitch.ico", "vendor/js-yaml/dist/js-yaml.cjs.js"
+            "assets/FlowSwitch.ico", "vendor/js-yaml/dist/js-yaml.cjs.js"
         };
         foreach (string name in required)
             if (!File.Exists(Path.Combine(app, name)))
@@ -70,7 +70,7 @@ internal static class Launcher
             string root = AppDomain.CurrentDomain.BaseDirectory;
             string app = Path.Combine(root, "app");
             VerifyFiles(app);
-            if (mode == "--verify") { Console.WriteLine("PASS: ProxySwitch 3.1.2 Windows package files are present."); return 0; }
+            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.2.1 Windows package files are present."); return 0; }
 
             string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
             if (!File.Exists(shell)) throw new FileNotFoundException("找不到 Windows PowerShell 5.1。");
@@ -78,7 +78,7 @@ internal static class Launcher
             if (mode == "--install-shortcut")
             {
                 command.Add(Path.Combine(app, "Install-Shortcut.ps1"));
-                command.Add("-LauncherPath"); command.Add(Path.Combine(root, "ProxySwitch.exe"));
+                command.Add("-LauncherPath"); command.Add(Path.Combine(root, "FlowSwitch.exe"));
             }
             else
             {
@@ -107,16 +107,16 @@ internal static class Launcher
                 {
                     string detail = errors.Result.Length == 0 ? "请检查 app 文件夹是否完整。" : errors.Result;
                     if (detail.Length > 1600) detail = detail.Substring(0, 1600);
-                    if (!quiet) MessageBox.Show("启动未完成。\r\n\r\n" + detail, "ProxySwitch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    if (!quiet) MessageBox.Show("启动未完成。\r\n\r\n" + detail, "流向 · FlowSwitch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
-                else if (mode == "--install-shortcut" && !quiet) MessageBox.Show("桌面快捷方式已创建。", "ProxySwitch", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                else if (mode == "--install-shortcut" && !quiet) MessageBox.Show("桌面快捷方式已创建。", "流向 · FlowSwitch", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return process.ExitCode;
             }
         }
         catch (Exception error)
         {
             Console.Error.WriteLine(error.Message);
-            if (!quiet) MessageBox.Show(error.Message, "ProxySwitch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!quiet) MessageBox.Show(error.Message, "流向 · FlowSwitch", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return 1;
         }
     }

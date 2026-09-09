@@ -30,14 +30,13 @@ function Invoke-AppRouter($Request) {
 }
 
 function Set-ApplicationRoute([string]$Executable,[string]$Route) {
-    if((Get-ProgramProxyAdapter $Executable) -eq 'chromium' -and -not @((Get-RoutingSnapshot).entries|Where-Object {$_.path -ieq $Executable}).Count){return Set-ProgramLaunchRoute $Executable $Route}
     Use-ChangeLock {
         if($Route -notin (@('Direct','Follow')+(Get-ProfileKeys))){throw '所选代理已不在列表中，请刷新。'}
         if(-not [IO.Path]::IsPathRooted($Executable) -or $Executable -notmatch '(?i)\.exe$' -or $Executable -match '[,\r\n\x00]'){throw '请选择有效 EXE 路径。'}
         if($Route -ne 'Follow' -and -not (Test-Path -LiteralPath $Executable -PathType Leaf)){throw '程序已不存在，请重新添加。'}
         foreach($p in $script:Profiles.Profiles){if($Executable -ieq $p.CorePath -or $Executable -ieq $p.AppPath){throw '不能给代理程序自身分流，以免形成回路。'}}
         $gateway=Get-GatewayKey
-        if(-not $gateway -or -not (Get-Listener (Get-Profile $gateway))){throw '按程序分流需要本地分流引擎，请在「代理管理」设置并启动引擎。'}
+        if(-not $gateway -or -not (Get-Listener (Get-Profile $gateway))){throw '尚未接入分流引擎，不能接管此程序。请在「代理管理」编辑引擎入口并启用固定入口模式；本次没有保存假规则或创建启动图标。'}
         if($Route -notin @('Direct','Follow') -and -not (Get-Listener (Get-Profile $Route) -ProbeRemote)){throw '所选代理入口未就绪，请先连接后再设置程序线路。'}
         $before=Get-SystemSnapshot;$beforeEnv=Get-UserProxyEnv;$rules=Get-RoutingSnapshot
         $default=$rules.defaultRoute;$beforeKey=Get-SystemKey $before
@@ -47,14 +46,18 @@ function Set-ApplicationRoute([string]$Executable,[string]$Route) {
         }
         $entries=@($rules.entries | Where-Object {$_.path -ine $Executable})
         if($Route -ne 'Follow'){$entries+=[pscustomobject]@{path=$Executable;route=$Route}}
-        $targetRules=[pscustomobject]@{entries=$entries;defaultRoute=$default}
+        # Legacy launchers may remain for compatibility, but no longer override this engine rule.
+        $launchEntries=@($rules.launchEntries | ForEach-Object {if($_.path -ieq $Executable){[pscustomobject]@{path=$_.path;route='Follow';adapter=$_.adapter}}else{$_}})
+        $targetRules=[pscustomobject]@{entries=$entries;defaultRoute=$default;launchEntries=$launchEntries}
         $p=Get-Profile $gateway;$target=[pscustomobject]@{Flags=3;Server=(Get-EndpointAddress $p);Bypass=$before.Bypass}
         $selection=[pscustomobject]@{Key=$gateway;NetworkKey=$(if($default){$default}else{$gateway});Unified=($entries.Count -eq 0 -and [bool]$default);ChangedAt=(Get-Date).ToString('o')}
         $backup=Invoke-ProxyTransaction $target (New-EnvTarget $beforeEnv $gateway) $selection $before $beforeEnv $targetRules $rules
-        [pscustomobject]@{Backup=$backup;Message=('该程序已设为「'+(Get-RouteName $Route)+'」。新连接生效，其他程序继续使用当前默认线路。')}
+        [pscustomobject]@{Backup=$backup;Message=('「'+[IO.Path]::GetFileNameWithoutExtension($Executable)+'」的引擎规则已载入：'+(Get-RouteName $Route)+'。继续使用原来的软件入口；经过分流引擎的新连接按此规则选择出口。旧连接可右键单独重连，未经过引擎的连接会显示未接管。')}
     }
 }
 function Sync-ApplicationRoutes {Use-ChangeLock {Invoke-AppRouter @{action='sync'}}}
+function Get-ApplicationReconnectPlan([string]$Executable) {Invoke-AppRouter @{action='reconnect-plan';path=$Executable}}
+function Invoke-ApplicationReconnect($Plan) {Use-ChangeLock {Invoke-AppRouter @{action='reconnect';plan=$Plan}}}
 function Get-ApplicationRoutes {
     try{$core=Invoke-AppRouter @{action='status'}}catch{
         $saved=Get-RoutingSnapshot
@@ -110,6 +113,7 @@ function Get-ApplicationRoutes {
         $rule=$core.entries | Where-Object {$_.path -ieq $app.Path} | Select-Object -First 1
         $policy='Follow';$loaded=$false;if($rule){$policy=$rule.route;$loaded=[bool]$rule.loaded}
         $launch=$launchEntries|Where-Object {$_.path -ieq $app.Path}|Select-Object -First 1
+        if($rule -or ($script:Profiles.Routing.UnifiedMode -eq 'gateway' -and $launch.route -eq 'Follow')){$launch=$null}
         if($launch){$policy=$launch.route}
         $actual=@();foreach($route in @('Direct')+(Get-ProfileKeys)+@('Blocked','Unknown')){if($counts.ContainsKey($route)){$actual+=((Get-RouteName $route)+' ×'+$counts[$route])}}
         if($unknown){$actual+='引擎入口 / 出口待确认'};if($outside){$actual+='入口外连接 ×'+$outside};if(-not $actual.Count){$actual=@('暂无连接')}
@@ -119,9 +123,16 @@ function Get-ApplicationRoutes {
         $status='未单独指定 · 仅观察实际连接'
         if($policy -ne 'Follow'){$status=$(if($loaded){'已加载；新连接生效'}else{'尚未加载；请重载规则'});if($loaded -and (@($counts.Keys | Where-Object {$_ -ne $policy}).Count -or $outside)){$status='已加载；存在旧连接或独立入口'}}
         $mode='observe';if($rule){$mode='engine'}
+        if($rule -and $loaded){
+            $loaded=$false;$status='规则已载入；等待实际连接'
+            if($outside -or $unknown -or $pending.Count -or $outsidePending){$status='规则已载入；存在未接管或失败连接'}
+            elseif(@($counts.Keys | Where-Object {$_ -ne $policy}).Count){$status='规则已载入；仍有旧线路连接，可右键重连'}
+            elseif($counts.ContainsKey($policy)){$loaded=$true;$status='已观察到指定线路连接'}
+        }
         if($launch){
             $mode='launch';$session=Test-ManagedProgramSession $app.Path $processes $policy
-            $loaded=$false;$status='启动代理已保存；需从桌面入口重开'
+            $loaded=$false;$status='目标已保存；请使用代理启动入口'
+            if($ids.Count){$status='未确认使用代理入口；当前连接见左栏'}
             if($session){
                 $wanted=$policy;if($wanted -eq 'Follow'){$wanted=Get-SystemKey (Get-SystemSnapshot)}
                 $status='已按目标启动；等待连接验证'
@@ -134,7 +145,7 @@ function Get-ApplicationRoutes {
         elseif(-not (Test-Path -LiteralPath $app.Path)){$status='路径已失效，请移除后重新添加'}elseif(-not $ids.Count -and $policy -ne 'Follow'){$status+=' · 未运行'}
         if($pending.Count){$status='代理连接尚未建立；请检查目标端口 · '+$status}
         $policyName=Get-RouteName $policy;if($mode -eq 'observe'){$policyName='未单独指定'}
-        $rows+=[pscustomobject]@{Name=$app.Name;Path=$app.Path;Policy=$policy;PolicyName=$policyName;Mode=$mode;Loaded=$loaded;Actual=($actual -join '，');Status=$status;PIDs=($ids -join ',');ChildNames=($childNames -join '、');OutsidePending=$outsidePending;CanLaunch=($mode -eq 'launch')}
+        $rows+=[pscustomobject]@{Name=$app.Name;Path=$app.Path;Policy=$policy;PolicyName=$policyName;Mode=$mode;Loaded=$loaded;Actual=($actual -join '，');Status=$status;PIDs=($ids -join ',');ChildNames=($childNames -join '、');OutsidePending=$outsidePending;CanLaunch=($mode -eq 'launch' -and $script:Profiles.Routing.UnifiedMode -ne 'gateway')}
     }
     [pscustomobject]@{Available=[bool]$core.available;Error=$core.error;Mode=$core.mode;Rows=@($rows | Sort-Object @{Expression={if($_.Policy -ne 'Follow'){0}else{1}}},Name);RuleCount=(@($core.entries).Count+@($launchEntries|Where-Object {$_.route -ne 'Follow'}).Count);LaunchRuleCount=@($launchEntries|Where-Object {$_.route -ne 'Follow'}).Count;DefaultRoute=$core.defaultRoute;DefaultLoaded=[bool]$core.defaultLoaded;GatewayKey=$gateway}
 }

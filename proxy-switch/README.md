@@ -1,25 +1,45 @@
-# ProxySwitch · 网络代理管家
+# 流向 · 网络代理管家 | FlowSwitch
 
 [返回三个软件的目录](../)
 
-## 下载 ProxySwitch
+<img src="assets/FlowSwitch.png" width="96" alt="FlowSwitch 图标">
 
-**[直接下载 Windows x64 程序包 · v3.1.2 · 96,145 字节](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)**
+**每条连接，自由选择。** 原 ProxySwitch 更名为 FlowSwitch；原代理设置与备份继续使用同一数据目录。
 
-完整解压后打开 `ProxySwitch` 文件夹，双击 **`ProxySwitch.exe`**。无需编译或安装开发工具；请保留同目录的 `app` 文件夹。需要 Windows 10 / 11 x64、Windows PowerShell 5.1、.NET Framework 4.8 和 `curl.exe`。
+## 下载 FlowSwitch
 
-[单独下载源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-Source.zip) · [下载与 SHA-256 校验](releases/README.md) · [完整运行要求](#运行要求)
+**[直接下载 Windows x64 程序包 · v3.2.1](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-x64.zip)**
+
+完整解压后打开 `FlowSwitch` 文件夹，双击 **`FlowSwitch.exe`**。无需编译或安装开发工具；请保留同目录的 `app` 文件夹。需要 Windows 10 / 11 x64、Windows PowerShell 5.1、.NET Framework 4.8 和 `curl.exe`。
+
+[单独下载源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-Source.zip) · [下载与 SHA-256 校验](releases/README.md) · [完整运行要求](#运行要求)
 
 一个通用的 Windows 代理管理面板：添加自己的代理入口，统一切换系统网络，或为程序指定单独线路。**不预设任何 VPN 品牌，也不捆绑代理服务。**
+
+FlowSwitch 用来整理多个代理客户端提供的入口、选择默认出口、给不同程序分配线路，并观察连接实际走向。它管理你已有的代理，不提供 VPN 服务、订阅或节点；基础切换不绑定品牌，固定入口与按程序分流目前适配 Clash Verge Rev / mihomo。
+
+## 功能一览
+
+| 功能 | 具体作用 | 生效条件 |
+| --- | --- | --- |
+| 代理管理 | 添加、修改、删除 HTTP / SOCKS5 入口，自定义名称、地址、端口和关联程序 | 客户端提供对应协议端口；目前不保存代理账号密码 |
+| 后台代理发现 | 识别已知代理内核和现有系统代理入口，确认监听后补充列表 | 发现只补充列表，不自动选择或切换线路；未知入口可手动添加 |
+| 统一切换 | 同步系统代理和命令行变量，撤销本工具的程序专用线路 | 影响遵循这些设置或接入引擎的新连接 |
+| 固定本地入口 | 应用继续使用同一个本地端口，在引擎内切换 HTTP、SOCKS5 或直连出口 | 分流引擎保持运行；作为上游的代理也需要可用 |
+| 按程序分流 | 右键设置直连、某个代理或跟随统一线路，按 EXE 完整路径加载规则 | 需要分流引擎，且目标程序的流量实际进入引擎 |
+| 重连旧线路 | 预览并确认关闭所选程序的旧连接，由程序自行重连 | 不退出软件；仅处理预览后身份仍匹配的连接 |
+| 实际出口观察 | 显示程序及相关子进程连接、已观察到的出口、规则载入和连接失败 | 无法确认时显示入口外连接或出口待确认，不冒认为成功 |
+| 撤回上次更改 | 恢复上次切换前的系统设置、变量与本工具管理的规则 | 检查端口可用性及设置归属，避免覆盖其他客户端后来的选择 |
+| 诊断与桌面集成 | 检测入口、重载规则、本机导出诊断报告；统一桌面、窗口和任务栏图标 | 报告不自动上传；Windows 程序包完整解压后运行 |
 
 ![代理管理页面，演示数据](assets/proxy-management.png)
 
 ## 快速开始
 
-1. 普通使用请下载 [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)，完整解压后双击 **`ProxySwitch.exe`**。源码开发另有 [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-Source.zip)，源码目录使用 `启动代理切换.cmd`。
+1. 普通使用请下载 [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-x64.zip)，完整解压后双击 **`FlowSwitch.exe`**。源码开发另有 [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-Source.zip)，源码目录使用 `启动代理切换.cmd`。
 2. 等待后台代理自动加入列表；可在 **代理管理 → 检测并添加后台代理** 手动重扫，或用「添加代理」填写自定义地址。
 3. 在顶部选择直连或已添加的代理，点击 **统一切换**。
-4. 为 Electron / Chromium 程序指定线路时，工具会备份并接入桌面启动入口。保存任务并完整退出该程序后，从桌面入口打开，再观察包含子进程的实际连接。需要撤回时点击 **撤回上次更改**。
+4. 在 **代理管理** 编辑已安装的 Clash Verge HTTP / 混合入口，填写内核路径并勾选 **用作程序分流引擎**、**固定本地入口**。保存不会改变网络；手动点击统一切换后，引擎保持本地入口，按所选上游转发。右键程序指定单独线路，继续使用原启动方式；普通设置不再生成启动图标。
 
 默认模板不包含任何 VPN 品牌。启动时读取已有配置并自动识别本机代理；升级保留原来的名称、端口、路径与稳定标识。自动发现只补充列表，不自动选择线路。界面每次刷新同步配置与实读状态。
 
@@ -66,19 +86,32 @@ Windows 程序包无需编译或安装开发工具。EXE 是编译后的 Windows
 
 正在被当前入口或程序规则使用的代理不能直接删除；先统一切换到其他目标。改变地址、端口后，需要重新统一切换或重载程序规则。
 
-## 程序启动代理
+## 固定入口与程序分流（3.2.0）
 
-Antigravity 等软件的主界面与联网子进程可能使用不同的网络库。主界面能连接系统代理，不代表语言服务也使用它；只改 Windows 系统代理或反复普通重开可能无法修复这种分裂。
+3.2.1 已包含固定入口和按程序重连，并统一为 FlowSwitch 新名称与图标。
 
-3.1 对具有 Chromium/Electron 运行资源的程序提供启动适配。右键选择 HTTP 代理或直连后，工具为界面配置 Chromium 启动参数，并为支持代理变量的子进程提供独立环境块。当前版本这一路径支持 HTTP 入口；未知程序或其他协议仍需对应的分流方式，不能靠保存一个目标强制接管所有网络库。
+| 工作模式 | 系统入口如何变化 | 适用场景 |
+| --- | --- | --- |
+| 系统代理模式 | 普通 HTTP 目标直接使用该代理端口；直连关闭系统代理。SOCKS5 目标需要引擎提供 HTTP 入口 | 切换浏览器、命令行等遵循系统设置的软件 |
+| 固定入口模式 | 保持同一个分流引擎本地入口，切换引擎上游或直连出口 | 减少端口反复变化，为已接入引擎的软件统一或单独分配线路 |
 
-原桌面快捷方式没有额外启动参数时，工具保留其图标与工作目录，备份原文件，再接入统一启动入口。有自定义参数时保留原文件，创建“程序名（指定代理）”入口。每次打开都会读取最新的程序目标和代理端口，不把旧端口写死在快捷方式中。
+**固定入口模式下，引擎必须保持运行。** 选择其他代理作为出口后，连接仍先经过本地引擎，再转给所选代理；这不表示切换失败。入口和出口是两个不同环节。
 
-**保存线路后，需要完整退出一次，再从接入的桌面图标打开。** 已运行时再次点击只会明确提示尚未应用，不会自动结束程序。管理器本身可以关闭，桌面入口仍可读取保存的目标并启动软件。通过其他未接入的入口启动时，界面会显示需重开/待验证。
+软件连接同一个本地引擎入口，管理器在引擎内选择 HTTP、SOCKS5 或直连。入口不会随出口改变；分流引擎必须保持运行，即便选择的是另一家代理。当前引擎适配使用 Clash Verge / mihomo 已有的本地命名管道，需要 Node.js 22+；不会下载内核或修改订阅、账号、DNS、TUN。其他品牌提供的 HTTP/SOCKS5 入口可作为上游，不要求 Upnet。
 
-“统一切换”会把已配置程序改为跟随当前系统入口。每个程序仍需在下一次启动时获得新环境；“撤回”恢复备份中的目标，移除启动适配时恢复原桌面入口，保留用户后来更改过的目标/参数。
+- **统一切换**：改变默认出口并撤销程序例外；固定模式下连直连也通过同一个本地入口。兼容系统模式保留原有行为。
+- **右键程序指定线路**：加载按 EXE 路径匹配的引擎规则，不再自动创建启动快捷方式。程序仍从原图标、开始菜单或搜索工具启动。网络连接必须已经进入引擎，规则才能起作用；独立联网子 EXE 可分别指定。
+- **重连旧线路连接**：先显示所选 EXE 的旧连接数量，经用户确认才逐条关闭；不退出程序，不关闭其他软件、已经走目标线路或身份不明的连接。由软件自行重连。预览超过 60 秒或线路改变后失效，不会关闭预览之后的新连接。
+- **真实状态**：规则载入与观察到目标出口分别显示。绕过引擎、旧连接和连接失败均有提示；保存规则不代表已经接管。
+- **防回路**：固定模式为代理内核及关联程序添加直连保护，不把其连接再转发给自身。所选引擎端口必须与控制接口实读端口匹配。
 
-依据：[Electron 代理启动参数](https://www.electronjs.org/docs/latest/api/command-line-switches#--proxy-serveraddressport)、[Node.js 子进程环境](https://nodejs.org/api/child_process.html#child_processspawncommand-args-options)、[Go HTTP 代理变量](https://pkg.go.dev/net/http#ProxyFromEnvironment)。
+不遵循系统代理、自带其他代理或使用独立 VPN 隧道的软件仍可能绕过入口。此版本没有强制拦截全机流量，游戏登录和账号服务可用性不能由本地代理握手代替验证。普通系统代理不能让所有软件任意切换，这一限制会显示在界面中。
+
+如需撤除引擎：先编辑引擎取消“固定本地入口”并保存，再统一切换到直连；已加载规则撤除后可取消引擎标记。启动、刷新、退出均不自动重新应用选择。
+
+旧版本已经创建的兼容启动入口及备份保留；当同一程序改用引擎规则时，其旧启动目标改为跟随系统入口，不再优先覆盖引擎规则。不要用未验证的兼容入口重启承载当前对话的应用。
+
+协议依据：[mihomo 连接查询及按连接 ID 关闭接口](https://wiki.metacubex.one/en/api/)。
 
 ## 可选的程序分流引擎
 
@@ -86,23 +119,44 @@ Antigravity 等软件的主界面与联网子进程可能使用不同的网络�
 | --- | --- |
 | 直连、普通 HTTP 系统统一切换 | 不需要 |
 | 检测 HTTP / SOCKS5 入口 | 不需要 |
-| Chromium/Electron 程序的 HTTP / 直连启动代理 | 不需要 |
-| 其他程序的引擎规则分流 | 需要；流量必须实际进入引擎 |
+| 旧版 Chromium/Electron HTTP / 直连启动入口兼容 | 不需要；不作为当前普通程序分流方式 |
+| 当前右键按程序指定线路 | 需要；流量必须实际进入引擎 |
 | SOCKS5 系统统一切换 | 需要，由引擎提供本地 HTTP 入口 |
 
 目前程序分流适配 **Clash Verge Rev / Mihomo**。在对应代理编辑窗口，填写其本地 HTTP / 混合端口和内核 EXE，勾选「用作程序分流引擎」，让引擎保持规则模式。它使用 Verge 现有的本地命名管道与全局脚本，不开放新的 HTTP 控制端口。
 
-统一切换到普通 HTTP 代理时直接使用它自己的端口，不因另一个引擎正在运行而借用其入口。指定引擎自身或 SOCKS5 作为统一目标时才经由引擎。引擎规则分流经由引擎转发到对应入口；程序启动适配直接使用指定的 HTTP 入口。原始规则和脚本保留在配置中，可撤回恢复。
+系统代理模式下，统一切换到普通 HTTP 代理直接使用它自己的端口；指定引擎自身或 SOCKS5 目标时经由引擎。固定入口模式下，所有受管理目标均经由所选引擎入口。原始规则和脚本保留在配置中，可撤回恢复。旧版程序启动适配仅保留兼容，不是当前右键分流的默认方式。
 
 实现依据：[Mihomo 路由规则](https://wiki.metacubex.one/config/rules/)、[HTTP 出站](https://wiki.metacubex.one/config/proxies/http/)、[SOCKS5 出站](https://wiki.metacubex.one/config/proxies/socks/)、[Verge 全局脚本](https://www.clashverge.dev/guide/script.html)。
 
 ## 为程序指定线路
 
-右键程序选择线路。支持启动适配的程序使用自己的代理参数与子进程环境；其余程序使用已配置的引擎规则。选择「跟随统一线路」会撤销该程序的专用目标。支持 EXE、指向 EXE 的快捷方式、文件拖放、名称和路径搜索。
+右键程序选择线路，当前普通分流统一使用已配置的引擎规则，不自动创建「指定代理」启动图标。继续使用原桌面图标、开始菜单或搜索工具打开程序。选择「跟随统一线路」会撤销该程序的专用目标。支持 EXE、指向 EXE 的快捷方式、文件拖放、名称和路径搜索。
 
 ![动态代理右键菜单，演示数据](assets/program-menu.png)
 
 引擎规则按 EXE 完整路径生效；启动适配随启动环境传给子进程。列表会汇总同一程序目录内的父子进程，并显示子进程绕过本地入口的连接失败。一个软件可能有多个独立联网进程；升级导致路径改变时，应移除旧路径并重新添加。程序路径使用 Windows 的有限查询权限接口获取，不枚举目标模块或读取进程内存；读取被拒绝时仍按 PID 显示，不能直接从缺少路径的行设置路径规则。已配置代理的 `SynSent` 会显示具体端口和「连接尚未建立」，不会算作成功出口。没有证据确认出口的连接会显示「入口外连接」或「出口待确认」，不将它冒认为直连。
+
+## 常见问题
+
+### 怎样确认真正走通
+
+| 界面现象 | 含义与下一步 |
+| --- | --- |
+| 已保存或规则已加载 | 设置已记录或引擎已载入，还不能证明应用已成功联网 |
+| 已观察到指定线路连接 | 已有目标线路的连接证据；目标网站或账号登录仍需实际验证 |
+| 暂无连接 | 当前未观察到相关连接，打开需要联网的功能后再检查 |
+| 入口外连接 / 出口待确认 | 检查应用独立代理、实际联网子进程与引擎入口 |
+| SynSent / 连接尚未建立 | TCP 还在尝试建立连接，应检查端口监听，不能算作成功出口 |
+| 旧线路仍有连接 | 可能是切换前建立的长连接，按需预览并确认重连 |
+
+**为什么指定了备用代理，仍需要启动另一个客户端？** 如果那个客户端承担固定入口的引擎职责，它需要保持运行。如果没有使用固定入口，却只有启动旧客户端才能联网，应检查应用保存的旧端口、独立启动参数、继承的环境变量及子进程路径，不能仅凭现象就判定为“缓存”。
+
+**为什么重启程序后仍然没变化？** 重启只会重新建立连接，不会自动修正错误入口、独立代理设置或不匹配的 EXE 路径。先检查目标代理监听、实际联网进程、入口和规则，再测试目标功能。端口可连接、规则已加载、网站能够登录是三个不同的验证结果。
+
+**能否让电脑上所有软件任意切换？** 本版本管理遵循系统代理或已接入引擎的连接；不能保证接管忽略系统代理的软件、独立 VPN 隧道或自带代理的应用。它不自动开启 TUN、不修改 DNS、路由或 WinHTTP，也不强制退出其他应用。
+
+**会不会运行后抢回我选择的线路？** 启动、刷新、退出不写系统代理、代理环境变量和程序规则，不重新应用历史选择。自动发现可补充代理列表；实际切换由用户点击触发，自动发现与自动刷新各有独立开关。
 
 ## 运行要求
 
@@ -165,8 +219,8 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-SwitchIntera
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-ProgramLaunch.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-Storage.ps1
 # 构建与测试可直接运行的 Windows 程序包
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-WindowsPackage.ps1 -Destination C:\Temp\ProxySwitch-Windows
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-WindowsPackage.ps1 -PackageDirectory C:\Temp\ProxySwitch-Windows\ProxySwitch
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-WindowsPackage.ps1 -Destination C:\Temp\FlowSwitch-Windows
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-WindowsPackage.ps1 -PackageDirectory C:\Temp\FlowSwitch-Windows\FlowSwitch
 ```
 
 188 项断言覆盖代理模型、迁移、路由、事务回滚、并发改写保护、匿名报告、协议识别、自动发现缓存与有限进程查询。四种隔离界面回归覆盖自动发现、新端口识别、游戏行保留、连续 72 秒观察、外部选择、用户切换优先、阶段进度和设置实读。测试使用独立数据与模拟 Windows 写入，不切换用户正在使用的网络。临时父子程序真实验证启动环境继承、旧代理变量隔离、程序已运行时拒绝重复启动、快捷方式备份恢复及子进程绕过状态。13 项存储断言覆盖默认共享目录、显式目录优先级、迁移数据与原文件保留、快捷方式备份重定位、旧参数兼容及复制失败不发布半成品。

@@ -6,7 +6,7 @@ $qaRoot=Join-Path $env:TEMP ('ProxySwitch-package-'+[Guid]::NewGuid().ToString('
 [void][IO.Directory]::CreateDirectory($qaRoot)
 $relocated=Join-Path $qaRoot ('Moved '+[char]0x4e2d+[char]0x6587+' package')
 Copy-Item -LiteralPath $package -Destination $relocated -Recurse
-$exe=Join-Path $relocated 'ProxySwitch.exe'
+$exe=Join-Path $relocated 'FlowSwitch.exe'
 $dataRoot=Join-Path $qaRoot 'isolated settings'
 [void][IO.Directory]::CreateDirectory($dataRoot)
 $utf8=New-Object Text.UTF8Encoding($false)
@@ -42,6 +42,16 @@ $status=Invoke-Fixture ('--status --data-directory '+$quotedData)
 if($status.Code -ne 0){throw $status.Error};$value=$status.Out|ConvertFrom-Json
 Check ($value.Listeners.Count -eq 1 -and $value.Listeners[0].Key -eq 'qa') 'EXE did not pass its explicit settings directory.'
 Check (-not (Test-Path -LiteralPath (Join-Path $qaRoot 'wrong environment\config.json'))) 'Package wrote to the inherited environment directory.'
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -Path (Join-Path $relocated 'app\DesktopBranding.cs')
+$brandForm=New-Object Windows.Forms.Form
+try{
+    $longCommand='"'+$exe+'" --data-directory "'+$qaRoot+'\'+('long-directory-'*24)+'"'
+    $ready=[FlowSwitchDesktop]::ConfigureWindow($brandForm.Handle,$longCommand,(Join-Path $relocated 'app\assets\FlowSwitch.ico'))
+    Check ([FlowSwitchDesktop]::ReadWindowProperty($brandForm.Handle,5) -eq 'FlowSwitch.Desktop') 'Long source path lost its independent taskbar identity.'
+    if($ready){Check ([FlowSwitchDesktop]::ReadWindowProperty($brandForm.Handle,2) -ceq $longCommand) 'Taskbar relaunch command was truncated.'}
+    else{Check ([FlowSwitchDesktop]::ReadWindowProperty($brandForm.Handle,2) -eq $null) 'Rejected long taskbar command left a partial relaunch target.'}
+}finally{$brandForm.Dispose()}
 $dependency=Join-Path $relocated 'app\Storage.ps1';$held=$dependency+'.held'
 [IO.File]::Move($dependency,$held)
 try{$missing=Invoke-Fixture '--verify';Check ($missing.Code -ne 0 -and $missing.Error -match 'Storage.ps1') 'Incomplete package was accepted.'}finally{[IO.File]::Move($held,$dependency)}

@@ -40,4 +40,15 @@ throws(()=>r.makeSpec([entries[0],entries[0]],null,options,'',null));
 const renamed=structuredClone(options);renamed.Profiles[1].Name='New name';check(r.fingerprint(entries,'custom',options)===r.fingerprint(entries,'custom',renamed),'Renaming does not invalidate route identity');
 renamed.Profiles[1].Port=9090;check(r.fingerprint(entries,'custom',options)!==r.fingerprint(entries,'custom',renamed),'Changed endpoint must reload before claiming loaded');
 const clean={Version:3,Profiles:[],Routing:{Adapter:'none',ProfileId:''}};check(r.normalizeOptions(clean).Profiles.length===0,'Fresh empty install accepted');
+const fixedOptions=structuredClone(options);fixedOptions.Routing.UnifiedMode='gateway';fixedOptions.Profiles[1].CorePath='C:\\Apps\\upstream.exe';
+const fixed=r.makeConfig(base,entries,'custom',fixedOptions,'primary',{present:false});
+check(fixed.rules[0]==='PROCESS-PATH,C:\\Apps\\core.exe,'+r.routeName('Direct')&&fixed.rules[1]==='PROCESS-PATH,C:\\Apps\\upstream.exe,'+r.routeName('Direct'),'Proxy kernels bypass the selected upstream to prevent a loop');
+const sample=[
+ {id:'old',start:'2026-09-09',metadata:{processPath:entries[0].path},chains:[r.routeName('custom')]},
+ {id:'target',start:'2026-09-09',metadata:{processPath:entries[0].path},chains:[r.routeName('socks')]},
+ {id:'other',start:'2026-09-09',metadata:{processPath:entries[1].path},chains:[r.routeName('custom')]},
+ {id:'unidentified',start:'2026-09-09',metadata:{},chains:[r.routeName('custom')]}
+];
+const reconnect=r.selectReconnectConnections(sample,entries[0].path.toUpperCase(),'socks',options);
+check(reconnect.length===1&&reconnect[0].id==='old','Reconnect only selects old-route connections of the exact executable, never other apps, current route or unidentified connections');
 console.log('PASS: '+checks+' routing assertions; no real network writes.');

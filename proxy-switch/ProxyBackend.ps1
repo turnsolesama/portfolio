@@ -390,7 +390,10 @@ function Get-UnifiedPlan([string]$Key,$BeforeRouting) {
     if($gateway){$useEngine=($null -ne (Get-Listener (Get-Profile $gateway)))}
     if($BeforeRouting.installed -and -not $useEngine){throw '已有程序规则需要撤回，但分流引擎未运行。请启动引擎后再统一切换。'}
     $entrance=$Key;$default=$null
-    if($Key -ne 'Direct'){
+    if($script:Profiles.Routing.UnifiedMode -eq 'gateway'){
+        if(-not $useEngine){throw '固定入口的分流引擎未运行，保留当前线路。请启动引擎；不会偷偷改用另一端口。'}
+        $entrance=$gateway;$default=$Key
+    }elseif($Key -ne 'Direct'){
         if($useEngine -and ($Key -eq $gateway -or (Get-Profile $Key).Protocol -ne 'http')){$entrance=$gateway;$default=$Key}
         elseif((Get-Profile $Key).Protocol -ne 'http'){throw 'SOCKS5 统一切换需要本地分流引擎提供 HTTP 入口，请在代理管理设置引擎。'}
     }
@@ -419,7 +422,7 @@ function Set-SelectedProxy([string]$Key) {
             if($plan.Entrance -ne 'Direct' -and -not (Get-Listener (Get-Profile $plan.Entrance) -ProbeRemote)){throw '提交前入口已退出，未写入失效端口。'}
         }
         $backup=Invoke-ProxyTransaction $target (New-EnvTarget $beforeEnv $plan.Entrance) $selection $before $beforeEnv $rules $beforeRules $verify
-        [pscustomobject]@{Key=$Key;Backup=$backup;Test=$test;Message=('已统一切换到「'+(Get-RouteName $Key)+'」，同步系统代理与命令行变量，撤销 '+$plan.ClearedRules+' 条程序专用规则。现有连接需刷新或重开程序。')}
+        [pscustomobject]@{Key=$Key;Backup=$backup;Test=$test;Message=('已将新连接的统一线路设为「'+(Get-RouteName $Key)+'」，撤销 '+$plan.ClearedRules+' 条程序专用规则。'+$(if($script:Profiles.Routing.UnifiedMode -eq 'gateway'){'本地入口保持 '+$server+'；旧连接可在程序右键菜单中单独重连。'}else{'系统入口与命令行变量已同步，现有连接需刷新。'}))}
     }
 }
 

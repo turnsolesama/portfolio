@@ -1,13 +1,13 @@
 ﻿[CmdletBinding()]
-param([string]$Name='ProxySwitch 网络代理管家',[string]$LauncherPath='')
+param([string]$Name='流向 FlowSwitch',[string]$LauncherPath='')
 $ErrorActionPreference='Stop'
 if($Name -match '[<>:"/\\|?*\x00-\x1f]' -or -not $Name.Trim()){throw '快捷方式名称无效。'}
 $entry=Join-Path $PSScriptRoot 'ProxySwitch.ps1'
 if(-not (Test-Path -LiteralPath $entry)){throw '请先解压完整程序包。'}
 if($LauncherPath){
     $LauncherPath=[IO.Path]::GetFullPath($LauncherPath)
-    $expected=Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) 'ProxySwitch.exe'
-    if($LauncherPath -ine $expected -or -not (Test-Path -LiteralPath $LauncherPath -PathType Leaf)){throw '桌面入口必须指向完整程序包中的 ProxySwitch.exe。'}
+    $expected=Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))) 'FlowSwitch.exe'
+    if($LauncherPath -ine $expected -or -not (Test-Path -LiteralPath $LauncherPath -PathType Leaf)){throw '桌面入口必须指向完整程序包中的 FlowSwitch.exe。'}
 }
 . (Join-Path $PSScriptRoot 'Storage.ps1')
 $dataRoot=Resolve-ProxyDataDirectory '' $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA
@@ -19,7 +19,7 @@ $shell=New-Object -ComObject WScript.Shell
 try{
     if(Test-Path -LiteralPath $destination){
         $previous=$shell.CreateShortcut($destination)
-        $ownedExe=([IO.Path]::GetFileName($previous.TargetPath) -ieq 'ProxySwitch.exe' -and $previous.Description -like 'ProxySwitch *')
+        $ownedExe=([IO.Path]::GetFileName($previous.TargetPath) -in @('FlowSwitch.exe','ProxySwitch.exe') -and ($previous.Description -like 'FlowSwitch *' -or $previous.Description -like 'ProxySwitch *'))
         if($previous.Arguments -notlike '*ProxySwitch.ps1*' -and -not $ownedExe){throw '此名称已被其他快捷方式使用，请换一个名称。'}
         $backupDir=Join-Path $dataRoot 'backups'
         [void][IO.Directory]::CreateDirectory($backupDir)
@@ -34,8 +34,8 @@ try{
         $link.TargetPath=$LauncherPath;$link.Arguments='--data-directory '+$quotedDataDirectory
         $link.WorkingDirectory=[IO.Path]::GetDirectoryName($LauncherPath)
     }
-    $link.Description='ProxySwitch 3.1.2：管理自定义代理，一键统一切换，按程序指定线路。'
-    $icon=Join-Path $PSScriptRoot 'assets\ProxySwitch.ico'
+    $link.Description='FlowSwitch 3.2.1 · 流向：管理自定义代理，一键统一切换，按程序指定线路。'
+    $icon=Join-Path $PSScriptRoot 'assets\FlowSwitch.ico'
     if(Test-Path -LiteralPath $icon){$link.IconLocation=$icon+',0'}
     $link.Save()
     Write-Output ('Desktop shortcut ready: '+$destination)
