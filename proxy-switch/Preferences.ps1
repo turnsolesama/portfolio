@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.1.1'
+$script:ProductVersion='3.1.2'
 . (Join-Path $PSScriptRoot 'Storage.ps1')
 $script:LegacyDataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 $script:DataRoot=Resolve-ProxyDataDirectory $DataDirectory $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA

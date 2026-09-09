@@ -4,11 +4,11 @@
 
 ## 下载 ProxySwitch
 
-**[直接下载 Windows 源码运行包 · v3.1.1 · 287,707 字节](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip)**
+**[直接下载 Windows x64 程序包 · v3.1.2 · 96,145 字节](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)**
 
-完整解压后打开 `proxy-switch` 文件夹，双击 `启动代理切换.cmd`。这是 PowerShell / WinForms 源码运行包；需要 Windows 10 / 11、Windows PowerShell 5.1、.NET Framework 4.8 和 `curl.exe`。
+完整解压后打开 `ProxySwitch` 文件夹，双击 **`ProxySwitch.exe`**。无需编译或安装开发工具；请保留同目录的 `app` 文件夹。需要 Windows 10 / 11 x64、Windows PowerShell 5.1、.NET Framework 4.8 和 `curl.exe`。
 
-[下载与 SHA-256 校验](releases/README.md) · [程序源码](ProxySwitch.ps1) · [完整运行要求](#运行要求)
+[单独下载源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-Source.zip) · [下载与 SHA-256 校验](releases/README.md) · [完整运行要求](#运行要求)
 
 一个通用的 Windows 代理管理面板：添加自己的代理入口，统一切换系统网络，或为程序指定单独线路。**不预设任何 VPN 品牌，也不捆绑代理服务。**
 
@@ -16,12 +16,14 @@
 
 ## 快速开始
 
-1. 解压完整文件夹，双击 `启动代理切换.cmd`。
+1. 普通使用请下载 [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)，完整解压后双击 **`ProxySwitch.exe`**。源码开发另有 [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-Source.zip)，源码目录使用 `启动代理切换.cmd`。
 2. 等待后台代理自动加入列表；可在 **代理管理 → 检测并添加后台代理** 手动重扫，或用「添加代理」填写自定义地址。
 3. 在顶部选择直连或已添加的代理，点击 **统一切换**。
 4. 为 Electron / Chromium 程序指定线路时，工具会备份并接入桌面启动入口。保存任务并完整退出该程序后，从桌面入口打开，再观察包含子进程的实际连接。需要撤回时点击 **撤回上次更改**。
 
 默认模板不包含任何 VPN 品牌。启动时读取已有配置并自动识别本机代理；升级保留原来的名称、端口、路径与稳定标识。自动发现只补充列表，不自动选择线路。界面每次刷新同步配置与实读状态。
+
+Windows 程序包无需编译或安装开发工具。EXE 是编译后的 Windows 启动入口，`app` 文件夹包含运行模块；请完整保留该目录，不能只复制 EXE。双击「创建桌面快捷方式.cmd」可创建或更新指向 EXE 的桌面入口。运行仍使用 Windows 自带 PowerShell 5.1 和 .NET Framework；可选分流功能的依赖见下文。源码包保留构建脚本和测试，程序包只包含运行所需文件。
 
 ## 统一切换会做什么
 
@@ -151,6 +153,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Install-Shortcut.ps1
 
 ## 开发与验证
 
+`Build-WindowsPackage.ps1` 使用本机 .NET Framework 的 C# 编译器生成 x64 WinExe，不下载编译依赖。只有构建者需要编译器，下载程序包的用户无需自行构建。启动器直接创建隐藏的 PowerShell 子进程，不经过 cmd 命令拼接。依据：[Microsoft 编译输出选项](https://learn.microsoft.com/en-us/dotnet/csharp/language-reference/compiler-options/output)、[ProcessStartInfo.UseShellExecute](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.processstartinfo.useshellexecute)。
+
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-All.ps1
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\ProxySwitch.ps1 -SmokeTest
@@ -160,6 +164,9 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-AutomaticDis
 powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-SwitchInteraction.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-ProgramLaunch.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-Storage.ps1
+# 构建与测试可直接运行的 Windows 程序包
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build-WindowsPackage.ps1 -Destination C:\Temp\ProxySwitch-Windows
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-WindowsPackage.ps1 -PackageDirectory C:\Temp\ProxySwitch-Windows\ProxySwitch
 ```
 
 188 项断言覆盖代理模型、迁移、路由、事务回滚、并发改写保护、匿名报告、协议识别、自动发现缓存与有限进程查询。四种隔离界面回归覆盖自动发现、新端口识别、游戏行保留、连续 72 秒观察、外部选择、用户切换优先、阶段进度和设置实读。测试使用独立数据与模拟 Windows 写入，不切换用户正在使用的网络。临时父子程序真实验证启动环境继承、旧代理变量隔离、程序已运行时拒绝重复启动、快捷方式备份恢复及子进程绕过状态。13 项存储断言覆盖默认共享目录、显式目录优先级、迁移数据与原文件保留、快捷方式备份重定位、旧参数兼容及复制失败不发布半成品。
@@ -185,5 +192,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-Storage.ps1
 ```
 
 测试可用 `PROXY_SWITCH_DATA_DIR` 隔离本机数据。路由集成测试同时设置 `PROXY_SWITCH_TEST_ENGINE_DIR` 与以 `\\.\pipe\ProxySwitch-Test-` 开头的 `PROXY_SWITCH_TEST_PIPE`，以测试专用实例替代用户实例。
+
+Windows 程序包另做独立验收：文件哈希、移动到含中文/空格的路径、EXE 打开真实界面并正常退出、显式配置目录、文件缺失时报错，以及临时桌面快捷方式的目标和工作目录。验收只操作临时副本，不切换真实网络。
 
 YAML 解析器的 CommonJS 构建已包含，无需 `npm install`。原创代码使用 [MIT](LICENSE)，第三方组件见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

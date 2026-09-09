@@ -12,7 +12,7 @@ $muted=[Drawing.ColorTranslator]::FromHtml('#617687')
 $mint=[Drawing.ColorTranslator]::FromHtml('#087F72')
 $paper=[Drawing.ColorTranslator]::FromHtml('#F1F5F7')
 $form=New-Object Windows.Forms.Form
-$form.Text='ProxySwitch 3.1.1 · 网络代理管家'
+$form.Text='ProxySwitch 3.1.2 · 网络代理管家'
 $form.ClientSize=New-Object Drawing.Size(1080,830)
 $form.MinimumSize=New-Object Drawing.Size(1020,800)
 $form.StartPosition='CenterScreen';$form.AutoScaleMode='Dpi';$form.BackColor=$paper
@@ -51,7 +51,7 @@ $form.Controls.Add($layout)
 $header=New-Object Windows.Forms.Panel;$header.Dock='Fill';$header.BackColor=$ink;$header.Margin=New-Object Windows.Forms.Padding(0,0,0,12)
 $layout.Controls.Add($header,0,0)
 $brand=New-Label $header 'ProxySwitch' 18 8 210 35 21 $true;$brand.ForeColor=[Drawing.Color]::White
-$sub=New-Label $header '网络代理管家   /   3.1.1' 228 18 300 26 10;$sub.ForeColor=[Drawing.ColorTranslator]::FromHtml('#80DED0')
+$sub=New-Label $header '网络代理管家   /   3.1.2' 228 18 300 26 10;$sub.ForeColor=[Drawing.ColorTranslator]::FromHtml('#80DED0')
 $tagline=New-Label $header '看清当前出口，为每个程序选择合适的线路。' 20 43 670 22 9;$tagline.ForeColor=[Drawing.ColorTranslator]::FromHtml('#CADAE3')
 $help=New-Button $header '使用指南' 816 17 92 34 {Show-Guide};$help.Anchor='Top,Right'
 $settings=New-Button $header '代理管理' 916 17 96 34 {$tabs.SelectedTab=$proxyPage};$settings.Anchor='Top,Right'

@@ -40,7 +40,7 @@ $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=100
 $qaTimer.Add_Tick({
     try{
         if($clock.Elapsed.TotalSeconds -gt 20){throw 'Switch UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms|Where-Object Text -like 'ProxySwitch 3.1.1*'|Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms|Where-Object Text -like 'ProxySwitch 3.1.2*'|Select-Object -First 1
         if(-not $main){return};$combo=Find-Type $main ([Windows.Forms.ComboBox])|Select-Object -First 1
         if($global:step -eq 0 -and (Test-Path -LiteralPath (Join-Path $qaRoot 'inspection-started'))){
             $combo.SelectedIndex=2

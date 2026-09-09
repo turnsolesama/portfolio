@@ -38,7 +38,7 @@ $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=250
 $qaTimer.Add_Tick({
     try{
         if($clock.Elapsed.TotalSeconds -gt 40){throw 'Automatic UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms|Where-Object Text -like 'ProxySwitch 3.1.1*'|Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms|Where-Object Text -like 'ProxySwitch 3.1.2*'|Select-Object -First 1
         if(-not $main){return}
         $combo=Find-Type $main ([Windows.Forms.ComboBox])|Select-Object -First 1
         $lists=@(Find-Type $main ([Windows.Forms.ListView]));$program=$lists|Where-Object {$_.Columns.Count -eq 4}|Select-Object -First 1

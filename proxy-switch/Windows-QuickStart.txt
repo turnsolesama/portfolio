@@ -1,0 +1,26 @@
+ProxySwitch 3.1.2 · 网络代理管家
+
+使用方法
+1. 完整解压压缩包，打开 ProxySwitch 文件夹。
+2. 双击 ProxySwitch.exe。无需编译或安装开发工具。
+3. 等待自动识别本机代理，或在「代理管理」中添加自己的入口。
+4. 选择目标后点击「统一切换」，或右键程序设置专用线路。
+
+双击「创建桌面快捷方式.cmd」可创建指向 EXE 的桌面入口。
+不要只复制 EXE：同目录的 app 文件夹也是程序的一部分。
+
+运行要求
+Windows 10 / 11 x64，.NET Framework 4.8、Windows PowerShell 5.1 和 curl.exe。
+EXE 是编译后的 Windows 启动入口，app 目录保留 PowerShell 界面与网络模块。
+基础 HTTP / 直连及支持的程序启动代理不需要 Node.js。
+引擎规则分流、SOCKS5 统一切换需要 Node.js 22+ 与可选的分流引擎。
+程序包不含 VPN、代理服务或节点，需要使用自己的代理客户端。
+
+数据与更新
+代理设置及备份默认位于 %USERPROFILE%\.proxyswitch，更新程序包时会保留。
+保留完整目录，用新包中的「创建桌面快捷方式.cmd」更新桌面入口。
+为程序设置线路后，保存任务、完整退出一次，再从已接入的程序图标打开。
+启动、刷新、退出不会自动切换系统代理，已有连接不会被强制断开。
+
+说明与源码：https://github.com/turnsolesama/portfolio/tree/main/proxy-switch
+许可：MIT。第三方许可见 THIRD_PARTY_NOTICES.md。

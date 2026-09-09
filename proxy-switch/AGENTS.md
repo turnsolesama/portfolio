@@ -1,7 +1,7 @@
 # 网络代理切换器
 
 - Windows PowerShell 5.1 / WinForms。程序分流使用已安装的 Node.js 与本目录 vendor/js-yaml 5.4.1（保留 MIT 许可证）。不自动更新依赖。
-- `ProxySwitch.ps1` 是唯一入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。
+- `ProxySwitch.ps1` 是脚本入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。Windows 程序包由编译后的 `ProxySwitch.exe` 启动 `app/ProxySwitch.ps1`。
 - `Preferences.ps1` 提供本机设置、快捷方式解析、汇总诊断；`Storage.ps1` 解析共享目录，数据默认保存到 `%USERPROFILE%\.proxyswitch`，避免 MSIX AppData 重定向产生不同文件视图。代码目录仅保留 `config.defaults.json` 默认模板。测试可用 `PROXY_SWITCH_DATA_DIR` 指定隔离目录。
 - `Build-Release.ps1 -Destination <新目录>` 通过显式文件清单打包；不得把本机 config.json、selection.json、app-rules.json、备份或实机截图加入清单。
 - `assets` 中的截图使用 `-Demo` 演示数据生成；不要用用户真实进程列表作为公开截图。
@@ -46,3 +46,5 @@
 - 新增 Test-ProgramLaunch.ps1：真实临时父子程序验证环境继承、原桌面入口备份/恢复、引擎离线时的程序代理、统一回滚与子进程绕过状态。只写临时目录。
 - 3.1.1 默认共享目录只在首次创建时复制当前环境可见的旧 AppData 数据，完整复制后原子发布，保留原文件；已有共享数据不得被旧版本覆盖。仅在存在匹配的迁移记录时将显式旧默认目录作为兼容别名；其他显式目录及测试环境变量保持隔离。迁移不得应用历史线路或写 Windows 网络设置。
 - `Test-Storage.ps1` 验证共享目录解析、迁移完整性、备份索引重定位、旧入口兼容和失败保留。`last-program-launch.json`、`storage-layout.json` 及程序配置和记录只存本机，不能加入发布清单。实机桌面入口验收必须由桌面实际启动，打包父进程下的成功运行不能代替。
+- 3.1.2 同时发布 Windows x64 程序包与源码包。`Build-WindowsPackage.ps1 -Destination <新目录>` 使用 Windows 自带 .NET Framework csc 编译 `Launcher.cs` 为 WinExe，按运行文件白名单打包，不下载依赖；保留 `app` 目录，不将 EXE 宣称为无依赖的单文件程序。
+- `Test-WindowsPackage.ps1 -PackageDirectory <包目录>` 校验文件哈希、移动后的 Unicode/空格路径、EXE SmokeTest、显式数据目录和缺失文件处理。测试安装脚本只在临时副本中替换桌面目录，不能创建或覆盖真实桌面图标。

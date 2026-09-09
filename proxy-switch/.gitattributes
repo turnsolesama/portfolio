@@ -6,3 +6,5 @@
 *.png binary
 *.ico binary
 *.zip binary
+*.exe binary
+*.cs text eol=lf

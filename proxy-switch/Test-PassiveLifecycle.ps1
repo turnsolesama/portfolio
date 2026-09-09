@@ -47,7 +47,7 @@ $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=300
 $qaTimer.Add_Tick({
     try{
         if($clock.Elapsed.TotalSeconds -gt 95){throw 'Lifecycle test timed out'}
-        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.1*'} | Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.2*'} | Select-Object -First 1
         if(-not $main){return}
         if($canary.Pending()){throw 'Passive status opened a socket'}
         if(Test-Path -LiteralPath (Join-Path $qaRoot 'writes.log')){throw 'Lifecycle wrote network settings'}

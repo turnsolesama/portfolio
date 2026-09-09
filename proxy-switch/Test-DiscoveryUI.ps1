@@ -33,7 +33,7 @@ $qaTimer.Add_Tick({
     $global:discoveryTicks++
     try{
         if($global:discoveryTicks -gt 120){throw 'Discovery UI timed out'}
-        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.1*'} | Select-Object -First 1
+        $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like 'ProxySwitch 3.1.2*'} | Select-Object -First 1
         if(-not $main){return}
         $combo=Find-QAType $main ([Windows.Forms.ComboBox]) | Select-Object -First 1
         $list=Find-QAType $main ([Windows.Forms.ListView]) | Where-Object {$_.Columns.Count -eq 6} | Select-Object -First 1

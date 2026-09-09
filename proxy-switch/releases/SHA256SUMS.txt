@@ -1,3 +1,5 @@
+357c5d3328a9db96c71cb7858b03faa1515f428c869fde5fda510f7ea0575e9b  ProxySwitch-v3.1.2-Windows-x64.zip
+55325b0e4f3f811b420b4bc099030a7760d8f9fe23a3e32e13a3a59525fa7eed  ProxySwitch-v3.1.2-Windows-Source.zip
 5b979ae7933b657ecdc15dd4bc39268ba61b8772f36b470bdf69ddebf701738d  ProxySwitch-v3.1.1-Windows-Source.zip
 c63c85824fb422b0efe6445305a83eeccd928e95d2a2448b92d710d99457682c  ProxySwitch-v3.1.0-Windows-Source.zip
 76be6c69e39545e05728a681301bb6490c4f484d8d220a797f4c37ea0934dd20  ProxySwitch-v3.0.3-Windows-Source.zip
