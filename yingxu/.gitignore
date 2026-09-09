@@ -1,0 +1,8 @@
+__pycache__/
+*.py[cod]
+*.sqlite3*
+*.log
+desktop/build.json
+desktop/verification.json
+runtime/
+.release-work/

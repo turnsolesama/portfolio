@@ -1,0 +1,37 @@
+{
+  "version": "0.2.1",
+  "package": "YingXu-v0.2.1-Windows-x64.zip",
+  "bytes": 537779,
+  "sha256": "3f01e09aab20c91dfacb3b5c0739259c665e982c7338d805987208be4d7120a2",
+  "entries": 53,
+  "relative_markdown_links_checked": 28,
+  "missing_links": [],
+  "private_data_members": [],
+  "verification": {
+    "python_full_suite": {
+      "run": 89,
+      "passed": 88,
+      "skipped": 1,
+      "skip_reason": "Windows symlink privilege unavailable"
+    },
+    "release_allowlist_after_utf16_fix": {
+      "passed": 4
+    },
+    "desktop": {
+      "passed": 54
+    },
+    "frontend_context_menu": {
+      "passed": 6
+    },
+    "node_syntax": true,
+    "isolated_zip_runtime": true,
+    "runtime_without_pillow": true,
+    "occupied_other_data_instance_rejected": true,
+    "real_user_data_used": false
+  },
+  "limitations": [
+    "Python and WebView2 runtime are not bundled.",
+    "Native external-app drag acceptance was not exercised on another PC.",
+    "One symlink test skipped for local Windows privilege."
+  ]
+}

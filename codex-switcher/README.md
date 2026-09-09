@@ -1,6 +1,12 @@
 # Codex Switcher
 
-[返回三个软件的目录](../)
+[返回工具集](../) · [映序](../yingxu/) · [AI Hub](../ai-hub/) · [FlowSwitch](../proxy-switch/)
+
+![Codex Switcher 服务配置](../docs/assets/codex-switcher.svg)
+
+**管理服务配置，预览后再切换。** 适合需要在官方模式与不同 Responses API 配置之间手动切换的 Windows 用户。
+
+[下载](#下载-codex-switcher) · [快速开始](#快速开始) · [常用功能](#常用功能) · [导入格式](#第三方导入格式) · [数据与维护](#数据与维护)
 
 ## 下载 Codex Switcher
 
@@ -11,6 +17,81 @@
 [下载与 SHA-256 校验](releases/README.md) · [程序源码](codex_switcher.pyw)
 
 一个用于 Windows 的本地 Codex API 服务配置工作台。炭灰界面、服务搜索、当前模式、密钥状态、详情面板和独立 EXE 启动入口。
+
+## 快速开始
+
+1. **打开**：完整解压，双击 `Codex Switcher.exe`。首次体验可运行 `Codex Switcher.exe --demo`，使用独立演示数据。
+2. **添加服务**：点“新增”，或在“导入配置”中选择文件 / 粘贴示例；先检查地址、模型、协议与推理强度的预览。
+3. **补充认证**：需要 API Key 时在编辑服务中填写。默认导入仅保存描述，变量名不会自动读取成密钥值。
+4. **应用所选配置**：确认要使用的服务，点击应用；工具先检查并备份，再修改受管理的 Codex 配置。
+5. **重新打开 Codex**：先保存当前工作，再自行关闭并重新打开 Codex，让新配置与环境变量生效。切换器不会结束正在运行的任务。
+
+### 导入、保存与应用有什么区别
+
+| 操作 | 结果 |
+| --- | --- |
+| 解析与预览 | 仅读取文本，展示将导入的服务，不运行示例代码、不请求 API |
+| 导入所选 | 将服务加入本地列表；重复的地址与模型组合跳过，默认不保存附带密钥 |
+| 编辑和保存 | 修改本地服务描述或独立密钥变量，不立即激活 |
+| 应用所选配置 | 检查并备份后写入 Codex 配置；新进程加载后生效 |
+| 切回官方模式 | 撤换工具托管的 provider 选择，保留当前模型和推理强度 |
+
+## 启动
+
+解压整个目录，双击 **Codex Switcher.exe**。需要 Windows x64、.NET Framework 4.x、Python 3.11+（包含 Tkinter）。EXE 不包含 Python；可使用系统安装的 Python，或把可用运行环境放在 `runtime/pythonw.exe`。
+
+也可以直接运行 `python codex_switcher.pyw`。`Codex Switcher.exe --demo` 打开隔离演示，不读取或更改真实 Codex 配置和用户密钥。
+
+## 常用功能
+
+- 新增、编辑、复制、搜索和移除服务配置。
+- 在官方账号登录与第三方 Responses API 配置之间切换；应用前检查并备份。
+- 文件或粘贴导入，预览新增条目，按 Ctrl 多选，重复的地址与模型组合自动跳过，ID 冲突另行命名。
+- API Key 输入隐藏，使用 Windows 用户环境变量；不将 Key 放入进程命令行或 profiles.json。环境变量是本机存储，并非加密保险库。
+- 导出可再次导入的配置 JSON，默认且始终不含密钥。
+- 查看并恢复由新版创建的 Codex 配置备份；恢复前再次备份当前文件。
+
+切换只修改 `CODEX_HOME/config.toml`，未指定 CODEX_HOME 时使用用户目录下的 `.codex/config.toml`。不会自动结束或重启当前任务；应用后自行关闭并重新打开 Codex。环境变量更改在新进程中生效，必要时退出所有 Codex 进程后从桌面重开。
+
+## 第三方导入格式
+
+支持以下**结构**，不保证所有同名工具的每个版本都兼容：
+
+1. 本工具导出的 JSON；普通配置数组，以及 `profiles` / `providers` 下的数组或字典。
+2. Codex `config.toml` 中的 `model_providers`，读取根级 model 和 model_reasoning_effort。
+3. 含 `settingsConfig.config`（Codex TOML 字符串）与 `settingsConfig.env` 的导出项，支持外层 `codex.providers`。
+4. `.env` 文本：`OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`。只解析文本，不执行 shell、不展开变量。
+5. 单条内联 JSON cURL 请求：通用 `/responses` 示例，以及 DeepSeek 官方 `/chat/completions` 示例。
+6. 字段别名：`baseUrl` / `apiHost`、`apiKey`、`envKey`。
+
+导入预览中 API Key 只显示“有/无”。只有勾选“同时保存附带的 API Key”后，才写入独立的新环境变量；不会覆盖已有服务的密钥。默认只导入服务描述。没有密钥时，编辑服务补充后再应用。
+
+不导入 OAuth 会话、浏览器 Cookie、auth.json 或其他工具的登录缓存。未知格式、未经确认的 Chat Completions 协议和不合法地址会报错；需要自定义认证头、查询参数或特殊认证的服务应先人工核对，相关额外字段不会自动迁移。单次导入最多 2 MiB / 200 项。
+
+示例文件见 [examples/provider.json](examples/provider.json)、[examples/codex.toml](examples/codex.toml)、[examples/provider.env](examples/provider.env)。普通示例使用虚构地址；DeepSeek 示例使用其官方地址。所有示例均不附带可用密钥。
+
+## 数据与维护
+
+服务列表保存在程序旁的 `profiles.json`；配置写入前的备份保存在对应文件旁的 `switcher-backups/`。更新时保留 profiles.json、备份和已设置的环境变量。新版不预置任何商业中转服务，也不自动请求第三方网络。
+
+旧记录若包含不合法的密钥变量名或旧接口协议，先在“编辑服务”中修正后再应用或导出。保存其他有效服务时，这些旧记录会原样保留。接口协议修改前需要自行确认服务支持 Responses。
+
+工具用 `switcher_` 前缀管理自己的 provider 表，保留用户其他 provider、工作区与嵌套模型配置。遇到无法安全处理的 TOML 布局会拒绝写入。根级模型名切回官方模式时保留，不会猜测替换模型。
+
+```powershell
+python -B -m unittest discover -v
+python -B build.py
+python -B package_release.py
+```
+
+配置字段参考：[OpenAI 官方配置说明](https://developers.openai.com/codex/config-reference)、[高级配置](https://developers.openai.com/codex/config-advanced)。分类为 Responses 配置不代表已通过远端服务的真实请求验证。使用前请确认服务商支持的模型与协议。
+
+本项目为独立工具，不是 OpenAI 官方客户端。当前未指定额外开源许可证。
+
+## 版本与界面设计记录
+
+<details>
+<summary>展开 v2.1 至 v2.4.1 的完整更新说明与示例支持细节</summary>
 
 ## v2.4.1 应用图标
 
@@ -67,54 +148,4 @@ v2.1.1 修复 Windows 任务栏显示 Python 图标的问题：在创建窗口�
 
 测试记录见 [TEST_REPORT.md](TEST_REPORT.md)。
 
-## 启动
-
-解压整个目录，双击 **Codex Switcher.exe**。需要 Windows x64、.NET Framework 4.x、Python 3.11+（包含 Tkinter）。EXE 不包含 Python；可使用系统安装的 Python，或把可用运行环境放在 `runtime/pythonw.exe`。
-
-也可以直接运行 `python codex_switcher.pyw`。`Codex Switcher.exe --demo` 打开隔离演示，不读取或更改真实 Codex 配置和用户密钥。
-
-## 常用功能
-
-- 新增、编辑、复制、搜索和移除服务配置。
-- 在官方账号登录与第三方 Responses API 配置之间切换；应用前检查并备份。
-- 文件或粘贴导入，预览新增条目，按 Ctrl 多选，重复的地址与模型组合自动跳过，ID 冲突另行命名。
-- API Key 输入隐藏，使用 Windows 用户环境变量；不将 Key 放入进程命令行或 profiles.json。环境变量是本机存储，并非加密保险库。
-- 导出可再次导入的配置 JSON，默认且始终不含密钥。
-- 查看并恢复由新版创建的 Codex 配置备份；恢复前再次备份当前文件。
-
-切换只修改 `CODEX_HOME/config.toml`，未指定 CODEX_HOME 时使用用户目录下的 `.codex/config.toml`。不会自动结束或重启当前任务；应用后自行关闭并重新打开 Codex。环境变量更改在新进程中生效，必要时退出所有 Codex 进程后从桌面重开。
-
-## 第三方导入格式
-
-支持以下**结构**，不保证所有同名工具的每个版本都兼容：
-
-1. 本工具导出的 JSON；普通配置数组，以及 `profiles` / `providers` 下的数组或字典。
-2. Codex `config.toml` 中的 `model_providers`，读取根级 model 和 model_reasoning_effort。
-3. 含 `settingsConfig.config`（Codex TOML 字符串）与 `settingsConfig.env` 的导出项，支持外层 `codex.providers`。
-4. `.env` 文本：`OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`。只解析文本，不执行 shell、不展开变量。
-5. 单条内联 JSON cURL 请求：通用 `/responses` 示例，以及 DeepSeek 官方 `/chat/completions` 示例。
-6. 字段别名：`baseUrl` / `apiHost`、`apiKey`、`envKey`。
-
-导入预览中 API Key 只显示“有/无”。只有勾选“同时保存附带的 API Key”后，才写入独立的新环境变量；不会覆盖已有服务的密钥。默认只导入服务描述。没有密钥时，编辑服务补充后再应用。
-
-不导入 OAuth 会话、浏览器 Cookie、auth.json 或其他工具的登录缓存。未知格式、未经确认的 Chat Completions 协议和不合法地址会报错；需要自定义认证头、查询参数或特殊认证的服务应先人工核对，相关额外字段不会自动迁移。单次导入最多 2 MiB / 200 项。
-
-示例文件见 [examples/provider.json](examples/provider.json)、[examples/codex.toml](examples/codex.toml)、[examples/provider.env](examples/provider.env)。普通示例使用虚构地址；DeepSeek 示例使用其官方地址。所有示例均不附带可用密钥。
-
-## 数据与维护
-
-服务列表保存在程序旁的 `profiles.json`；配置写入前的备份保存在对应文件旁的 `switcher-backups/`。更新时保留 profiles.json、备份和已设置的环境变量。新版不预置任何商业中转服务，也不自动请求第三方网络。
-
-旧记录若包含不合法的密钥变量名或旧接口协议，先在“编辑服务”中修正后再应用或导出。保存其他有效服务时，这些旧记录会原样保留。接口协议修改前需要自行确认服务支持 Responses。
-
-工具用 `switcher_` 前缀管理自己的 provider 表，保留用户其他 provider、工作区与嵌套模型配置。遇到无法安全处理的 TOML 布局会拒绝写入。根级模型名切回官方模式时保留，不会猜测替换模型。
-
-```powershell
-python -B -m unittest discover -v
-python -B build.py
-python -B package_release.py
-```
-
-配置字段参考：[OpenAI 官方配置说明](https://developers.openai.com/codex/config-reference)、[高级配置](https://developers.openai.com/codex/config-advanced)。分类为 Responses 配置不代表已通过远端服务的真实请求验证。使用前请确认服务商支持的模型与协议。
-
-本项目为独立工具，不是 OpenAI 官方客户端。当前未指定额外开源许可证。
+</details>

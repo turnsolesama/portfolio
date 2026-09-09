@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f7f8f6">
+  <title>映序 · 本地视频创作工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%239fbaa8'/%3E%3Cpath d='M16 22v-6h12m8 0h12v12m0 8v12H36m-8 0H16V36' stroke='%23191f1b' stroke-width='4' fill='none'/%3E%3Cpath d='m27 25 12 7-12 7z' fill='%23191f1b'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="项目导航">
+      <a class="brand" href="/" aria-label="映序首页">
+        <svg class="brand-mark" viewBox="0 0 36 36" fill="none" aria-hidden="true"><path d="M5 12V5h11M24 5h7v11M31 24v7H20M12 31H5V20"/><path d="m15 12 10 6-10 6z" class="brand-play"/></svg>
+        <span>映序<small>YINGXU STUDIO</small></span>
+        <span class="version-tag">本地版</span>
+      </a>
+      <div class="sidebar-section-title"><span>项目空间</span><button id="addProject" class="icon-button" title="创建项目" aria-label="创建项目"></button></div>
+      <div id="projectList" class="project-list"><div class="subtle-loading">正在打开工作台…</div></div>
+      <div class="nav-divider"></div>
+      <div class="sidebar-section-title resource-nav-label"><span>创作资源</span><span id="sidebarTotal" class="tiny-count">0</span></div>
+      <nav id="categoryNav" class="category-nav" aria-label="资源分类"></nav>
+      <div class="sidebar-bottom">
+        <button id="helpButton" class="help-button"><span id="helpIcon"></span><span>使用指南</span><kbd>?</kbd></button>
+        <div class="local-state"><span class="status-dot"></span><span id="connectionState">连接本地工作台</span><span class="local-state-end">LOCAL</span></div>
+      </div>
+    </aside>
+
+    <main class="main-shell">
+      <header class="topbar">
+        <div class="breadcrumb"><span>创作空间</span><span class="breadcrumb-slash">/</span><span id="breadcrumbProject">开始创作</span></div>
+        <div class="topbar-right">
+          <div class="search-wrap"><span id="searchIcon"></span><input id="searchInput" type="search" placeholder="搜索素材、剧本、标签…" aria-label="搜索素材、剧本、标签" autocomplete="off"><kbd>Ctrl K</kbd><button id="advancedSearch" class="icon-button" title="高级检索" aria-label="高级检索"></button></div>
+          <button id="importButton" class="button button-secondary"><span id="importIcon"></span><span>导入</span></button>
+          <button id="newItemButton" class="button button-primary"><span id="newItemIcon"></span><span>新建</span></button>
+        </div>
+      </header>
+
+      <div id="workspace" class="workspace">
+        <section id="library" class="library" aria-label="项目资源">
+          <div id="projectHero" class="project-hero"></div>
+          <div class="library-toolbar">
+            <div class="library-heading"><h2 id="sectionTitle">全部资源</h2><span id="resourceCount" class="resource-count">0</span><span id="searchTiming" class="search-timing"></span></div>
+            <div class="view-switch" role="group" aria-label="资源视图">
+              <button data-view="grid" class="icon-button active" title="画廊视图" aria-label="画廊视图"></button>
+              <button data-view="list" class="icon-button" title="列表视图" aria-label="列表视图"></button>
+              <button data-view="board" class="icon-button" title="分镜看板" aria-label="分镜看板"></button>
+            </div>
+          </div>
+          <div id="folderToolbar" class="organize-toolbar">
+            <nav id="folderBreadcrumb" class="folder-breadcrumb" aria-label="文件夹位置"></nav>
+            <div class="organize-actions">
+              <button id="newFolderButton" class="button button-secondary button-small" title="新建子文件夹"></button>
+              <button id="moveSelectionButton" class="button button-secondary button-small" disabled></button>
+              <button id="deleteSelectionButton" class="button button-ghost button-small" disabled></button>
+            </div>
+          </div>
+          <div class="filterbar">
+            <button id="selectPageButton" class="button button-ghost button-small">全选本页</button>
+            <span id="selectionCount" class="selection-count" hidden></span>
+            <select id="statusFilter" aria-label="按制作状态筛选"><option value="">全部状态</option></select>
+            <select id="kindFilter" aria-label="按文件类型筛选"><option value="">所有类型</option><option value="image">图片</option><option value="video">视频</option><option value="markdown">Markdown</option><option value="docx">Word 文档</option><option value="text">文本</option><option value="audio">音频</option><option value="pdf">PDF</option><option value="model">3D 模型</option><option value="file">其他文件</option></select>
+            <div class="filter-spacer"></div>
+            <select id="folderScope" aria-label="文件夹范围"><option value="current">当前文件夹</option><option value="all">此分类全部</option></select>
+            <select id="sortFilter" class="sort-filter" aria-label="排序"><option value="updated">最近更新</option><option value="name">文件名称</option><option value="order">分镜顺序</option></select>
+            <button id="rescanButton" class="icon-button" title="同步项目文件" aria-label="同步项目文件"></button>
+          </div>
+          <div id="activeQuery" class="active-query" hidden></div>
+          <div id="resourceViewport" class="resource-viewport"><div id="folderStrip" class="folder-strip" hidden></div><div id="resourceItems" class="resource-grid"></div></div>
+          <footer class="library-footer"><span id="resultSummary">本地文件，安心创作</span><div class="pagination"><button id="previousPage" class="icon-button" aria-label="上一页" title="上一页" disabled></button><span id="pageNumber">1 / 1</span><button id="nextPage" class="icon-button" aria-label="下一页" title="下一页" disabled></button></div></footer>
+        </section>
+        <div id="editorDivider" class="editor-divider" role="separator" aria-label="调整资源区与编辑区宽度" aria-orientation="vertical" tabindex="0" hidden></div>
+        <section id="editor" class="editor-panel" aria-label="多标签工作区" hidden>
+          <div id="editorTabs" class="editor-tabs" role="tablist" aria-label="已打开文件"></div>
+          <div id="editorToolbar" class="editor-toolbar"></div>
+          <div id="editorContent" class="editor-content"></div>
+          <footer id="editorStatus" class="editor-status"></footer>
+        </section>
+        <aside id="inspector" class="inspector" aria-label="资源信息与关联"></aside>
+      </div>
+      <div id="jobTray" class="job-tray" hidden></div>
+    </main>
+  </div>
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+  <div id="resourceMenu" class="context-menu" role="menu" hidden></div>
+  <dialog id="appDialog" class="app-dialog"><div class="dialog-heading"><div><h2 id="dialogTitle"></h2><p id="dialogSubtitle"></p></div><button id="closeDialog" class="icon-button" aria-label="关闭对话框"></button></div><form id="dialogForm"><div id="dialogBody" class="dialog-body"></div><div id="dialogError" class="dialog-error" hidden></div><div id="dialogActions" class="dialog-actions"></div></form></dialog>
+</body>
+</html>

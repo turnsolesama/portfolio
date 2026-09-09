@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="460" viewBox="0 0 1200 460" role="img" aria-labelledby="title desc">
+<title id="title">映序：从项目到交接的功能结构</title><desc id="desc">功能示意，非实机截图。项目包含剧本分镜、分类素材和SKILL，文件可编辑、移动并记录状态，最后形成可读取的项目进度。</desc>
+<rect width="1200" height="460" rx="22" fill="#f5f8f4"/>
+<g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif"><text x="40" y="50" fill="#547963" font-size="15" letter-spacing="2">YINGXU · 映序 0.2.1</text><text x="40" y="105" fill="#243830" font-size="34" font-weight="700">一部作品，一个清楚的项目空间。</text><text x="40" y="142" fill="#617067" font-size="18">剧本、分镜、素材与创作规范，在同一处连接起来。</text>
+<g fill="#fff" stroke="#d7e1d8"><rect x="40" y="186" width="260" height="178" rx="12"/><rect x="344" y="186" width="260" height="178" rx="12"/><rect x="648" y="186" width="224" height="178" rx="12"/><rect x="916" y="186" width="244" height="178" rx="12"/></g>
+<g fill="#243830" font-size="21" font-weight="700"><text x="62" y="225">建立与分类</text><text x="366" y="225">打开与编辑</text><text x="670" y="225">管理制作</text><text x="938" y="225">协作与交接</text></g>
+<g fill="#5c6d63" font-size="16"><text x="62" y="266">项目 / 跨集共用 / 分集目录</text><text x="62" y="300">角色 · 场景 · 道具 · 素材</text><text x="62" y="334">拖入 · 移动 · 重命名</text><text x="366" y="266">多标签文档与大图预览</text><text x="366" y="300">Markdown / Word 正文</text><text x="366" y="334">白模视频 / 生成结果</text><text x="670" y="266">分镜参数与素材关联</text><text x="670" y="300">状态 / 标签 / 待审核</text><text x="670" y="334">回收站与批次恢复</text><text x="938" y="266">集中管理 SKILL</text><text x="938" y="300">进度快照 / 文件路径</text><text x="938" y="334">Codex 等工具直接读取</text></g>
+<g stroke="#69846f" stroke-width="2" fill="none"><path d="M312 275h20m-6-6 6 6-6 6M616 275h20m-6-6 6 6-6 6M884 275h20m-6-6 6 6-6 6"/></g>
+<text x="40" y="420" fill="#697b6f" font-size="15">功能结构示意 · 非实机截图 · 文件保存在本地普通目录中</text></g></svg>

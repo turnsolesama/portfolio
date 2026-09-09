@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="270" viewBox="0 0 1200 270" role="img" aria-labelledby="title desc">
+<title id="title">AI Hub</title><desc id="desc">模型、LoRA、图库与工作流，集中放在一个资产工作台。。页面装饰横幅，不是软件截图。</desc>
+<rect width="1200" height="270" rx="22" fill="#f4f7f3"/>
+<path d="M930 0h248q22 0 22 22v226q0 22-22 22H930z" fill="#e8efea"/>
+<g fill="none" stroke="#547963" stroke-width="2"><rect x="986" y="62" width="130" height="146" rx="14"/><rect x="966" y="46" width="130" height="146" rx="14" fill="#f7faf7"/><path d="M992 86h68m-68 25h78m-78 25h48"/></g>
+<circle cx="1093" cy="181" r="31" fill="#547963"/>
+<text x="1093" y="188" text-anchor="middle" fill="#fff" font-size="20" font-family="Segoe UI, sans-serif">02</text>
+<g font-family="Microsoft YaHei, Noto Sans CJK SC, sans-serif"><text x="48" y="52" fill="#547963" font-size="15" letter-spacing="3">ASSET LIBRARY · 02</text>
+<text x="48" y="126" fill="#243830" font-size="44" font-weight="700">AI Hub</text>
+<text x="49" y="176" fill="#5c6d63" font-size="20">模型、LoRA、图库与工作流，集中放在一个资产工作台。</text>
+<text x="49" y="231" fill="#697b6f" font-size="14" letter-spacing="1">WINDOWS · 本地工作 · 独立下载</text></g></svg>
