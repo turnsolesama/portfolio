@@ -182,3 +182,7 @@ body { background:#101214; letter-spacing:0; font-size:14px; }
   #drawer { padding:22px 18px; }
 }
 @media(prefers-reduced-motion:reduce) { .btn:active,.domain-card:hover { transform:none; } }
+
+/* Generated brand icon: its own tile supplies the frame. */
+.logo-mark.app-icon { width:40px; height:40px; background:none; border:0; border-radius:0; box-shadow:none; }
+.logo-mark.app-icon img { display:block; width:100%; height:100%; object-fit:contain; }

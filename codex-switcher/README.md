@@ -4,13 +4,17 @@
 
 ## 下载 Codex Switcher
 
-**[直接下载 Windows 程序包 · v2.4.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.0-Windows-x64.zip)**
+**[直接下载 Windows 程序包 · v2.4.1](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)**
 
 完整解压后双击 `Codex Switcher.exe`。包内包含本软件源码，EXE 需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x。
 
 [下载与 SHA-256 校验](releases/README.md) · [程序源码](codex_switcher.pyw)
 
 一个用于 Windows 的本地 Codex API 服务配置工作台。炭灰界面、服务搜索、当前模式、密钥状态、详情面板和独立 EXE 启动入口。
+
+## v2.4.1 应用图标
+
+采用统一的双向箭头应用图标，桌面、任务栏、窗口和左上角一致。右上角移除无操作含义的 LOCAL WORKSPACE 标记；演示环境仅保留普通辅助文字。图标为预先生成的 PNG / ICO，运行程序仍只需 Python 标准库。
 
 ## v2.4 视觉更新
 

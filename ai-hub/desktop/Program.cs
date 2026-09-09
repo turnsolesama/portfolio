@@ -16,8 +16,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("AI Hub")]
 [assembly: AssemblyDescription("AI Hub 本地资产管理桌面终端")]
 [assembly: AssemblyProduct("AI Hub Desktop")]
-[assembly: AssemblyVersion("2.2.0.0")]
-[assembly: AssemblyFileVersion("2.2.0.0")]
+[assembly: AssemblyVersion("2.4.1.0")]
+[assembly: AssemblyFileVersion("2.4.1.0")]
 
 namespace AIHub.Desktop
 {

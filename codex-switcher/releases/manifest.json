@@ -1,19 +1,19 @@
 {
-  "version": "2.4.0",
-  "package": "Codex-Switcher-v2.4.0-Windows-x64.zip",
-  "bytes": 142934,
-  "sha256": "61ccbd636fafb2fc2151dfffada883e6f27a379b30ee9ca67dd6552f3dcb143f",
+  "version": "2.4.1",
+  "package": "Codex-Switcher-v2.4.1-Windows-x64.zip",
+  "bytes": 334554,
+  "sha256": "8d85aa43b3bc0293457c0ccd0397b536a1d3f565fed862641afe22fe58f806b4",
   "contains_user_data": false,
   "files": [
     {
       "path": "codex_switcher.pyw",
-      "bytes": 34016,
-      "sha256": "0bbda44b1f3434a74c4b752ba82961f8a9f0b2bf70592d5477fd3af5b1d4c222"
+      "bytes": 33828,
+      "sha256": "5c29ef0dad86362e65c2f9b4e42ab54cd3726cf5d8ab50799fc796f00a6094f8"
     },
     {
       "path": "switcher_core.py",
       "bytes": 15616,
-      "sha256": "79da508fae720d47a300677d4bf24e8bd33741aa75d02ed1c698b96ef7080a76"
+      "sha256": "50a818649743d9e00cb4eaa4063473af94c272eb0623c49afd6d083c97587522"
     },
     {
       "path": "switcher_curl.py",
@@ -47,13 +47,13 @@
     },
     {
       "path": "test_switcher_ui.py",
-      "bytes": 17336,
-      "sha256": "494daedb693eb02f25196d6f995fd9b48e1d67e2b1babc06824965273608b2e9"
+      "bytes": 19173,
+      "sha256": "15b1e6eb07140a152dd24025283f86c6ac332127b592057625d7e6290e027659"
     },
     {
       "path": "Launcher.cs",
       "bytes": 2577,
-      "sha256": "3b1506c4856992ea203327041255c61b9f85bb67e929f7b4118e7841f0e480c5"
+      "sha256": "6c4a05791e8446e67762b69e317f0ab87b18851a678b5f3971830f9f81664e88"
     },
     {
       "path": "build.py",
@@ -62,33 +62,68 @@
     },
     {
       "path": "package_release.py",
-      "bytes": 1919,
-      "sha256": "a871e5af7fc300aeff2af5f0bd0be41d03a0f3c6cc715671a90ecc2523110ec2"
+      "bytes": 2071,
+      "sha256": "36a8086d90073b745127c6efbc2324a1c048289ede3294f97ee3afa30994cb47"
     },
     {
       "path": "Codex Switcher.exe",
       "bytes": 367616,
-      "sha256": "65d4e80bc7b0486ea21129448db8cef0c4fe7d911e3e83d49a3a5d5a3fe6bda6"
+      "sha256": "5f3592f73100d7cda1294d9478e27740801e836ffd6011be76cfeff64ba17873"
     },
     {
       "path": "switcher.ico",
       "bytes": 361102,
-      "sha256": "40f57e7ef61b3be3abfeb93e6221b037163f46466377665edc40abe7d08b31e7"
+      "sha256": "4bad2c1ee05329a4d343a1c1fa67b6f2828c5563c2cfaabf38fc47c40f6889e6"
+    },
+    {
+      "path": "switcher.png",
+      "bytes": 51313,
+      "sha256": "fa74f9db74418737f2c822ff1f60cd25cd15661d31e438fe10892ed7bef7bf1d"
+    },
+    {
+      "path": "switcher_64.png",
+      "bytes": 5531,
+      "sha256": "0a059423e763de5e9f611c5cfcf22859b44f0672ec96ce7126b6cdcd8feb15e4"
+    },
+    {
+      "path": "gen_icon.py",
+      "bytes": 1502,
+      "sha256": "ab73f5c6c01caee6042246a4d82805e962c2d337b06c93102f7cd637aba59cbb"
+    },
+    {
+      "path": "artwork/header-36.png",
+      "bytes": 2422,
+      "sha256": "583e558437e369d4e7c6328a5f271a4b09ff423f387a447262dd713b76449e5e"
+    },
+    {
+      "path": "artwork/header-45.png",
+      "bytes": 3333,
+      "sha256": "9f19c105b9c092a77664f86b052ef52ba915168a76c5c83258950c5f494deda3"
+    },
+    {
+      "path": "artwork/header-54.png",
+      "bytes": 4378,
+      "sha256": "84a3734df050557dc51689b5a77ce468cb27693b7137c8e22ef4ec7a7d888155"
+    },
+    {
+      "path": "artwork/header-72.png",
+      "bytes": 6548,
+      "sha256": "f7569fe3a9ef7cb04d3cdf24e3cf8ca77e926b905950bfbc3c6e757137827022"
     },
     {
       "path": "DESIGN.md",
-      "bytes": 1834,
-      "sha256": "131aad7125c605ef84b178af46a16841ce1c09dee766a9aaa6ad83bf1fe0752a"
+      "bytes": 2988,
+      "sha256": "193cdba9870cdc3153a51481febbfe6cc906077ce56aee8345bb23fc1a2d4e89"
     },
     {
       "path": "README.md",
-      "bytes": 10525,
-      "sha256": "3a7c1d860328e7f97a1f2d363733ff58377c51ef65ef3d8a2e2e9f7ff035ee61"
+      "bytes": 10824,
+      "sha256": "650713dd775414dcfd72febea3fa1068b98a96e5d0c958b4f30816d2bc8bddf5"
     },
     {
       "path": "TEST_REPORT.md",
-      "bytes": 6667,
-      "sha256": "58af2b6f067bf1c6fc23758444d5fe4bc6141bf7bd4c11274d3a2aff230f3df1"
+      "bytes": 7723,
+      "sha256": "beee1732c2413bd70aa7729cce666e6945da72b1f27be97dc85ab2329cf3307e"
     },
     {
       "path": "AGENTS.md",

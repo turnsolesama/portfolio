@@ -3,6 +3,7 @@ import importlib.machinery
 import importlib.util
 import ctypes
 import json
+import struct
 from pathlib import Path
 import sys
 import unittest
@@ -109,6 +110,39 @@ class LayoutTests(unittest.TestCase):
         self.assertTrue(send(hwnd,0x007f,1,0),'Large taskbar icon missing')
         dialog=a.edit(a.profiles[0]);a.update()
         self.assertTrue(send(int(dialog.frame(),16),0x007f,1,0),'Dialog icon missing')
+
+    def test_header_only_shows_plain_demo_context(self):
+        a=self.open_app()
+        self.assertEqual(a.environment_label.cget('style'),'Muted.TLabel')
+        self.assertEqual(a.environment_label.cget('text'),'演示环境 · 隔离配置')
+        a.destroy();self.app=None
+        # Module paths were bound to its temporary directory at import; only
+        # render the production header while explicitly blocking key lookup.
+        self.assertEqual(self.mod.CONFIG_PATH.parent,Path(self.mod.DEMO_DIR.name))
+        with patch.object(self.mod,'DEMO',False),patch.object(self.mod,'get_key',return_value=None):
+            a=self.open_app()
+            self.assertIsNone(a.environment_label)
+            self.main_bounds()
+
+    def test_icon_assets_and_dpi_headers(self):
+        data=Path(__file__).with_name('switcher.ico').read_bytes()
+        self.assertEqual(struct.unpack_from('<HHH',data),(0,1,7))
+        sizes=[]
+        for index in range(7):
+            width,height,_,_,_,_,length,offset=struct.unpack_from('<BBBBHHII',data,6+index*16)
+            sizes.append(width or 256)
+            self.assertEqual(width,height)
+            self.assertLessEqual(offset+length,len(data))
+            self.assertEqual(struct.unpack_from('<I',data,offset)[0],40,'Tk needs BMP ICO entries')
+        self.assertEqual(sorted(sizes),[16,24,32,48,64,128,256])
+        for scale,expected in ((1,36),(1.25,45),(1.5,54),(2,72)):
+            a=self.open_app(scale)
+            self.assertEqual(a.brand_image.width(),expected)
+            self.assertEqual(a.brand_image.height(),expected)
+            self.assertTrue(a.brand_image.transparency_get(0,0))
+            self.assertFalse(a.brand_image.transparency_get(expected//2,expected//2))
+            self.assert_inside(a.brand_mark,a)
+            a.destroy();self.app=None
 
     def test_grouped_details_wrap_and_badge_tracks_selection_at_four_scales(self):
         for scale in (1, 1.25, 1.5, 2):

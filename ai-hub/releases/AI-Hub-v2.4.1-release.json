@@ -1,0 +1,19 @@
+{
+  "version": "2.4.1",
+  "packages": [
+    {
+      "name": "AI-Hub-v2.4.1-Source.zip",
+      "bytes": 514341,
+      "sha256": "62be93299b8f1501d41955e592f1ef28fd696b52467b9b32c4117f7ad144f0e7",
+      "files": 62,
+      "kind": "Source"
+    },
+    {
+      "name": "AI-Hub-v2.4.1-Windows-x64.zip",
+      "bytes": 1031438,
+      "sha256": "46f89076cab4e5f48d3c1d29102f1c862eea59888b8b890192918b98104e8c16",
+      "files": 63,
+      "kind": "Windows-x64"
+    }
+  ]
+}
