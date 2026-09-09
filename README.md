@@ -5,7 +5,7 @@
 | 独立文件夹 | 软件用途 | 最新版本 | 下载本软件 |
 | --- | --- | --- | --- |
 | **[AI Hub](ai-hub/)** | 管理本地模型、LoRA、图库与工作流 | 2.3.0 | **[下载 Windows 包 · 441 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip)** |
-| **[Codex Switcher](codex-switcher/)** | 管理、导入和切换 Codex API 服务配置 | 2.2.0 | **[下载 Windows 包 · 124 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.2.0-Windows-x64.zip)** |
+| **[Codex Switcher](codex-switcher/)** | 管理、导入和切换 Codex API 服务配置 | 2.3.0 | **[下载 Windows 包 · 137 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.3.0-Windows-x64.zip)** |
 | **[ProxySwitch](proxy-switch/)** | 管理代理入口、系统代理与程序线路 | 3.1.2 | **[下载 Windows 包 · 94 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)** |
 
 每个文件夹都有自己的使用说明、程序源码和 `releases/` 下载目录；每个 ZIP 只包含对应软件。
@@ -21,3 +21,4 @@
 如果 GitHub 页面显示 **Error loading page**，可直接使用上表的下载链接；如果已经下载但无法启动，请查看对应软件的运行要求，这与网页下载失败是两种情况。
 
 仓库发布软件源码、程序包、图标和演示资源，不包含个人图集、模型权重、密钥、本机数据库或私人配置。
+

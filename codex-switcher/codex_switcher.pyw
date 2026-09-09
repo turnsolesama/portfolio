@@ -357,14 +357,14 @@ class App(tk.Tk):
             core.apply_config(CONFIG_PATH,p,digest);self.refresh(p['id'] if p else '__account__');self.note('已应用。请自行关闭并重开 Codex；当前运行中的任务未被结束。')
         except (ValueError,OSError) as e:self.error(e)
     def import_file(self):
-        path=filedialog.askopenfilename(parent=self,title='选择服务配置或 cURL 示例',filetypes=[('配置 / cURL 文件','*.json *.toml *.env *.curl *.txt *.sh'),('所有文件','*')])
+        path=filedialog.askopenfilename(parent=self,title='选择配置或 API 示例',filetypes=[('配置 / API 示例','*.json *.toml *.env *.curl *.txt *.sh *.py *.js *.mjs *.cjs'),('所有文件','*')])
         if not path:return
         try:
             if Path(path).stat().st_size>2*1024*1024:raise ValueError('导入文件上限为 2 MiB')
             self.preview_import(Path(path).read_text(encoding='utf-8-sig'))
         except (ValueError,OSError,UnicodeError) as e:self.error(e)
     def import_paste(self):
-        w=Dialog(self,'粘贴配置','支持 cURL、JSON、Codex TOML 和 .env；仅解析文本，不执行命令。',width=800,height=600)
+        w=Dialog(self,'粘贴配置','支持 Python、Node.js、cURL、JSON、TOML 和 .env；示例代码仅在本机解析。',width=800,height=600)
         w.body.columnconfigure(0,weight=1);w.body.rowconfigure(0,weight=1)
         text=tk.Text(w.body,bg=PANEL,fg=FG,insertbackground=FG,relief='flat',wrap='word',
                      font=('Consolas',11),width=20,height=6,padx=self.px(12),pady=self.px(12),undo=True)

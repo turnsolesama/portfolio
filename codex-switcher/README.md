@@ -4,13 +4,26 @@
 
 ## 下载 Codex Switcher
 
-**[直接下载 Windows 程序包 · v2.2.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.2.0-Windows-x64.zip)**
+**[直接下载 Windows 程序包 · v2.3.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.3.0-Windows-x64.zip)**
 
 完整解压后双击 `Codex Switcher.exe`。包内包含本软件源码，EXE 需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x。
 
 [下载与 SHA-256 校验](releases/README.md) · [程序源码](codex_switcher.pyw)
 
 一个用于 Windows 的本地 Codex API 服务配置工作台。炭灰界面、服务搜索、当前模式、密钥状态、详情面板和独立 EXE 启动入口。
+
+## v2.3 Python / Node.js 导入
+
+同时修复深色界面的控件状态：导入/更多菜单按钮悬停时保持炭灰底色和浅色文字，箭头同步变色；统一普通按钮、下拉选择框、表头、复选框的悬停/按下/禁用配色。禁用状态优先，不会被鼠标悬停覆盖。
+
+- 粘贴完整 OpenAI SDK 示例，或选择 `.py` / `.js` / `.mjs` / `.cjs` 文件。无需安装 OpenAI SDK 或 Node.js 来执行导入。
+- Python：支持 `OpenAI` / `AsyncOpenAI`、导入别名、字面量配置字典、常量引用、`**kwargs`，以及 `os.getenv` / `os.environ.get` / `os.environ[...]` 密钥变量。
+- Node.js：支持 ESM `import`、CommonJS `require('openai')`、对象配置、常量引用、对象展开、简单 async 函数/箭头函数包装，以及 `process.env.KEY` / `process.env['KEY']`。
+- 从 `responses.create` 或 DeepSeek 官方 `chat.completions.create` 读取模型和推理强度；Python `extra_body.thinking` 也可识别。其他未确认兼容的 Chat 服务不会被自动转换。
+- 地址、模型和认证需能静态确定。动态计算、重赋值、复杂表达式、配置对象修改或自定义认证会提示需要简化示例。只支持上述 SDK 示例结构，不是通用 Python/JavaScript 执行器；fetch、axios、requests 和 TypeScript 代码暂不作为导入格式。
+- 同样提供新增预览、重复跳过、密钥默认不保存。解析不执行示例、不加载第三方模块、不读取实际环境变量或调用 API。
+
+示例：[Python](examples/deepseek.py) · [Node.js](examples/deepseek.mjs)。两个示例均使用占位密钥变量，模型为 `deepseek-v4-pro`、推理强度为 `high`。
 
 ## v2.2 cURL 导入
 

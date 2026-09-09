@@ -6,8 +6,8 @@ using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
 [assembly: AssemblyTitle("Codex Switcher")]
-[assembly: AssemblyVersion("2.2.0.0")]
-[assembly: AssemblyFileVersion("2.2.0.0")]
+[assembly: AssemblyVersion("2.3.0.0")]
+[assembly: AssemblyFileVersion("2.3.0.0")]
 class Launcher {
     static string FindPython(string root) {
         string bundled=Path.Combine(root,"runtime","pythonw.exe");
@@ -31,7 +31,7 @@ class Launcher {
         try {
             string root=AppDomain.CurrentDomain.BaseDirectory;
             string script=Path.Combine(root,"codex_switcher.pyw");
-            if(!File.Exists(script)||!File.Exists(Path.Combine(root,"switcher_core.py"))||!File.Exists(Path.Combine(root,"switcher_curl.py"))||!File.Exists(Path.Combine(root,"switcher_ui.py")))throw new Exception("请保留完整解压目录，程序文件不完整。");
+            if(!File.Exists(script)||!File.Exists(Path.Combine(root,"switcher_core.py"))||!File.Exists(Path.Combine(root,"switcher_curl.py"))||!File.Exists(Path.Combine(root,"switcher_sdk.py"))||!File.Exists(Path.Combine(root,"switcher_ui.py")))throw new Exception("请保留完整解压目录，程序文件不完整。");
             string python=FindPython(root);
             if(python==null)throw new Exception("未找到 Python 3.11 或更新版本。请安装包含 Tkinter 的官方 Windows Python，或将运行环境放到 runtime 目录。");
             if(Array.IndexOf(args,"--check")>=0)return 0;

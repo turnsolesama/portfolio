@@ -10,8 +10,9 @@ import time
 import tomllib
 from urllib.parse import urlsplit
 from switcher_curl import unwrap, is_curl, parse_curl
+from switcher_sdk import language, parse_sdk
 
-VERSION = '2.2.0'
+VERSION = '2.3.0'
 FIELDS = ('id', 'name', 'base_url', 'env_key', 'model', 'wire_api')
 OPTIONAL_FIELDS = ('reasoning_effort',)
 EFFORTS = ('minimal', 'low', 'medium', 'high', 'xhigh')
@@ -138,6 +139,11 @@ def import_text(text):
         record,warnings=parse_curl(text)
         record['profile']=validate(record['profile'])
         return [record],warnings
+    source=language(text)
+    if source:
+        records,warnings=parse_sdk(text,source)
+        for record in records:record['profile']=validate(record['profile'])
+        return records,warnings
     try:raw=json.loads(text)
     except ValueError:
         try:raw=tomllib.loads(text)
@@ -147,7 +153,7 @@ def import_text(text):
                 line=line.strip()
                 if not line or line.startswith('#'):continue
                 match=re.fullmatch(r'(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)',line)
-                if not match:raise ValueError('无法解析文件，请使用 cURL、JSON、TOML 或 .env 文本') from None
+                if not match:raise ValueError('无法解析文件，请使用 Python、Node.js、cURL、JSON、TOML 或 .env 文本') from None
                 value=match[2].strip()
                 if len(value)>=2 and value[0]==value[-1] and value[0] in '\"\'':value=value[1:-1]
                 raw[match[1]]=value

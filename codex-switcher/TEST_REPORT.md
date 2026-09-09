@@ -1,4 +1,18 @@
-# Codex Switcher 2.2.0 验证记录
+# Codex Switcher 2.3.0 验证记录
+
+日期：2026-09-09。Windows x64、Python 3.11、Tkinter。
+
+`python -B -m unittest discover -q`：98 项通过；包括原有 68 项、新增 28 项 SDK 解析测试、1 项 SDK 粘贴 / 文件导入 UI 测试及 1 项交互状态对比度回归测试。
+
+- 读取 Tk 实际解析的样式颜色，检查普通/主按钮、菜单按钮、下拉框、表头、复选框在默认、悬停、按下+悬停、聚焦、禁用、禁用+悬停状态的文字对比度均不低于 4.5:1；下拉箭头亦通过此检查。非主操作背景始终保持深色，禁用颜色不会被悬停覆盖。
+
+- Python / Node.js 示例导入结果一致，均保留 deepseek-v4-pro、high、DEEPSEEK_API_KEY 与 Responses 服务地址。
+- 覆盖 Python 导入别名、异步客户端、常量、字典与 kwargs；Node.js ESM / CommonJS、简单函数与箭头函数包装、对象展开、字符串及注释。
+- 覆盖变量引用不读取实际值、API Key 不进入导出、动态参数与重赋值拒绝、别名对象修改、同名导入覆盖、错误信息不包含输入密钥、未知 Chat 服务不猜测转换。
+- 在隔离 Tk 窗口完成 Python 粘贴与 Node.js 文件导入；预览模型/推理强度正确，保存后原演示 Codex 配置逐字节不变。原有四档模拟 DPI 布局测试通过。
+- 测试只解析示例，不执行 Python / JavaScript 代码、不加载 OpenAI SDK、不发送 API 请求、不更改真实 Codex 配置。
+
+以下保留 v2.2.0 的验证记录。
 
 日期：2026-09-09。环境：Windows x64、Python 3.11、Tkinter。
 

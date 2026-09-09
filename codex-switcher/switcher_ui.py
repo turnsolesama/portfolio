@@ -10,6 +10,10 @@ FG = '#edf1f8'
 MUTED = '#a0aabc'
 ACCENT = '#b9c8ff'
 BORDER = '#333d4e'
+HOVER = '#303b4d'
+PRESSED = '#35496a'
+DISABLED_BG = '#202632'
+DISABLED_FG = '#9ba8bc'
 APP_USER_MODEL_ID = 'Turnsole.CodexSwitcher.Desktop'
 
 
@@ -54,21 +58,41 @@ def style_app(root, scale=None):
     s.configure('PanelMuted.TLabel', background=PANEL, foreground=MUTED)
     s.configure('TButton', background=SURFACE, foreground=FG, borderwidth=0,
                 padding=(px(12), px(8)), anchor='center')
-    s.map('TButton', background=[('active', '#34405a'), ('disabled', '#202632')],
-          foreground=[('disabled', '#69768a')])
+    button_background=[('disabled',DISABLED_BG),('pressed',PRESSED),('active',HOVER)]
+    button_foreground=[('disabled',DISABLED_FG),('pressed',FG),('active',FG)]
+    s.map('TButton', background=button_background, foreground=button_foreground,
+          lightcolor=button_background, darkcolor=button_background,
+          bordercolor=[('disabled',BORDER),('focus','#667ea8'),('active',BORDER)])
     s.configure('Primary.TButton', background=ACCENT, foreground='#182345')
-    s.map('Primary.TButton', background=[('active', '#d3ddff'), ('disabled', '#34405a')],
-          foreground=[('active', '#182345'), ('disabled', '#8e9bb0')])
-    s.configure('TMenubutton', background=SURFACE, foreground=FG, padding=(px(10), px(8)), borderwidth=0)
+    s.map('Primary.TButton', background=[('disabled',DISABLED_BG),('pressed','#9db3f0'),('active','#c8d4ff')],
+          foreground=[('disabled',DISABLED_FG),('pressed','#182345'),('active','#182345')])
+    s.configure('TMenubutton', background=SURFACE, foreground=FG, arrowcolor=FG,
+                lightcolor=SURFACE, darkcolor=SURFACE, bordercolor=BORDER,
+                padding=(px(10), px(8)), borderwidth=0)
+    # Clam's default active menu background is almost white. Override all states.
+    s.map('TMenubutton', background=button_background, foreground=button_foreground,
+          arrowcolor=button_foreground, lightcolor=button_background, darkcolor=button_background,
+          bordercolor=[('disabled',BORDER),('focus','#667ea8'),('active',BORDER)])
     s.configure('TEntry', fieldbackground=SURFACE, foreground=FG, insertcolor=FG,
                 padding=px(8), bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
+    s.map('TEntry',fieldbackground=[('disabled',DISABLED_BG),('readonly',SURFACE)],
+          foreground=[('disabled',DISABLED_FG),('readonly',FG)])
+    s.configure('TCombobox',fieldbackground=SURFACE,background=SURFACE,foreground=FG,arrowcolor=FG,
+                selectbackground=PRESSED,selectforeground=FG,bordercolor=BORDER,lightcolor=SURFACE,darkcolor=SURFACE,padding=px(6))
+    s.map('TCombobox',background=button_background,foreground=button_foreground+[('readonly',FG)],
+          fieldbackground=button_background+[('readonly',SURFACE)],arrowcolor=button_foreground,
+          lightcolor=button_background,darkcolor=button_background)
+    for option,value in {'background':SURFACE,'foreground':FG,'selectBackground':PRESSED,'selectForeground':FG}.items():
+        root.option_add('*TCombobox*Listbox.'+option,value)
     s.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=FG,
                 rowheight=px(40), borderwidth=0, bordercolor=PANEL, lightcolor=PANEL, darkcolor=PANEL)
     s.configure('Treeview.Heading', background=SURFACE, foreground=MUTED,
                 padding=(px(8), px(8)), relief='flat')
+    s.map('Treeview.Heading',background=button_background,foreground=button_foreground)
     s.map('Treeview', background=[('selected', '#35496a')], foreground=[('selected', '#ffffff')])
     s.configure('TCheckbutton', background=BG, foreground=FG, padding=px(4))
-    s.map('TCheckbutton', background=[('active', SURFACE)])
+    s.map('TCheckbutton', background=[('disabled',BG),('active',SURFACE)],
+          foreground=[('disabled',DISABLED_FG),('active',FG)])
     for orientation in ('Vertical', 'Horizontal'):
         name=orientation+'.TScrollbar'
         s.layout(name, [(orientation+'.Scrollbar.trough', {'sticky': 'nswe', 'children': [
@@ -76,7 +100,7 @@ def style_app(root, scale=None):
         s.configure(name, background='#3a4558', troughcolor=PANEL, bordercolor=PANEL,
                     lightcolor='#3a4558', darkcolor='#3a4558', borderwidth=0,
                     width=px(8), arrowsize=px(8), gripcount=0)
-        s.map(name, background=[('active', '#677a99'), ('pressed', '#8498b7')])
+        s.map(name, background=[('pressed', '#8498b7'), ('active', '#677a99')])
     s.configure('TPanedwindow', background=BG, sashwidth=px(12))
     return s
 

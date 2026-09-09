@@ -10,3 +10,4 @@
 - 发布使用 `python -B package_release.py`，白名单打包并检查摘要；保留用户现有修改。
 - cURL 仅在 `switcher_curl.py` 解析文本，禁止执行命令、HTTP 请求、读取 @文件或展开环境变量。新增转换需有服务商官方兼容证据与回归测试；不可将未知 Chat Completions 自动当成 Responses。
 - 可选 reasoning_effort 只影响根级 model_reasoning_effort，沿用现有 TOML 语义保护；旧配置不因字段扩展而被自动改写。
+- SDK 导入位于 switcher_sdk.py：Python AST 与受限 JavaScript 语法分析均只读文本，不得执行、eval、导入第三方模块或读取变量值。新增语法需包含静态绑定、敏感字段不泄漏与导入不激活的回归测试。

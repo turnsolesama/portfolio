@@ -235,6 +235,49 @@ class LayoutTests(unittest.TestCase):
         self.assertEqual(dialog.text.get('1.0', 'end-1c'), value)
         self.assertTrue(dialog.winfo_exists())
 
+    def test_sdk_paste_and_file_import_preserve_config(self):
+        a=self.open_app();before=self.mod.CONFIG_PATH.read_bytes()
+        for name in ('deepseek.py','deepseek.mjs'):
+            sample=Path(__file__).with_name('examples')/name
+            self.mod.seed_demo();a.refresh();a.update()
+            if name.endswith('.py'):
+                dialog=a.import_paste();a.update()
+                dialog.text.insert('1.0',sample.read_text(encoding='utf-8'))
+                dialog.parse_button.invoke();a.update()
+            else:
+                with patch.object(self.mod.filedialog,'askopenfilename',return_value=str(sample)):
+                    a.import_file();a.update()
+            preview=a.last_dialog
+            self.assertEqual(preview.tree.item('0','values')[2:4],('deepseek-v4-pro','Responses / high'))
+            self.assertTrue(preview.key_check.instate(['disabled']))
+            with patch.object(self.mod,'set_key') as save_key:
+                preview.save_button.invoke();a.update();save_key.assert_not_called()
+            self.assertEqual(self.mod.CONFIG_PATH.read_bytes(),before)
+            self.assertEqual(next(p for p in a.profiles if p['id']=='deepseek')['reasoning_effort'],'high')
+
+    def test_control_states_keep_readable_contrast(self):
+        a=self.open_app();style=self.mod.ttk.Style(a)
+        def luminance(color):
+            rgb=a.winfo_rgb(color)
+            values=[v/65535 for v in rgb]
+            linear=[v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4 for v in values]
+            return sum(v*w for v,w in zip(linear,(.2126,.7152,.0722)))
+        def contrast(fg,bg):
+            a,b=sorted((luminance(fg),luminance(bg)))
+            return (b+.05)/(a+.05)
+        for name in ('TButton','Primary.TButton','TMenubutton','TCombobox','Treeview.Heading','TCheckbutton'):
+            for state in ((),('active',),('pressed','active'),('focus',),('disabled',),('disabled','active')):
+                with self.subTest(style=name,state=state):
+                    bg=style.lookup(name,'fieldbackground' if name=='TCombobox' else 'background',state)
+                    fg=style.lookup(name,'foreground',state)
+                    self.assertGreaterEqual(contrast(fg,bg),4.5)
+                    if name in ('TMenubutton','TCombobox'):
+                        self.assertGreaterEqual(contrast(style.lookup(name,'arrowcolor',state),bg),4.5)
+                    if name!='Primary.TButton':self.assertLess(luminance(bg),.15)
+        # Hover cannot override disabled colors through an earlier state rule.
+        for name in ('TButton','Primary.TButton','TMenubutton','TCombobox'):
+            self.assertEqual(style.lookup(name,'background',('disabled','active')),style.lookup(name,'background',('disabled',)))
+
     def test_legacy_invalid_row_does_not_block_library_or_hide_protocol(self):
         a = self.open_app()
         legacy = {**a.profiles[0], 'id':'legacy', 'env_key':'bad-key', 'wire_api':'chat'}
