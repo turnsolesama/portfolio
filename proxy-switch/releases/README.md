@@ -1,25 +1,25 @@
-# 流向 FlowSwitch 3.2.1 · 下载与校验
+# 流向 FlowSwitch 3.3.2 · 下载与校验
 
 普通使用下载 **Windows x64 程序包**，完整解压后双击 `FlowSwitch/FlowSwitch.exe`。请保留 EXE 旁的 `app` 文件夹。源码包用于开发与重新构建。
 
 | 下载 | 大小 | 文件数 |
 | --- | --- | --- |
-| [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-x64.zip) | 356,653 字节 | 23 |
-| [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-Source.zip) | 1,660,375 字节 | 50 |
+| [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-x64.zip) | 362,929 字节 | 24 |
+| [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-Source.zip) | 1,708,158 字节 | 53 |
 
 [使用说明](../README.md) · [运行要求](../README.md#运行要求) · [更新记录](../CHANGELOG.md) · [SHA256SUMS.txt](SHA256SUMS.txt)
 
-3.2.1 将原 ProxySwitch 更名为「流向 · 网络代理管家 / FlowSwitch」，更新桌面、窗口和任务栏图标，包含固定入口模式、程序分流和确认后重连。原数据目录 `%USERPROFILE%\.proxyswitch` 保持兼容；升级不会自动切换代理。
+3.3.2 包含深色侧边导航、灰蓝主题与细滚动条，修复拖动及缩放时下方原生横向白条闪现，并修复圆角卡片边缘残影。保留代理发现、固定入口模式、程序分流和确认后重连。原数据目录 `%USERPROFILE%\.proxyswitch` 保持兼容；升级不会自动切换代理。
 
 运行要求：Windows 10 / 11 x64、Windows PowerShell 5.1、.NET Framework 4.8 和 curl.exe。可选引擎功能需要 Node.js 22+ 与已安装的受支持分流引擎。程序不捆绑 VPN 或代理节点。固定入口只管理已接入引擎的连接，不自动开启 TUN。
 
-验证：207 项静态与基础断言、17 项真实隔离网关检查、12 项 Windows 程序包检查，以及隔离的切换交互检查。包检查覆盖中文与空格路径、真实 UI 启动、所选配置目录、桌面入口、任务栏标识与长命令边界。任务栏重开信息超过 Windows 支持长度时保留窗口图标，禁用该实例的固定操作，不截断路径。
+验证：207 项静态与基础断言、12 项 Windows 程序包检查及隔离切换交互检查通过。新增视觉回归先在旧版本复现原生横条，再在三种控件布局缩放下检查共 240 帧调整尺寸和滚动；覆盖滑块、滚轮、Home / End、日志滚动及内容未裁切。布局缩放模拟不修改系统 DPI。包检查覆盖中文与空格路径、真实 UI 启动、所选配置目录、桌面入口、任务栏标识与长命令边界。任务栏重开信息超过 Windows 支持长度时保留窗口图标，禁用该实例的固定操作，不截断路径。
 
 包内使用显式文件清单与 SHA-256 校验，不含个人配置、代理规则、凭据、启动记录或实机截图；公开截图为演示数据。
 
 ```text
-80f005d6ce6264384831b3317cd4bcefb5e7a0b8928e89d73512a380d9d11b08  FlowSwitch-v3.2.1-Windows-x64.zip
-a8781de2e48f0aae403983e503c0f747a6b0be9e08f08a979bda7d77e9cdaeae  FlowSwitch-v3.2.1-Windows-Source.zip
+96528fa0764069311ca9d093d8a23a5f25cd93003ef0eb2e71276618bea6c2f8  FlowSwitch-v3.3.2-Windows-x64.zip
+0229e2f6c1df30eb957a38f23b048a4aaf2bdb28fe351cd230da7e0b65d97475  FlowSwitch-v3.3.2-Windows-Source.zip
 ```
 
 
@@ -38,4 +38,5 @@ a8781de2e48f0aae403983e503c0f747a6b0be9e08f08a979bda7d77e9cdaeae  FlowSwitch-v3.
 
 固定入口和当前普通程序分流需要 Node.js 22+ 及受支持的分流引擎；普通 HTTP / 直连系统切换不要求 Node.js。管理器不强制拦截全机流量，也不自动开启 TUN、修改 DNS 或退出软件。本地端口通、规则载入与外部网站登录成功需要分别验证。
 
-历史版本：[3.1.2 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)、[3.1.2 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-Source.zip)、[3.1.1 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip)、[3.1.0 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.0-Windows-Source.zip)、[3.0.3 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.3-Windows-Source.zip)、[3.0.2 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.2-Windows-Source.zip)、[3.0.1 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.1-Windows-Source.zip)、[3.0.0 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.0-Windows-Source.zip)。
+历史版本：[3.2.1 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-x64.zip)、[3.2.1 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-Source.zip)、[3.1.2 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-x64.zip)、[3.1.2 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.2-Windows-Source.zip)、[3.1.1 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip)、[3.1.0 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.0-Windows-Source.zip)、[3.0.3 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.3-Windows-Source.zip)、[3.0.2 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.2-Windows-Source.zip)、[3.0.1 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.1-Windows-Source.zip)、[3.0.0 源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.0-Windows-Source.zip)。
+

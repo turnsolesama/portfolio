@@ -11,8 +11,8 @@
     },
     {
         "path":  "ProxyWindow.ps1",
-        "bytes":  52934,
-        "sha256":  "7adf4946687804a4a814fb7fdb95f1e4f982c95c249ca90b23e4d8d0b52a02da"
+        "bytes":  57064,
+        "sha256":  "0a0ae8247ae846bb1e2e87f76cd2d60f09074e3f32cef8c75ea584ea43f0dcb8"
     },
     {
         "path":  "AppRouting.ps1",
@@ -27,7 +27,7 @@
     {
         "path":  "Preferences.ps1",
         "bytes":  11289,
-        "sha256":  "2b6ae56734ca1d65b6d8a9b015dccef15c62831f5aab775e5d7827eaf792d466"
+        "sha256":  "63c3fa133da480fead8f4de4001e7103a0dd62637a9afcb607104f0b4fbdc015"
     },
     {
         "path":  "ProxyDiscovery.ps1",
@@ -55,6 +55,11 @@
         "sha256":  "bc4158951cdbdc9f57f577e3bca984343563d82d0a5827a1d346ecafd47b7645"
     },
     {
+        "path":  "FlowTheme.cs",
+        "bytes":  19214,
+        "sha256":  "acc3ade477d3784360d7f966f159a5b4749e2d8800c6e901606b1f312b81b0db"
+    },
+    {
         "path":  "config.defaults.json",
         "bytes":  93,
         "sha256":  "aac9b43374897dd5434a7c71021f1ce5a2a18ca94735905b2b6d957d7e9585d8"
@@ -67,7 +72,7 @@
     {
         "path":  "Install-Shortcut.ps1",
         "bytes":  3070,
-        "sha256":  "30c2d7f5dad4fe7f6a19864b26f7e151250838571633620db97484791e678b9a"
+        "sha256":  "c1e80be3b2287852dff54c57b0da50b188b6980aaaea03bece229543086032c7"
     },
     {
         "path":  "Test-All.ps1",
@@ -106,23 +111,23 @@
     },
     {
         "path":  "Build-Release.ps1",
-        "bytes":  2841,
-        "sha256":  "4c1d5f97e4907d368b8b416de3625b50b4ea9b4b759b61c4f041d73c61451b45"
+        "bytes":  2891,
+        "sha256":  "89008db86f85cf318d58ea1bc83ae465e3515ce0e0e43f3df6735999068e162b"
     },
     {
         "path":  "Build-WindowsPackage.ps1",
-        "bytes":  3420,
-        "sha256":  "fec9bfa1dd9c0df04c3b8e5277f4f0c70b06fe5290b31811ab8f264c978282b2"
+        "bytes":  3435,
+        "sha256":  "ecfcc40a48b68331a94bb8afda7487d736e4d0972b9d3210ce1bdd863315becd"
     },
     {
         "path":  "Launcher.cs",
-        "bytes":  6350,
-        "sha256":  "4f2fc6db1d77a7619023455d80d3d089d3f9c44e9db69e35b9c8918e912a86b9"
+        "bytes":  6366,
+        "sha256":  "c1d648d15019c14b226d73862add8a30e738539a50cfe61528f2e976ce2b6ee3"
     },
     {
         "path":  "Windows-QuickStart.txt",
-        "bytes":  2017,
-        "sha256":  "e2b3ddf9f47e4a301fe3ec7489263c2d5c2fecb857c608cb03e4eee60f5f9a51"
+        "bytes":  2020,
+        "sha256":  "199d03fbda53cb54646a7b28c00da98a5e4b56705a82a0e07857453b1c20b82f"
     },
     {
         "path":  "Test-WindowsPackage.ps1",
@@ -151,33 +156,33 @@
     },
     {
         "path":  "Test-AutomaticDiscoveryUI.ps1",
-        "bytes":  5184,
-        "sha256":  "6ffd0b5a748410052c164889ccb91a7bf9f35a366e40334825707cbc45227378"
+        "bytes":  5199,
+        "sha256":  "57218cee096287175166f0f66f69cba2330e0455ce97495b44ea9605513ad157"
     },
     {
         "path":  "Test-SwitchInteraction.ps1",
-        "bytes":  6198,
-        "sha256":  "d38dfa030be3f7d9316134c9746585c1e35f19326ede28e581bb6beb0440a7b3"
+        "bytes":  6213,
+        "sha256":  "e8da65b01788bf5c8780748f16fb583cddadfd9789c4fd90978997bc9fb20e68"
     },
     {
         "path":  "Test-PassiveLifecycle.ps1",
-        "bytes":  7358,
-        "sha256":  "b923674be46840b14abbfa2e7c4120621ebdab36d3f7930f59480e7bd80404cb"
+        "bytes":  7373,
+        "sha256":  "2dd87309d976dc84df45ec43a347323c1e80b11685c10c2cc74924e46716a329"
     },
     {
         "path":  "Test-DiscoveryUI.ps1",
-        "bytes":  6433,
-        "sha256":  "c68b2d99f28c138431d6985b6dbdc62dbf18a4ad3626faa6c6797c468660ad2e"
+        "bytes":  6448,
+        "sha256":  "9668b923f73995c790d8c288e367f78e388bdf997d16f64ee6c7465ff2b533bc"
     },
     {
         "path":  "README.md",
-        "bytes":  25874,
-        "sha256":  "4c09a398d185b85c21422ae72d9073ab30ae43e08318b26cd83574a529784730"
+        "bytes":  26118,
+        "sha256":  "57c676e1fb993b68ce5b53815b8b87fab93f36a07757c89feb590929e892cbe7"
     },
     {
         "path":  "CHANGELOG.md",
-        "bytes":  8237,
-        "sha256":  "2de6439e4c2356c42a0e89f5628f245de7005999d2f9238f1784fb5275d5fb28"
+        "bytes":  10325,
+        "sha256":  "4311cd33aa8278ffbfdf1ea9bc936d78a4e67e6c7fa8626ee6c477f4e07aa159"
     },
     {
         "path":  "LICENSE",
@@ -191,8 +196,8 @@
     },
     {
         "path":  "AGENTS.md",
-        "bytes":  10503,
-        "sha256":  "0bacbb480c987c8cfda2033e1fc08eb997718eb0e90357fd8d5a44f59b7e2aa5"
+        "bytes":  11485,
+        "sha256":  "a877fb666383f6728256ad7db4b1f0b20762a198cc7129c25c40a8e7069ec4c4"
     },
     {
         "path":  ".gitignore",
@@ -203,6 +208,16 @@
         "path":  ".gitattributes",
         "bytes":  156,
         "sha256":  "9064bf3f1396344247dbff552f3ab7ec8e2c83c3424392d50b45756cca46b1b2"
+    },
+    {
+        "path":  "DESIGN.md",
+        "bytes":  3671,
+        "sha256":  "d9bd39175e2c1ce8a378255089aa2542da037c010cb44b697cb2b7a79bc978de"
+    },
+    {
+        "path":  "Test-VisualTheme.ps1",
+        "bytes":  8342,
+        "sha256":  "2e9cae2586f77415845a96244a10f617b07bd775c903c2556844b01135935920"
     },
     {
         "path":  "assets/FlowSwitch.ico",
@@ -216,18 +231,18 @@
     },
     {
         "path":  "assets/screenshot.png",
-        "bytes":  58156,
-        "sha256":  "3f3e6f05487fc35d014d54a47b1edac2b41baa826aef3279b91ada5c13911de6"
+        "bytes":  73217,
+        "sha256":  "2f92fab096de0e5fa19208e4ff382b2ff91a70ce15065beb449d2ea21c4e6512"
     },
     {
         "path":  "assets/program-menu.png",
-        "bytes":  62950,
-        "sha256":  "5ab5d750c5dc1d90535c0f26b53ff20b54cc968330a17ad946b530ada559c7b9"
+        "bytes":  78137,
+        "sha256":  "3585a46b31dd6d16675cd6dd72ab4a376fa092d541b82b5c44af69f43f0e32f7"
     },
     {
         "path":  "assets/proxy-management.png",
-        "bytes":  56680,
-        "sha256":  "a5969f1c669b6076bf8d10df4dc754ac2963cd9e12bad0b02b90ee70e7afaee6"
+        "bytes":  69444,
+        "sha256":  "1d5c444ee533b646533186b2b2a1d43410a2abbcaee28908cc507315dff40682"
     },
     {
         "path":  "vendor/js-yaml/package.json",

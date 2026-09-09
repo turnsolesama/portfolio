@@ -1,4 +1,4 @@
-# 流向 · 网络代理管家 | FlowSwitch
+﻿# 流向 · 网络代理管家 | FlowSwitch
 
 [返回三个软件的目录](../)
 
@@ -8,11 +8,13 @@
 
 ## 下载 FlowSwitch
 
-**[直接下载 Windows x64 程序包 · v3.2.1](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-x64.zip)**
+3.3.2 采用中性深色与灰蓝强调色、侧边导航及细滚动条，修复拖动和缩放时原生横向白条闪现的问题；设计与交互说明见 [DESIGN.md](DESIGN.md)。
+
+**[直接下载 Windows x64 程序包 · v3.3.2](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-x64.zip)**
 
 完整解压后打开 `FlowSwitch` 文件夹，双击 **`FlowSwitch.exe`**。无需编译或安装开发工具；请保留同目录的 `app` 文件夹。需要 Windows 10 / 11 x64、Windows PowerShell 5.1、.NET Framework 4.8 和 `curl.exe`。
 
-[单独下载源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-Source.zip) · [下载与 SHA-256 校验](releases/README.md) · [完整运行要求](#运行要求)
+[单独下载源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-Source.zip) · [下载与 SHA-256 校验](releases/README.md) · [完整运行要求](#运行要求)
 
 一个通用的 Windows 代理管理面板：添加自己的代理入口，统一切换系统网络，或为程序指定单独线路。**不预设任何 VPN 品牌，也不捆绑代理服务。**
 
@@ -36,7 +38,7 @@ FlowSwitch 用来整理多个代理客户端提供的入口、选择默认出口
 
 ## 快速开始
 
-1. 普通使用请下载 [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-x64.zip)，完整解压后双击 **`FlowSwitch.exe`**。源码开发另有 [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.2.1-Windows-Source.zip)，源码目录使用 `启动代理切换.cmd`。
+1. 普通使用请下载 [Windows x64 程序包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-x64.zip)，完整解压后双击 **`FlowSwitch.exe`**。源码开发另有 [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-Source.zip)，源码目录使用 `启动代理切换.cmd`。
 2. 等待后台代理自动加入列表；可在 **代理管理 → 检测并添加后台代理** 手动重扫，或用「添加代理」填写自定义地址。
 3. 在顶部选择直连或已添加的代理，点击 **统一切换**。
 4. 在 **代理管理** 编辑已安装的 Clash Verge HTTP / 混合入口，填写内核路径并勾选 **用作程序分流引擎**、**固定本地入口**。保存不会改变网络；手动点击统一切换后，引擎保持本地入口，按所选上游转发。右键程序指定单独线路，继续使用原启动方式；普通设置不再生成启动图标。

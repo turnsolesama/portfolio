@@ -10,8 +10,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("流向 · FlowSwitch")]
 [assembly: AssemblyDescription("FlowSwitch Windows proxy manager")]
 [assembly: AssemblyProduct("流向 · FlowSwitch")]
-[assembly: AssemblyVersion("3.2.1.0")]
-[assembly: AssemblyFileVersion("3.2.1.0")]
+[assembly: AssemblyVersion("3.3.2.0")]
+[assembly: AssemblyFileVersion("3.3.2.0")]
 
 internal static class Launcher
 {
@@ -36,7 +36,7 @@ internal static class Launcher
     {
         string[] required = {
             "ProxySwitch.ps1", "ProxyWindow.ps1", "ProxyBackend.ps1", "Preferences.ps1",
-            "Storage.ps1", "DesktopBranding.cs", "ProgramLaunch.ps1", "ProcessInventory.ps1", "ProxyDiscovery.ps1",
+            "Storage.ps1", "DesktopBranding.cs", "FlowTheme.cs", "ProgramLaunch.ps1", "ProcessInventory.ps1", "ProxyDiscovery.ps1",
             "AppRouting.ps1", "AppRouter.cjs", "config.defaults.json", "Install-Shortcut.ps1",
             "assets/FlowSwitch.ico", "vendor/js-yaml/dist/js-yaml.cjs.js"
         };
@@ -70,7 +70,7 @@ internal static class Launcher
             string root = AppDomain.CurrentDomain.BaseDirectory;
             string app = Path.Combine(root, "app");
             VerifyFiles(app);
-            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.2.1 Windows package files are present."); return 0; }
+            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.3.2 Windows package files are present."); return 0; }
 
             string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
             if (!File.Exists(shell)) throw new FileNotFoundException("找不到 Windows PowerShell 5.1。");

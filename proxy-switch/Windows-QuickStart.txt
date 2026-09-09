@@ -1,4 +1,4 @@
-流向 · 网络代理管家 | FlowSwitch 3.2.1
+﻿流向 · 网络代理管家 | FlowSwitch 3.3.2
 
 使用方法
 1. 完整解压压缩包，打开 FlowSwitch 文件夹。

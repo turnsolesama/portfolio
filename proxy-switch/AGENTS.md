@@ -1,4 +1,4 @@
-# 网络代理切换器
+﻿# 网络代理切换器
 
 - Windows PowerShell 5.1 / WinForms。程序分流使用已安装的 Node.js 与本目录 vendor/js-yaml 5.4.1（保留 MIT 许可证）。不自动更新依赖。
 - `ProxySwitch.ps1` 是脚本入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。Windows 程序包由编译后的 `FlowSwitch.exe` 启动 `app/ProxySwitch.ps1`。
@@ -55,3 +55,9 @@
 - Test-GatewayControl.ps1 检查固定入口计划与无快捷方式副作用；Test-GatewayIntegration.cjs <已安装内核绝对路径> 使用独立配置、命名管道、两个测试 EXE 和本地 HTTP/SOCKS5 上游验证真实连接，不下载依赖。
 
 - 3.2.1 品牌为流向 FlowSwitch；DesktopBranding.cs 提供运行窗口任务栏标识和重开属性。发布图标为 assets/FlowSwitch.ico，PNG 只随源码发布。保留 ProxySwitch.ps1、.proxyswitch 与 PSW-App-* 内部兼容标识。
+
+- 3.3.0 的 FlowTheme.cs 提供 WinForms 深色控件；加载时引用 System.Windows.Forms、System.Drawing。不要重写代理后端来调整外观。列表列宽仅响应外部宽度变化，预留滚动条空间，避免 SizeChanged 递归。视觉验证：Test-VisualTheme.ps1（120 行演示数据、三页导航和三种窗口尺寸），配合 Test-SwitchInteraction.ps1 与 Test-WindowsPackage.ps1。
+
+- 3.3.1 的 ListHost / LogHost 使用裁切视口与独立滚动轨道。不得以删除滚动功能解决白色滚动条；列宽只由 DataList.SetColumnWeights 管理。所有主工作区须显式指定百分比行/列，测试需断言整个工作区及底栏不被裁切。Test-VisualTheme.ps1 -Scale 1.25 / 1.5 为布局模拟，不宣称已改变或逐个实测操作系统 DPI。
+
+- 3.3.2 列宽需在原生缩放完成和绘制前按实际客户区收敛；滚动回归必须检查 WS_HSCROLL，而不能只比较列宽总和或一张静态预览。
