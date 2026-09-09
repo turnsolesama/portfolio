@@ -1,4 +1,19 @@
-# Codex Switcher 2.1.1 验证记录
+# Codex Switcher 2.2.0 验证记录
+
+日期：2026-09-09。环境：Windows x64、Python 3.11、Tkinter。
+
+运行 `python -B -m unittest discover -q`：68 项通过（33 项原核心、23 项 cURL / 推理强度、12 项界面测试）。
+
+- 用户提供的 DeepSeek 官方 cURL 及带 Markdown 链接、转义下划线的版本，均保留模型 deepseek-v4-pro、环境变量 DEEPSEEK_API_KEY 和 high 推理强度；映射到官方 Responses 基址。
+- 覆盖 Bash / CMD / PowerShell 续行，curl.exe、常用 data / header 参数、代码块、环境变量写法、通用 Responses 地址、未知 Chat 服务拒绝转换、畸形 JSON 与参数、安全错误信息、禁止执行命令及读取文件引用。
+- 推理强度经过 JSON / TOML / 本地服务列表导入导出往返，应用只变更指定根级字段，嵌套项目设置保持原值；去重不覆盖旧配置。
+- 界面测试覆盖完整粘贴 → 预览 → 导入 → 编辑 → 重复导入；变量占位符不保存为密钥，真实配置不被应用。解析失败保留输入文字。
+- 100% / 125% / 150% / 200% 模拟缩放下，主窗口及四类弹窗的正常/最小尺寸、按钮边界、滚动区域检查通过。修复预览提示与弹窗页脚控件名称冲突。
+- 通过新编译的 EXE --demo 实际点击粘贴与导入，看到 DeepSeek / deepseek-v4-pro / Responses / high / DEEPSEEK_API_KEY，导入后列表新增服务，顶部仍为演示原配置。
+
+依据：[DeepSeek 官方首次调用示例](https://api-docs.deepseek.com/zh-cn/)、[DeepSeek Responses 兼容说明](https://api-docs.deepseek.com/zh-cn/guides/responses_api/)、[Codex 配置参考](https://developers.openai.com/codex/config-reference)。文档确认兼容与本地测试不等于使用实际 Key 发起远端调用；本次未调用 DeepSeek API、未切换用户真实 Codex 配置。
+
+以下保留 v2.1.1 的验证记录。
 
 日期：2026-09-08。环境：Windows x64、Python 3.11、Tkinter。
 

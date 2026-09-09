@@ -200,6 +200,41 @@ class LayoutTests(unittest.TestCase):
         dialog = a.restore(); a.update()
         self.assertTrue(dialog.restore_button.instate(['disabled']))
 
+    def test_deepseek_curl_preview_import_edit_and_duplicate(self):
+        a = self.open_app()
+        before = self.mod.CONFIG_PATH.read_bytes()
+        sample = Path(__file__).with_name('examples').joinpath('deepseek.curl').read_text(encoding='utf-8')
+        dialog = a.import_paste(); a.update()
+        dialog.text.insert('1.0', sample)
+        dialog.parse_button.invoke(); a.update()
+        preview = a.last_dialog
+        values = preview.tree.item('0', 'values')
+        self.assertEqual(values[2], 'deepseek-v4-pro')
+        self.assertEqual(values[3], 'Responses / high')
+        self.assertEqual(values[4], 'DEEPSEEK_API_KEY')
+        self.assertTrue(preview.key_check.instate(['disabled']))
+        self.assertIn('转换', preview.warning_text.get('1.0', 'end'))
+        with patch.object(self.mod, 'set_key') as write_key:
+            preview.save_button.invoke(); a.update(); write_key.assert_not_called()
+        p = next(p for p in a.profiles if p['id'] == 'deepseek')
+        self.assertEqual(p['reasoning_effort'], 'high')
+        dialog = a.edit(p); a.update()
+        self.assertEqual(dialog.variables['reasoning_effort'].get(), 'high')
+        dialog.save_button.invoke(); a.update()
+        self.assertEqual(next(p for p in a.profiles if p['id'] == 'deepseek')['reasoning_effort'], 'high')
+        preview = a.preview_import(sample); a.update()
+        self.assertTrue(preview.save_button.instate(['disabled']))
+        self.assertEqual(self.mod.CONFIG_PATH.read_bytes(), before)
+
+    def test_invalid_paste_keeps_user_text_for_repair(self):
+        a = self.open_app(); dialog = a.import_paste(); a.update()
+        value = 'curl https://example.test/responses -d @private.json'
+        dialog.text.insert('1.0', value)
+        with patch.object(self.mod.messagebox, 'showerror') as error:
+            dialog.parse_button.invoke(); a.update(); error.assert_called_once()
+        self.assertEqual(dialog.text.get('1.0', 'end-1c'), value)
+        self.assertTrue(dialog.winfo_exists())
+
     def test_legacy_invalid_row_does_not_block_library_or_hide_protocol(self):
         a = self.open_app()
         legacy = {**a.profiles[0], 'id':'legacy', 'env_key':'bad-key', 'wire_api':'chat'}

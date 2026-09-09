@@ -265,6 +265,7 @@ class App(tk.Tk):
         subtitle=ttk.Label(self.detail_content,text=('API 服务 · '+p['id']) if p else '使用已有的官方登录信息',style='PanelMuted.TLabel',justify='left')
         subtitle.grid(row=1,column=0,sticky='ew',pady=(0,px(20)));self.detail_labels.append(subtitle)
         fields=[('服务地址',p['base_url']),('模型',p['model'] or '沿用当前配置中的模型'),('密钥变量',p['env_key']),('密钥状态','需先修正配置' if issue else ('已设置' if get_key(p['env_key']) else '待设置 · 编辑服务后补充')),('接口协议',p['wire_api'] or 'Responses')] if p else [('登录方式','Codex 官方账号'),('当前模型',self.current_model or '未指定'),('配置说明','切回官方模式后，保留现有登录信息、工作区和其他设置。')]
+        if p:fields.append(('推理强度',p.get('reasoning_effort') or '沿用当前配置'))
         if issue:fields.insert(0,('需要修正',issue+'。原记录已保留，请编辑后再应用。'))
         for index,(label,value) in enumerate(fields):
             ttk.Label(self.detail_content,text=label,style='PanelMuted.TLabel').grid(row=2+index*2,column=0,sticky='w',pady=(0,px(5)))
@@ -302,8 +303,14 @@ class App(tk.Tk):
         choices=list(dict.fromkeys(['responses',variables['wire_api'].get()]))
         w.entries['wire_api']=ttk.Combobox(protocol,textvariable=variables['wire_api'],values=choices,state='readonly',width=14)
         w.entries['wire_api'].pack(side='left')
-        hint=ttk.Label(form,text='API Key 留空时保留该变量的原值。模型留空时沿用当前模型。旧版接口配置保留原值；请先确认服务支持 Responses，再修改协议。',style='Muted.TLabel',justify='left')
-        hint.grid(row=5,column=0,columnspan=2,sticky='ew',pady=(0,px(12)))
+        effort=ttk.Frame(form);effort.grid(row=5,column=0,columnspan=2,sticky='ew',pady=(0,px(12)))
+        ttk.Label(effort,text='推理强度 · 留空沿用',style='Muted.TLabel').pack(side='left',padx=(0,px(12)))
+        variables['reasoning_effort']=tk.StringVar(value=defaults.get('reasoning_effort',''))
+        effort_choices=list(dict.fromkeys(['',*core.EFFORTS,variables['reasoning_effort'].get()]))
+        w.entries['reasoning_effort']=ttk.Combobox(effort,textvariable=variables['reasoning_effort'],values=effort_choices,state='readonly',width=14)
+        w.entries['reasoning_effort'].pack(side='left')
+        hint=ttk.Label(form,text='API Key 留空时保留该变量的原值。模型、推理强度留空时沿用当前配置。旧版接口配置保留原值；请先确认服务支持 Responses，再修改协议。',style='Muted.TLabel',justify='left')
+        hint.grid(row=6,column=0,columnspan=2,sticky='ew',pady=(0,px(12)))
         form.bind('<Configure>',lambda e:hint.configure(wraplength=max(px(100),e.width-px(16))),add='+')
         w.variables=variables;w.feedback.set('仅保存服务，不立即切换。')
         expected=self.profile_hash
@@ -345,19 +352,19 @@ class App(tk.Tk):
             text=CONFIG_PATH.read_text(encoding='utf-8-sig') if CONFIG_PATH.exists() else ''
             digest=core.file_hash(CONFIG_PATH);core.render_config(text,p)
             if p and not get_key(p['env_key']) and not DEMO:raise ValueError('密钥变量尚未设置，请编辑服务后再应用')
-            target=p['name']+'\n'+p['base_url'] if p else '官方账号登录'
+            target=p['name']+'\n'+p['base_url']+'\n模型：'+(p['model'] or '沿用当前')+'\n推理强度：'+(p.get('reasoning_effort') or '沿用当前') if p else '官方账号登录'
             if not messagebox.askyesno('应用配置',target+'\n\n将备份并更新 config.toml。不会自动关闭当前任务。继续？',parent=self):return
             core.apply_config(CONFIG_PATH,p,digest);self.refresh(p['id'] if p else '__account__');self.note('已应用。请自行关闭并重开 Codex；当前运行中的任务未被结束。')
         except (ValueError,OSError) as e:self.error(e)
     def import_file(self):
-        path=filedialog.askopenfilename(parent=self,title='选择导出的服务配置',filetypes=[('配置文件','*.json *.toml *.env'),('所有文件','*')])
+        path=filedialog.askopenfilename(parent=self,title='选择服务配置或 cURL 示例',filetypes=[('配置 / cURL 文件','*.json *.toml *.env *.curl *.txt *.sh'),('所有文件','*')])
         if not path:return
         try:
             if Path(path).stat().st_size>2*1024*1024:raise ValueError('导入文件上限为 2 MiB')
             self.preview_import(Path(path).read_text(encoding='utf-8-sig'))
         except (ValueError,OSError,UnicodeError) as e:self.error(e)
     def import_paste(self):
-        w=Dialog(self,'粘贴配置','支持 JSON、Codex TOML 和 .env；内容仅在本机解析。',width=760,height=580)
+        w=Dialog(self,'粘贴配置','支持 cURL、JSON、Codex TOML 和 .env；仅解析文本，不执行命令。',width=800,height=600)
         w.body.columnconfigure(0,weight=1);w.body.rowconfigure(0,weight=1)
         text=tk.Text(w.body,bg=PANEL,fg=FG,insertbackground=FG,relief='flat',wrap='word',
                      font=('Consolas',11),width=20,height=6,padx=self.px(12),pady=self.px(12),undo=True)
@@ -379,22 +386,29 @@ class App(tk.Tk):
             profiles,added,skipped=core.merge_profiles(self.profiles,records)
         except (ValueError,OSError) as e:return self.error(e)
         expected=self.profile_hash
-        w=Dialog(self,'导入预览',f'可新增 {len(added)} 项 · 重复跳过 {skipped} 项。按 Ctrl 可多选需要导入的条目。',width=860,height=620)
+        w=Dialog(self,'导入预览',f'可新增 {len(added)} 项 · 重复跳过 {skipped} 项。核对服务、模型和协议后再导入。',width=1080,height=680)
         w.body.columnconfigure(0,weight=1);w.body.rowconfigure(0,weight=1)
         area=ttk.Frame(w.body);area.grid(row=0,column=0,sticky='nsew')
-        tree=table(area,[('name','服务',170),('url','地址',400),('key','附带密钥',110)],self.px,height=5,selectmode='extended')
+        tree=table(area,[('name','服务',110),('url','地址',210),('model','模型',170),('protocol','协议 / 推理',140),('key','认证',200)],self.px,height=5,selectmode='extended')
         w.tree=tree
-        for i,item in enumerate(added):tree.insert('','end',iid=str(i),values=(item['profile']['name'],item['profile']['base_url'],'有（隐藏）' if item['secret'] else '无'))
+        for i,item in enumerate(added):
+            p=item['profile']
+            tree.insert('','end',iid=str(i),values=(p['name'],p['base_url'],p['model'] or '沿用当前',
+                        'Responses / '+(p.get('reasoning_effort') or '沿用'),
+                        '附带密钥（隐藏）' if item['secret'] else p['env_key']))
         tree.selection_set(tree.get_children())
         if warnings:
             warnarea=ttk.Frame(w.body);warnarea.grid(row=1,column=0,sticky='ew',pady=(self.px(10),0))
             warnarea.columnconfigure(0,weight=1)
-            notice=tk.Text(warnarea,height=2,width=20,wrap='word',bg=BG,fg=MUTED,relief='flat',font=('Microsoft YaHei UI',10))
+            notice=tk.Text(warnarea,height=3,width=20,wrap='word',bg=BG,fg=MUTED,relief='flat',font=('Microsoft YaHei UI',10))
+            w.warning_text=notice
             notice.insert('1.0','\n'.join(warnings));notice.configure(state='disabled');notice.grid(row=0,column=0,sticky='ew')
             bar=ttk.Scrollbar(warnarea,orient='vertical',command=notice.yview);bar.grid(row=0,column=1,sticky='ns');notice.configure(yscrollcommand=bar.set)
         keep_keys=tk.BooleanVar(value=False)
         w.keep_keys=keep_keys
-        ttk.Checkbutton(w.body,text='同时保存附带的 API Key',variable=keep_keys).grid(row=2,column=0,sticky='w',pady=(self.px(10),0))
+        w.key_check=ttk.Checkbutton(w.body,text='同时保存附带的 API Key',variable=keep_keys)
+        w.key_check.grid(row=2,column=0,sticky='w',pady=(self.px(10),0))
+        if not any(item['secret'] for item in added):w.key_check.configure(state='disabled')
         ttk.Label(w.body,text='勾选后写入独立的用户环境变量；不覆盖已有密钥。',style='Muted.TLabel').grid(row=3,column=0,sticky='w')
         def save():
             selected=[added[int(i)] for i in tree.selection()]

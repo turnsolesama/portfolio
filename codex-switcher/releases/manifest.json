@@ -1,19 +1,24 @@
 {
-  "version": "2.1.1",
-  "package": "Codex-Switcher-v2.1.1-Windows-x64.zip",
-  "bytes": 117075,
-  "sha256": "e2ea9755423b683fff5d419024dccefb57b41f2e28a0c660b1bbd47217b20cd9",
+  "version": "2.2.0",
+  "package": "Codex-Switcher-v2.2.0-Windows-x64.zip",
+  "bytes": 126956,
+  "sha256": "e123d0300d3b004a2352754fda8cc11092f804ac778c074b8126220e746e131f",
   "contains_user_data": false,
   "files": [
     {
       "path": "codex_switcher.pyw",
-      "bytes": 30728,
-      "sha256": "a8843c9b24cb34b7360d0a09f133509df0a09ae27fe30fcd562996c20e9f367a"
+      "bytes": 31991,
+      "sha256": "7aaa1e129c6c8bf37ab204a70070697ec9dc8d17cc4986950320fd3253b2014f"
     },
     {
       "path": "switcher_core.py",
-      "bytes": 13925,
-      "sha256": "d6622075f2b6bda1d91235c29b5014b373d41dc1e719de1ec63c99528ee838d7"
+      "bytes": 15062,
+      "sha256": "aa19985419be0fbcae06eb63e3983982b569de96be942cbf15720d17bd21882f"
+    },
+    {
+      "path": "switcher_curl.py",
+      "bytes": 8343,
+      "sha256": "8a506ed45bca5be72d1aef6894fe8875a817af772da981311231ab9131788a67"
     },
     {
       "path": "switcher_ui.py",
@@ -26,14 +31,19 @@
       "sha256": "4db8df9bd10c221724321d545d4d627c63d234ade5fb500f98f1a2161d092c63"
     },
     {
+      "path": "test_switcher_curl.py",
+      "bytes": 9553,
+      "sha256": "aa75474f2188fe2a12844f6384b75b0423fe2d3ae6ad23ba04fcfe0c451da6dc"
+    },
+    {
       "path": "test_switcher_ui.py",
-      "bytes": 10945,
-      "sha256": "d7745e7ad1f196c2890ae6b1d11c45d3079caa7f86f22838b8bc5c6c4177be81"
+      "bytes": 12956,
+      "sha256": "dbf76acca3200e649ae2ab02a5d735ef9ffeff344991fd1504c4201c0f84303c"
     },
     {
       "path": "Launcher.cs",
-      "bytes": 2429,
-      "sha256": "81a9de0a84b22436b0cb8fcbdf5453c9ca1432872aaa4f5acbbef3b2ccf8cab7"
+      "bytes": 2482,
+      "sha256": "fdb8b07f6383a816518f97d58a2cdac63feffe1a76d75e78a5b280537ac4404d"
     },
     {
       "path": "build.py",
@@ -42,13 +52,13 @@
     },
     {
       "path": "package_release.py",
-      "bytes": 1727,
-      "sha256": "737a4329d5baabfc430aa36b31962ae773c51394c3dcbf9d26c43548cd674095"
+      "bytes": 1795,
+      "sha256": "fda0c037df90c3ef28fee2ca2584b530fe665c35b413dfc73d9ee617f53873d6"
     },
     {
       "path": "Codex Switcher.exe",
       "bytes": 367616,
-      "sha256": "d242a1d3f60243d559e441043798e1f587d9a9519dadfd0876388423faeed634"
+      "sha256": "99f21ddace59b153453dc145f6b96c383c4b38b07df70312b30564711ef2a911"
     },
     {
       "path": "switcher.ico",
@@ -57,18 +67,18 @@
     },
     {
       "path": "README.md",
-      "bytes": 5576,
-      "sha256": "a8dab4788c4953538d17bdd2974bb5a9e6f2c14160f50d05365eaa7a0247e82e"
+      "bytes": 7896,
+      "sha256": "5f8de6c10c78801d3af00c7463c084b6197ae1e820784010a7f8ea510cf9fee3"
     },
     {
       "path": "TEST_REPORT.md",
-      "bytes": 1976,
-      "sha256": "a296fbc7d11609f61ded10397a86f0021d434837e89ee64a1aae920684ad8735"
+      "bytes": 3848,
+      "sha256": "aa1f508c56f094186c2f75ac37e21a7a6d703f4b00c3123daf0dd77196e10d6c"
     },
     {
       "path": "AGENTS.md",
-      "bytes": 1127,
-      "sha256": "bf022105252a9839b7dac433c4ef10fb69aff4bda1a2b75c9163f5dc19296433"
+      "bytes": 1519,
+      "sha256": "df40e5f8eddb5310e124dae0ef45a7c139a5ffee05b9de5057a6f7b3971bc994"
     },
     {
       "path": ".gitignore",
@@ -89,6 +99,11 @@
       "path": "examples/provider.env",
       "bytes": 63,
       "sha256": "4689db5af8c6f7491dec45357041f074c5d8c1a9cb554888b3aa0ffcf00bd7a0"
+    },
+    {
+      "path": "examples/deepseek.curl",
+      "bytes": 412,
+      "sha256": "978b2a5035697fea235ef003b66523e64e0d3f308688ff4ad9d5fb83eaaf684c"
     }
   ]
 }

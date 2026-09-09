@@ -9,9 +9,12 @@ import tempfile
 import time
 import tomllib
 from urllib.parse import urlsplit
+from switcher_curl import unwrap, is_curl, parse_curl
 
-VERSION = '2.1.1'
+VERSION = '2.2.0'
 FIELDS = ('id', 'name', 'base_url', 'env_key', 'model', 'wire_api')
+OPTIONAL_FIELDS = ('reasoning_effort',)
+EFFORTS = ('minimal', 'low', 'medium', 'high', 'xhigh')
 BEGIN = '# >>> codex-switcher:begin >>>'
 END = '# <<< codex-switcher:end <<<'
 ID = re.compile(r'[a-z][a-z0-9_-]{0,63}\Z')
@@ -22,6 +25,7 @@ def validate(p):
     if not isinstance(p, dict):
         raise ValueError('配置项必须是对象')
     out = {k: p.get(k, '') for k in FIELDS}
+    out.update({k:p[k] for k in OPTIONAL_FIELDS if k in p})
     if any(not isinstance(v, str) for v in out.values()):
         raise ValueError('配置字段必须是文本')
     out = {k:v.strip() for k,v in out.items()}
@@ -45,6 +49,9 @@ def validate(p):
     if out['wire_api'] not in {'','responses'}:
         raise ValueError('此工具支持 Responses 协议；Chat Completions 配置需先确认服务商兼容性')
     out['wire_api']='responses'
+    if out.get('reasoning_effort', '') not in ('', *EFFORTS):
+        raise ValueError('推理强度需为 minimal / low / medium / high / xhigh，或留空沿用当前配置')
+    if not out.get('reasoning_effort'):out.pop('reasoning_effort',None)
     out['base_url']=out['base_url'].rstrip('/')
     return out
 
@@ -75,6 +82,7 @@ def load_profiles(path):
         for p in records:
             if not isinstance(p,dict):raise ValueError()
             item={k:p.get(k,'responses' if k=='wire_api' else '') for k in FIELDS}
+            item.update({k:p[k] for k in OPTIONAL_FIELDS if k in p})
             if any(not isinstance(v,str) or len(v)>500 or any(ord(c)<32 for c in v) for v in item.values()):raise ValueError()
             if not ID.fullmatch(item['id']):raise ValueError()
             profiles.append(item)
@@ -87,7 +95,7 @@ def export_profiles(profiles):
     return _serialize_profiles([validate(p) for p in profiles])
 
 def _serialize_profiles(profiles):
-    return json.dumps({'version':VERSION,'contains_secrets':False,'profiles':[{k:p[k] for k in FIELDS} for p in profiles]},ensure_ascii=False,indent=2)
+    return json.dumps({'version':VERSION,'contains_secrets':False,'profiles':[{k:p[k] for k in FIELDS+OPTIONAL_FIELDS if k in p} for p in profiles]},ensure_ascii=False,indent=2)
 
 def profile_issue(profile):
     try:validate(profile)
@@ -123,9 +131,13 @@ def backup(path):
     return target
 
 def import_text(text):
-    """JSON lists/maps, Codex TOML, env text, and settingsConfig-wrapped exports."""
+    """JSON, TOML, env, wrapped exports, or a locally parsed cURL example."""
     if len(text.encode('utf-8'))>2*1024*1024:raise ValueError('导入文件上限为 2 MiB')
-    text=text.lstrip('\ufeff').strip()
+    text=unwrap(text)
+    if is_curl(text):
+        record,warnings=parse_curl(text)
+        record['profile']=validate(record['profile'])
+        return [record],warnings
     try:raw=json.loads(text)
     except ValueError:
         try:raw=tomllib.loads(text)
@@ -135,7 +147,7 @@ def import_text(text):
                 line=line.strip()
                 if not line or line.startswith('#'):continue
                 match=re.fullmatch(r'(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)',line)
-                if not match:raise ValueError('无法解析文件，请使用 JSON、TOML 或 .env 文本') from None
+                if not match:raise ValueError('无法解析文件，请使用 cURL、JSON、TOML 或 .env 文本') from None
                 value=match[2].strip()
                 if len(value)>=2 and value[0]==value[-1] and value[0] in '\"\'':value=value[1:-1]
                 raw[match[1]]=value
@@ -162,7 +174,7 @@ def import_text(text):
         providers=obj.get('model_providers')
         if isinstance(providers,dict):
             for pid,p in providers.items():
-                if isinstance(p,dict):visit({**p,'id':pid,'model':obj.get('model','')},pid,inherited,depth+1)
+                if isinstance(p,dict):visit({**p,'id':pid,'model':obj.get('model',''),'reasoning_effort':obj.get('model_reasoning_effort','')},pid,inherited,depth+1)
             return
         url=obj.get('base_url',obj.get('baseUrl',obj.get('apiHost',obj.get('OPENAI_BASE_URL',obj.get('OPENAI_API_BASE','')))))
         if url:
@@ -170,12 +182,12 @@ def import_text(text):
             env=obj.get('env_key') or obj.get('envKey') or 'CODEX_'+pid.upper().replace('-','_')+'_API_KEY'
             p=validate({'id':pid,'name':obj.get('name') or inherited.get('name') or pid,'base_url':url,
                         'env_key':env,'model':obj.get('model',obj.get('OPENAI_MODEL','')),
-                        'wire_api':obj.get('wire_api','responses')})
+                        'wire_api':obj.get('wire_api','responses'),'reasoning_effort':obj.get('reasoning_effort','')})
             secret=obj.get('api_key') or obj.get('apiKey') or obj.get('OPENAI_API_KEY') or inherited.get(env) or inherited.get('OPENAI_API_KEY') or ''
             if not isinstance(secret,str) or '\n' in secret or '\r' in secret or '\0' in secret or len(secret)>8192:
                 raise ValueError('API Key 格式不合法')
             records.append({'profile':p,'secret':secret.strip()})
-            ignored=set(obj)-set(FIELDS)-{'baseUrl','apiHost','apiKey','api_key','OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_API_BASE','OPENAI_MODEL','envKey'}
+            ignored=set(obj)-set(FIELDS+OPTIONAL_FIELDS)-{'baseUrl','apiHost','apiKey','api_key','OPENAI_API_KEY','OPENAI_BASE_URL','OPENAI_API_BASE','OPENAI_MODEL','envKey'}
             if ignored:warnings.append('已忽略额外字段（例如自定义请求头、查询参数）；请核对服务商要求')
             return
         for key in ('profiles','providers','codex'):
@@ -241,6 +253,10 @@ def render_config(text,profile):
             head=re.sub(r'(?m)^\s*(?:model|"model"|\'model\')\s*=.*\n?','',head)
             head='model = '+json.dumps(p['model'],ensure_ascii=False)+'\n'+head
             expected['model']=p['model']
+        if p.get('reasoning_effort'):
+            head=re.sub(r'(?m)^\s*(?:model_reasoning_effort|"model_reasoning_effort"|\'model_reasoning_effort\')\s*=.*\n?','',head)
+            head='model_reasoning_effort = '+json.dumps(p['reasoning_effort'])+'\n'+head
+            expected['model_reasoning_effort']=p['reasoning_effort']
         block='\n'+BEGIN+'\n[model_providers.'+pid+']\n'+''.join(k+' = '+json.dumps(v,ensure_ascii=False)+'\n' for k,v in provider.items())+END+'\n'
     result=head.rstrip()+'\n\n'+tail.rstrip()+block+'\n'
     def clean(d):

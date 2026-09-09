@@ -4,13 +4,26 @@
 
 ## 下载 Codex Switcher
 
-**[直接下载 Windows 程序包 · v2.1.1 · 117,075 字节](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.1.1-Windows-x64.zip)**
+**[直接下载 Windows 程序包 · v2.2.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.2.0-Windows-x64.zip)**
 
 完整解压后双击 `Codex Switcher.exe`。包内包含本软件源码，EXE 需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x。
 
 [下载与 SHA-256 校验](releases/README.md) · [程序源码](codex_switcher.pyw)
 
 一个用于 Windows 的本地 Codex API 服务配置工作台。炭灰界面、服务搜索、当前模式、密钥状态、详情面板和独立 EXE 启动入口。
+
+## v2.2 cURL 导入
+
+- 直接粘贴 DeepSeek 官方 cURL 示例，保留 `deepseek-v4-pro` 和 `reasoning_effort: high`。预览展示地址、模型、Responses 协议、推理强度与密钥变量。
+- 将 DeepSeek 官方 Chat Completions 示例转换为 `base_url=https://api.deepseek.com`、`wire_api=responses`；其他未知 Chat Completions 服务不猜测兼容性。
+- 识别 Markdown 代码块、网址链接、复制时的下划线转义，以及 Bash / PowerShell / CMD 换行续行。支持 `curl.exe`、`-H`、`-d`、`--json`、`--data-raw` 等常用写法。
+- `${DEEPSEEK_API_KEY}`、`$NAME`、`%NAME%` 和 `$env:NAME` 只作为变量引用；解析不读取其值，不保存占位符。仅含变量的导入禁用“保存附带 API Key”；导入后编辑服务填写实际 Key。
+- 推理强度可编辑，应用时映射到 Codex 根级 `model_reasoning_effort`；为空时沿用当前值。切回官方模式时模型和推理强度保持当前值，需要时自行调整。
+- 不会发送示例对话、执行命令、读取 `@文件` 或调用 API。`messages`、`stream` 和其他单次请求参数由 Codex 管理。自定义请求头或不能完整转换的思考模式会说明原因并拒绝导入。
+
+使用：关闭旧切换器窗口，通过 EXE 打开 → 导入配置 → 粘贴导入 → 粘贴完整 cURL → 解析并预览 → 导入所选。保存后补充 API Key，最后手动应用。
+
+[DeepSeek cURL 示例](examples/deepseek.curl) · [DeepSeek 官方 Responses 文档](https://api-docs.deepseek.com/zh-cn/guides/responses_api/) · [首次调用文档](https://api-docs.deepseek.com/zh-cn/)
 
 v2.1.1 修复 Windows 任务栏显示 Python 图标的问题：在创建窗口前设置独立应用标识，并为主窗口与弹窗使用同一套图标。演示环境使用独立分组。更新后关闭旧切换器窗口，再通过 EXE 打开。
 
@@ -48,16 +61,17 @@ v2.1.1 修复 Windows 任务栏显示 Python 图标的问题：在创建窗口�
 支持以下**结构**，不保证所有同名工具的每个版本都兼容：
 
 1. 本工具导出的 JSON；普通配置数组，以及 `profiles` / `providers` 下的数组或字典。
-2. Codex `config.toml` 中的 `model_providers`，读取根级 model。
+2. Codex `config.toml` 中的 `model_providers`，读取根级 model 和 model_reasoning_effort。
 3. 含 `settingsConfig.config`（Codex TOML 字符串）与 `settingsConfig.env` 的导出项，支持外层 `codex.providers`。
 4. `.env` 文本：`OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL`。只解析文本，不执行 shell、不展开变量。
-5. 字段别名：`baseUrl` / `apiHost`、`apiKey`、`envKey`。
+5. 单条内联 JSON cURL 请求：通用 `/responses` 示例，以及 DeepSeek 官方 `/chat/completions` 示例。
+6. 字段别名：`baseUrl` / `apiHost`、`apiKey`、`envKey`。
 
 导入预览中 API Key 只显示“有/无”。只有勾选“同时保存附带的 API Key”后，才写入独立的新环境变量；不会覆盖已有服务的密钥。默认只导入服务描述。没有密钥时，编辑服务补充后再应用。
 
-不导入 OAuth 会话、浏览器 Cookie、auth.json 或其他工具的登录缓存。未知格式、Chat Completions 协议和不合法地址会报错；需要自定义认证头、查询参数或特殊认证的服务应先人工核对，相关额外字段不会自动迁移。单次导入最多 2 MiB / 200 项。
+不导入 OAuth 会话、浏览器 Cookie、auth.json 或其他工具的登录缓存。未知格式、未经确认的 Chat Completions 协议和不合法地址会报错；需要自定义认证头、查询参数或特殊认证的服务应先人工核对，相关额外字段不会自动迁移。单次导入最多 2 MiB / 200 项。
 
-示例文件见 [examples/provider.json](examples/provider.json)、[examples/codex.toml](examples/codex.toml)、[examples/provider.env](examples/provider.env)。示例只有虚构地址，不附带可用密钥。
+示例文件见 [examples/provider.json](examples/provider.json)、[examples/codex.toml](examples/codex.toml)、[examples/provider.env](examples/provider.env)。普通示例使用虚构地址；DeepSeek 示例使用其官方地址。所有示例均不附带可用密钥。
 
 ## 数据与维护
 

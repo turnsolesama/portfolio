@@ -8,3 +8,5 @@
 - 图形验证运行 `Codex Switcher.exe --demo`，与真实配置、环境变量完全隔离。不得在开发验证中应用真实切换或重启用户的 Codex。
 - 界面原语位于 `switcher_ui.py`。主操作放在滚动区域外；布局改动运行 `test_switcher_ui.py`，覆盖 100% / 125% / 150% / 200% 缩放。测试窗口在屏幕外且使用临时演示数据。
 - 发布使用 `python -B package_release.py`，白名单打包并检查摘要；保留用户现有修改。
+- cURL 仅在 `switcher_curl.py` 解析文本，禁止执行命令、HTTP 请求、读取 @文件或展开环境变量。新增转换需有服务商官方兼容证据与回归测试；不可将未知 Chat Completions 自动当成 Responses。
+- 可选 reasoning_effort 只影响根级 model_reasoning_effort，沿用现有 TOML 语义保护；旧配置不因字段扩展而被自动改写。
