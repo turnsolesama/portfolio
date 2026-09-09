@@ -1,5 +1,15 @@
 # Codex Switcher
 
+[返回三个软件的目录](../)
+
+## 下载 Codex Switcher
+
+**[直接下载 Windows 程序包 · v2.1.1 · 117,075 字节](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.1.1-Windows-x64.zip)**
+
+完整解压后双击 `Codex Switcher.exe`。包内包含本软件源码，EXE 需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x。
+
+[下载与 SHA-256 校验](releases/README.md) · [程序源码](codex_switcher.pyw)
+
 一个用于 Windows 的本地 Codex API 服务配置工作台。炭灰界面、服务搜索、当前模式、密钥状态、详情面板和独立 EXE 启动入口。
 
 v2.1.1 修复 Windows 任务栏显示 Python 图标的问题：在创建窗口前设置独立应用标识，并为主窗口与弹窗使用同一套图标。演示环境使用独立分组。更新后关闭旧切换器窗口，再通过 EXE 打开。

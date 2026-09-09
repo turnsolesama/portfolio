@@ -1,6 +1,6 @@
 # ProxySwitch 3.1.1 · Windows 源码运行包
 
-[下载 ZIP · 约 281 KiB](ProxySwitch-v3.1.1-Windows-Source.zip?raw=true) · [SHA-256 校验](SHA256SUMS.txt) · [使用说明](../README.md) · [更新记录](../CHANGELOG.md)
+[下载 ZIP · 约 281 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip) · [SHA-256 校验](SHA256SUMS.txt) · [使用说明](../README.md) · [更新记录](../CHANGELOG.md)
 
 完整解压 ZIP，打开 `proxy-switch` 文件夹，双击 `启动代理切换.cmd`。这是 PowerShell / WinForms 源码运行包，不捆绑 VPN、代理服务或运行依赖。
 
@@ -28,4 +28,4 @@ Get-FileHash .\ProxySwitch-v3.1.1-Windows-Source.zip -Algorithm SHA256
 
 本次修复针对桌面启动读取不到配置的问题。此前游戏登录错误 [4] 的具体根因与长期稳定性仍未确认。
 
-历史版本：[3.1.0](ProxySwitch-v3.1.0-Windows-Source.zip?raw=true)、[3.0.3](ProxySwitch-v3.0.3-Windows-Source.zip?raw=true)、[3.0.2](ProxySwitch-v3.0.2-Windows-Source.zip?raw=true)、[3.0.1](ProxySwitch-v3.0.1-Windows-Source.zip?raw=true)、[3.0.0](ProxySwitch-v3.0.0-Windows-Source.zip?raw=true)。
+历史版本：[3.1.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.0-Windows-Source.zip)、[3.0.3](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.3-Windows-Source.zip)、[3.0.2](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.2-Windows-Source.zip)、[3.0.1](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.1-Windows-Source.zip)、[3.0.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.0.0-Windows-Source.zip)。

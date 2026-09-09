@@ -1,5 +1,15 @@
 # ProxySwitch · 网络代理管家
 
+[返回三个软件的目录](../)
+
+## 下载 ProxySwitch
+
+**[直接下载 Windows 源码运行包 · v3.1.1 · 287,707 字节](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip)**
+
+完整解压后打开 `proxy-switch` 文件夹，双击 `启动代理切换.cmd`。这是 PowerShell / WinForms 源码运行包；需要 Windows 10 / 11、Windows PowerShell 5.1、.NET Framework 4.8 和 `curl.exe`。
+
+[下载与 SHA-256 校验](releases/README.md) · [程序源码](ProxySwitch.ps1) · [完整运行要求](#运行要求)
+
 一个通用的 Windows 代理管理面板：添加自己的代理入口，统一切换系统网络，或为程序指定单独线路。**不预设任何 VPN 品牌，也不捆绑代理服务。**
 
 ![代理管理页面，演示数据](assets/proxy-management.png)

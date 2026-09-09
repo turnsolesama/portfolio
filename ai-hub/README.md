@@ -1,5 +1,18 @@
 # AI Hub
 
+[返回三个软件的目录](../)
+
+## 下载 AI Hub
+
+| 软件包 | 版本 | 大小 | 直接下载 |
+| --- | --- | --- | --- |
+| Windows x64 桌面包 | 2.3.0 | 451,683 字节 | **[下载 AI Hub](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip)** |
+| 完整源码包 | 2.3.0 | 186,081 字节 | [下载源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Source.zip) |
+
+只下载本软件的 ZIP，完整解压后双击 `AI Hub.exe`。需要 Python 3.9+、.NET Framework 4.8+ 和 WebView2 Runtime。
+
+[版本说明与 SHA-256 校验](releases/README.md) · [程序源码](aihub/)
+
 在一个本地工作台里管理模型、LoRA、工作流、出图和资料。
 
 AI Hub 采用炭灰界面，提供独立 Windows 桌面窗口。按图片、视频、语言、音频等用途找模型；按风格、角色、光照、细节等用途整理 LoRA。模型保留原文件位置，评分、备注与分类保存在本机。安全区整理通过硬链接建立分类入口，共用文件内容；编辑入口也会改变原件，不作为备份。
@@ -16,7 +29,7 @@ Windows 桌面包包含 `AI Hub.exe`、完整程序源码和使用说明。解�
 
 首次使用：进入 **安全区整理**，选择本机资产目录；需要时创建标准目录，保存后预览自动分类结果并建立分类入口。可选启动时自动整理。新安装没有预设他人的盘符，目录失效时会提示重新设置。详细规则见 [安全区与自动整理](docs/SAFE_ZONE.md)。
 
-当前发行版 **2.3.0**：[Windows 桌面包](releases/AI-Hub-v2.3.0-Windows-x64.zip) · [源码包](releases/AI-Hub-v2.3.0-Source.zip) · [SHA-256](releases/AI-Hub-v2.3.0-SHA256.txt)。
+当前发行版 **2.3.0**：[Windows 桌面包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip) · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Source.zip) · [SHA-256](releases/AI-Hub-v2.3.0-SHA256.txt)。
 
 ## 常用功能
 

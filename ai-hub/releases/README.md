@@ -2,8 +2,8 @@
 
 新增跨电脑安全区设置、可创建标准目录、分类预览、硬链接分类入口、批次记录与撤销、可选后台启动时自动整理。原件留在原处，既有工作流路径保留。硬链接共用文件内容，不是备份。
 
-- [Windows x64 桌面包](AI-Hub-v2.3.0-Windows-x64.zip?raw=true) — 451683 字节
-- [完整源码包](AI-Hub-v2.3.0-Source.zip?raw=true) — 186081 字节
+- [Windows x64 桌面包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip) — 451683 字节
+- [完整源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Source.zip) — 186081 字节
 - [SHA-256 校验清单](AI-Hub-v2.3.0-SHA256.txt)
 - [安全区与自动整理说明](../docs/SAFE_ZONE.md)
 - [验证记录](../docs/VALIDATION_2.3.md)

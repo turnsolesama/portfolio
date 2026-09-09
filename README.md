@@ -1,34 +1,23 @@
-# portfolio
-My personal website and AI portfolio.
+# 软件目录
 
-## AI Hub · 本地 AI 资产管理
+三个软件分别放在下面三个独立文件夹中。选择需要的软件，直接下载对应的 ZIP 即可。
 
-按图片、视频、语言、音频等功能管理模型，支持 LoRA 多用途分类、批量整理、图库和独立 Windows 桌面窗口。2.3 新增跨电脑安全区设置、自动分类入口、可选启动整理和批次撤销。
+| 独立文件夹 | 软件用途 | 最新版本 | 下载本软件 |
+| --- | --- | --- | --- |
+| **[AI Hub](ai-hub/)** | 管理本地模型、LoRA、图库与工作流 | 2.3.0 | **[下载 Windows 包 · 441 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip)** |
+| **[Codex Switcher](codex-switcher/)** | 管理、导入和切换 Codex API 服务配置 | 2.1.1 | **[下载 Windows 包 · 114 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.1.1-Windows-x64.zip)** |
+| **[ProxySwitch](proxy-switch/)** | 管理代理入口、系统代理与程序线路 | 3.1.1 | **[下载 Windows 源码运行包 · 281 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip)** |
 
-- [项目源码与使用说明](ai-hub/README.md)
-- [下载 Windows x64 桌面包 · v2.3.0](ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip?raw=true)
-- [完整源码包](ai-hub/releases/AI-Hub-v2.3.0-Source.zip?raw=true)
-- [版本说明与校验清单](ai-hub/releases/README.md)
+每个文件夹都有自己的使用说明、程序源码和 `releases/` 下载目录；每个 ZIP 只包含对应软件。
 
-运行需本机 Python 3.9+、.NET Framework 4.8+ 和 WebView2 Runtime。发行包不包含个人数据库、图片、配置、凭据或模型权重。
+## 下载与打开
 
-## Codex Switcher · 服务配置工作台
+1. 点击表格中的 **下载本软件**，直接取得 ZIP 文件，无需进入 GitHub 的二进制文件预览页。
+2. 完整解压压缩包，再打开其中的软件文件夹。
+3. AI Hub 双击 `AI Hub.exe`；Codex Switcher 双击 `Codex Switcher.exe`；ProxySwitch 双击 `启动代理切换.cmd`。
 
-紧凑双栏界面、可调分栏、固定操作区，以及文件/粘贴导入、去重预览、服务搜索、配置备份恢复。v2.1 修复高缩放与小窗口下的按钮裁切，并保留可修复的旧版服务记录。
+软件运行要求、历史版本和校验值分别放在各自文件夹中。AI Hub 和 Codex Switcher 的 EXE 需要本机 Python；ProxySwitch 是 Windows PowerShell 源码运行包。
 
-- [项目源码与使用说明](codex-switcher/README.md)
-- [下载 Windows x64 程序包 · v2.1.1](codex-switcher/releases/Codex-Switcher-v2.1.1-Windows-x64.zip?raw=true)
-- [测试记录](codex-switcher/TEST_REPORT.md) · [文件校验清单](codex-switcher/releases/manifest.json)
+如果 GitHub 页面显示 **Error loading page**，可直接使用上表的下载链接；如果已经下载但无法启动，请查看对应软件的运行要求，这与网页下载失败是两种情况。
 
-解压整个目录后双击 EXE。需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x；EXE 不内置 Python。发布包不包含个人服务列表、密钥、登录信息或备份。
-
-## ProxySwitch · 网络代理管家
-
-添加自定义 HTTP / SOCKS5 代理入口，统一切换系统代理，支持可选引擎下的程序分流与实际连接检查。3.1.1 修复桌面入口与打包应用读取不同代理配置的问题，统一本机数据目录，保留旧数据与快捷方式备份；支持程序启动代理、后台自动发现和手动统一切换。
-
-- [源码、运行要求与使用说明](proxy-switch/README.md)
-- [下载 Windows 源码运行包 · v3.1.1](proxy-switch/releases/ProxySwitch-v3.1.1-Windows-Source.zip?raw=true)
-- [版本记录](proxy-switch/CHANGELOG.md)
-- [下载与校验说明](proxy-switch/releases/README.md)
-
-解压完整目录后双击「启动代理切换.cmd」。基础 HTTP / 直连切换无需 Node.js；程序分流与 SOCKS5 统一切换需要可选引擎。软件不捆绑 VPN 或代理服务。
+仓库发布软件源码、程序包、图标和演示资源，不包含个人图集、模型权重、密钥、本机数据库或私人配置。
