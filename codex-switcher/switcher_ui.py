@@ -3,17 +3,17 @@ import ctypes
 import tkinter as tk
 from tkinter import ttk
 
-BG = '#12151b'
-PANEL = '#1b2029'
-SURFACE = '#242b37'
-FG = '#edf1f8'
-MUTED = '#a0aabc'
-ACCENT = '#b9c8ff'
-BORDER = '#333d4e'
-HOVER = '#303b4d'
-PRESSED = '#35496a'
-DISABLED_BG = '#202632'
-DISABLED_FG = '#9ba8bc'
+BG = '#111315'
+PANEL = '#191c20'
+SURFACE = '#23272d'
+FG = '#eef1f5'
+MUTED = '#a2aab5'
+ACCENT = '#a9c4ec'
+BORDER = '#30363e'
+HOVER = '#2d343e'
+PRESSED = '#34485f'
+DISABLED_BG = '#202429'
+DISABLED_FG = '#98a4b3'
 APP_USER_MODEL_ID = 'Turnsole.CodexSwitcher.Desktop'
 
 
@@ -50,9 +50,23 @@ def style_app(root, scale=None):
     s.configure('.', background=BG, foreground=FG, font=('Microsoft YaHei UI', 10))
     s.configure('TFrame', background=BG)
     s.configure('Panel.TFrame', background=PANEL)
+    s.configure('Surface.TFrame', background=SURFACE)
+    s.configure('TSeparator', background=BORDER)
+    s.configure('Eyebrow.TLabel', foreground=MUTED, font=('Segoe UI', 8, 'bold'))
+    s.configure('Badge.TLabel', background=SURFACE, foreground=ACCENT,
+                padding=(px(9), px(4)), font=('Microsoft YaHei UI', 9))
+    s.configure('ActiveBadge.TLabel', background='#253c36', foreground='#b0d9cb',
+                padding=(px(9), px(4)), font=('Microsoft YaHei UI', 9))
+    s.configure('WarningBadge.TLabel', background='#403528', foreground='#edd0a8',
+                padding=(px(9), px(4)), font=('Microsoft YaHei UI', 9))
+    s.configure('Group.TLabel', background=PANEL, foreground=ACCENT,
+                font=('Microsoft YaHei UI', 9, 'bold'))
+    s.configure('Field.TLabel', background=PANEL, foreground=MUTED,
+                font=('Microsoft YaHei UI', 9))
+    s.configure('Mono.TLabel', background=PANEL, foreground=FG, font=('Consolas', 10))
     s.configure('TLabel', background=BG, foreground=FG)
     s.configure('Muted.TLabel', foreground=MUTED)
-    s.configure('Title.TLabel', font=('Microsoft YaHei UI', 18, 'bold'))
+    s.configure('Title.TLabel', font=('Microsoft YaHei UI', 17, 'bold'))
     s.configure('Section.TLabel', background=PANEL, font=('Microsoft YaHei UI', 12, 'bold'))
     s.configure('Panel.TLabel', background=PANEL)
     s.configure('PanelMuted.TLabel', background=PANEL, foreground=MUTED)
@@ -62,17 +76,18 @@ def style_app(root, scale=None):
     button_foreground=[('disabled',DISABLED_FG),('pressed',FG),('active',FG)]
     s.map('TButton', background=button_background, foreground=button_foreground,
           lightcolor=button_background, darkcolor=button_background,
-          bordercolor=[('disabled',BORDER),('focus','#667ea8'),('active',BORDER)])
-    s.configure('Primary.TButton', background=ACCENT, foreground='#182345')
-    s.map('Primary.TButton', background=[('disabled',DISABLED_BG),('pressed','#9db3f0'),('active','#c8d4ff')],
-          foreground=[('disabled',DISABLED_FG),('pressed','#182345'),('active','#182345')])
+          bordercolor=[('disabled',BORDER),('focus','#8caace'),('active',BORDER)])
+    s.configure('Primary.TButton', background=ACCENT, foreground='#142235')
+    s.map('Primary.TButton', background=[('disabled',DISABLED_BG),('pressed','#94b4de'),('active','#bbd2f0')],
+          foreground=[('disabled',DISABLED_FG),('pressed','#142235'),('active','#142235')])
     s.configure('TMenubutton', background=SURFACE, foreground=FG, arrowcolor=FG,
                 lightcolor=SURFACE, darkcolor=SURFACE, bordercolor=BORDER,
                 padding=(px(10), px(8)), borderwidth=0)
     # Clam's default active menu background is almost white. Override all states.
     s.map('TMenubutton', background=button_background, foreground=button_foreground,
           arrowcolor=button_foreground, lightcolor=button_background, darkcolor=button_background,
-          bordercolor=[('disabled',BORDER),('focus','#667ea8'),('active',BORDER)])
+          bordercolor=[('disabled',BORDER),('focus','#8caace'),('active',BORDER)])
+    s.configure('Quiet.TButton', background=PANEL, padding=(px(8), px(7)))
     s.configure('TEntry', fieldbackground=SURFACE, foreground=FG, insertcolor=FG,
                 padding=px(8), bordercolor=BORDER, lightcolor=BORDER, darkcolor=BORDER)
     s.map('TEntry',fieldbackground=[('disabled',DISABLED_BG),('readonly',SURFACE)],
@@ -85,11 +100,11 @@ def style_app(root, scale=None):
     for option,value in {'background':SURFACE,'foreground':FG,'selectBackground':PRESSED,'selectForeground':FG}.items():
         root.option_add('*TCombobox*Listbox.'+option,value)
     s.configure('Treeview', background=PANEL, fieldbackground=PANEL, foreground=FG,
-                rowheight=px(40), borderwidth=0, bordercolor=PANEL, lightcolor=PANEL, darkcolor=PANEL)
+                rowheight=px(46), borderwidth=0, bordercolor=PANEL, lightcolor=PANEL, darkcolor=PANEL)
     s.configure('Treeview.Heading', background=SURFACE, foreground=MUTED,
                 padding=(px(8), px(8)), relief='flat')
     s.map('Treeview.Heading',background=button_background,foreground=button_foreground)
-    s.map('Treeview', background=[('selected', '#35496a')], foreground=[('selected', '#ffffff')])
+    s.map('Treeview', background=[('selected', '#34485f')], foreground=[('selected', '#ffffff')])
     s.configure('TCheckbutton', background=BG, foreground=FG, padding=px(4))
     s.map('TCheckbutton', background=[('disabled',BG),('active',SURFACE)],
           foreground=[('disabled',DISABLED_FG),('active',FG)])
@@ -97,10 +112,10 @@ def style_app(root, scale=None):
         name=orientation+'.TScrollbar'
         s.layout(name, [(orientation+'.Scrollbar.trough', {'sticky': 'nswe', 'children': [
             (orientation+'.Scrollbar.thumb', {'sticky': 'nswe', 'expand': '1'})]})])
-        s.configure(name, background='#3a4558', troughcolor=PANEL, bordercolor=PANEL,
-                    lightcolor='#3a4558', darkcolor='#3a4558', borderwidth=0,
+        s.configure(name, background='#3b444e', troughcolor=PANEL, bordercolor=PANEL,
+                    lightcolor='#3b444e', darkcolor='#3b444e', borderwidth=0,
                     width=px(8), arrowsize=px(8), gripcount=0)
-        s.map(name, background=[('pressed', '#8498b7'), ('active', '#677a99')])
+        s.map(name, background=[('pressed', '#869bb3'), ('active', '#657b95')])
     s.configure('TPanedwindow', background=BG, sashwidth=px(12))
     return s
 

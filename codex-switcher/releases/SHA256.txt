@@ -1,1 +1,1 @@
-400464a52185fb76bf2d6a85b3a91af35ea45322b83befe0a4a875e9494b6c3a  Codex-Switcher-v2.3.0-Windows-x64.zip
+61ccbd636fafb2fc2151dfffada883e6f27a379b30ee9ca67dd6552f3dcb143f  Codex-Switcher-v2.4.0-Windows-x64.zip

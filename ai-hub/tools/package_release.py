@@ -7,7 +7,7 @@ import re
 import struct
 import zipfile
 
-VERSION = "2.3.0"
+VERSION = "2.4.0"
 ROOT = Path(__file__).resolve().parents[1]
 ROOT_FILES = ("server.py", "launcher.pyw", "start.vbs", "start.bat", "debug.bat", ".gitignore", "THIRD_PARTY_NOTICES.md")
 SUBDIRS = {"aihub": {".py"}, "frontend": {".js", ".html", ".css", ".svg", ".ico"},

@@ -110,6 +110,34 @@ class LayoutTests(unittest.TestCase):
         dialog=a.edit(a.profiles[0]);a.update()
         self.assertTrue(send(int(dialog.frame(),16),0x007f,1,0),'Dialog icon missing')
 
+    def test_grouped_details_wrap_and_badge_tracks_selection_at_four_scales(self):
+        for scale in (1, 1.25, 1.5, 2):
+            with self.subTest(scale=scale):
+                a = self.open_app(scale)
+                self.assertEqual(a.detail_badge.cget('style'), 'ActiveBadge.TLabel')
+                a.tree.selection_set('studio'); a.update()
+                self.assertEqual(a.detail_badge.cget('style'), 'Badge.TLabel')
+                self.assertEqual(len(a.detail_fields), 6)
+                for small in (False, True):
+                    if small:
+                        w,h=a.minsize();a.geometry(f'{w}x{h}+30000+30000');a.update()
+                    for field,value in a.detail_fields:
+                        self.assert_inside(value,field)
+                        self.assertGreaterEqual(int(value.cget('wraplength')),a.px(65))
+                    self.assert_inside(a.brand_mark,a)
+                    self.main_bounds()
+                a.destroy();self.app=None
+
+    def test_status_badges_have_readable_contrast(self):
+        a=self.open_app();style=self.mod.ttk.Style(a)
+        def lum(color):
+            values=[v/65535 for v in a.winfo_rgb(color)]
+            values=[v/12.92 if v<=.04045 else ((v+.055)/1.055)**2.4 for v in values]
+            return sum(v*w for v,w in zip(values,(.2126,.7152,.0722)))
+        for name in ('Badge.TLabel','ActiveBadge.TLabel','WarningBadge.TLabel','Group.TLabel','Field.TLabel'):
+            dark,light=sorted([lum(style.lookup(name,'background')),lum(style.lookup(name,'foreground'))])
+            self.assertGreaterEqual((light+.05)/(dark+.05),4.5,name)
+
     def test_splitter_limits_preserve_action_space(self):
         a = self.open_app()
         for position in (1, a.panes.winfo_width()-1):

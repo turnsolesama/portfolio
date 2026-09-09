@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Codex Switcher 2.1 — local Windows provider workspace."""
+"""Codex Switcher 2.4 — local Windows provider workspace."""
 import ctypes
 import json
 import os
@@ -58,7 +58,7 @@ class App(tk.Tk):
         self.configure(bg=BG)
         style_app(self, ui_scale)
         px = self.px
-        fit_window(self, self, 1120, 750, minimum=(900, 570))
+        fit_window(self, self, 1160, 750, minimum=(900, 570))
         if testing:
             self.geometry('+30000+30000')
         self.icon_path=str(APP_DIR/'switcher.ico')
@@ -69,22 +69,29 @@ class App(tk.Tk):
             pass
         self.columnconfigure(0, weight=1)
         self.rowconfigure(2, weight=1)
-        head = ttk.Frame(self, padding=(px(20), px(16), px(20), px(12)))
+        head = ttk.Frame(self, padding=(px(22), px(14), px(22), px(12)))
         head.grid(row=0, column=0, sticky='ew')
-        head.columnconfigure(0, weight=1)
-        ttk.Label(head, text='Codex Switcher', style='Title.TLabel').grid(row=0, column=0, sticky='w')
-        ttk.Label(head, text='服务配置工作台', style='Muted.TLabel').grid(row=1, column=0, sticky='w', pady=(px(3),0))
-        ttk.Label(head, text='演示环境 · 隔离配置' if DEMO else '本机管理 · '+core.VERSION,
-                  style='Muted.TLabel').grid(row=0, column=1, rowspan=2, sticky='e')
+        head.columnconfigure(1, weight=1)
+        self.brand_mark = tk.Canvas(head, width=px(36), height=px(36), bg=BG, highlightthickness=0)
+        self.brand_mark.grid(row=0, column=0, rowspan=2, sticky='w', padx=(0,px(12)))
+        self.brand_mark.create_rectangle(px(1),px(1),px(35),px(35),fill=SURFACE,outline='#3b4859')
+        self.brand_mark.create_line(px(10),px(13),px(7),px(18),px(10),px(23),fill=ACCENT,width=px(2))
+        self.brand_mark.create_line(px(26),px(13),px(29),px(18),px(26),px(23),fill=ACCENT,width=px(2))
+        self.brand_mark.create_line(px(20),px(11),px(16),px(25),fill=FG,width=px(2))
+        ttk.Label(head, text='CODEX  /  PROVIDER WORKSPACE', style='Eyebrow.TLabel').grid(row=0,column=1,sticky='w')
+        ttk.Label(head, text='服务配置工作台', style='Title.TLabel').grid(row=1,column=1,sticky='w')
+        ttk.Label(head, text='演示环境 · 隔离配置' if DEMO else 'LOCAL WORKSPACE',
+                  style='Badge.TLabel').grid(row=0,column=2,rowspan=2,sticky='e')
         self.status = tk.StringVar()
         self.status_display = tk.StringVar()
         self.count = tk.StringVar()
-        status = ttk.Frame(self, style='Panel.TFrame', padding=(px(14), px(10)))
-        status.grid(row=1, column=0, sticky='ew', padx=px(20), pady=(0,px(14)))
-        status.columnconfigure(1, weight=1)
-        ttk.Label(status, text='当前配置', style='PanelMuted.TLabel').grid(row=0,column=0,padx=(0,px(14)))
-        self.current_label = ttk.Label(status, textvariable=self.status_display, style='Panel.TLabel')
+        status = ttk.Frame(self, style='Panel.TFrame', padding=(px(14), px(9)))
+        status.grid(row=1,column=0,sticky='ew',padx=px(20),pady=(0,px(12)))
+        status.columnconfigure(1,weight=1)
+        ttk.Label(status,text='●  当前配置',style='Group.TLabel').grid(row=0,column=0,padx=(0,px(14)))
+        self.current_label = ttk.Label(status,textvariable=self.status_display,style='Panel.TLabel')
         self.current_label.grid(row=0,column=1,sticky='ew')
+        ttk.Label(status,text='应用前自动备份',style='PanelMuted.TLabel').grid(row=0,column=2,padx=(px(12),0))
         self.status.trace_add('write', lambda *_: self._fit_status())
         self.current_label.bind('<Configure>', lambda _e: self._fit_status())
         self.panes = ttk.Panedwindow(self, orient='horizontal')
@@ -104,30 +111,30 @@ class App(tk.Tk):
         caption.columnconfigure(0,weight=1)
         ttk.Label(caption,text='服务库',style='Section.TLabel').grid(row=0,column=0,sticky='w')
         self.view_count = tk.StringVar()
-        ttk.Label(caption,textvariable=self.view_count,style='PanelMuted.TLabel').grid(row=0,column=1,sticky='e')
+        ttk.Label(caption,textvariable=self.view_count,style='Badge.TLabel').grid(row=0,column=1,sticky='e')
         self.toolbar = ttk.Frame(left,style='Panel.TFrame')
         self.toolbar.grid(row=1,column=0,sticky='ew',pady=(0,px(12)))
         self.toolbar.columnconfigure(3,weight=1)
-        self.add_button = ttk.Button(self.toolbar,text='＋ 新增',width=6,style='Primary.TButton',command=self.edit)
+        self.add_button = ttk.Button(self.toolbar,text='＋ 新增',width=6,command=self.edit)
         self.add_button.grid(row=0,column=0,padx=(0,px(8)))
         self.import_button = ttk.Menubutton(self.toolbar,text='导入配置',width=8)
-        import_menu = tk.Menu(self.import_button,tearoff=False,bg=SURFACE,fg=FG,activebackground='#35496a',activeforeground=FG)
+        import_menu = tk.Menu(self.import_button,tearoff=False,bg=SURFACE,fg=FG,activebackground='#34485f',activeforeground=FG)
         import_menu.add_command(label='从文件导入…',command=self.import_file)
         import_menu.add_command(label='粘贴配置…',command=self.import_paste)
         self.import_button.configure(menu=import_menu)
         self.import_button.grid(row=0,column=1,padx=(0,px(8)))
         self.more_button = ttk.Menubutton(self.toolbar,text='更多',width=5)
-        more = tk.Menu(self.more_button,tearoff=False,bg=SURFACE,fg=FG,activebackground='#35496a',activeforeground=FG)
+        more = tk.Menu(self.more_button,tearoff=False,bg=SURFACE,fg=FG,activebackground='#34485f',activeforeground=FG)
         more.add_command(label='导出配置（不含密钥）…',command=self.export)
         more.add_command(label='配置备份与恢复…',command=self.restore)
         self.more_button.configure(menu=more)
         self.more_button.grid(row=0,column=2)
-        self.refresh_button = ttk.Button(self.toolbar,text='刷新',width=4,command=self.refresh)
+        self.refresh_button = ttk.Button(self.toolbar,text='刷新',width=4,style='Quiet.TButton',command=self.refresh)
         self.refresh_button.grid(row=0,column=4,sticky='e',padx=(px(8),0))
         search_row = ttk.Frame(left,style='Panel.TFrame')
         search_row.grid(row=2,column=0,sticky='ew',pady=(0,px(12)))
         search_row.columnconfigure(1,weight=1)
-        ttk.Label(search_row,text='搜索',style='PanelMuted.TLabel').grid(row=0,column=0,padx=(0,px(8)))
+        ttk.Label(search_row,text='查找',style='PanelMuted.TLabel').grid(row=0,column=0,padx=(0,px(8)))
         self.search = tk.StringVar()
         self.search.trace_add('write',lambda *_:self.render())
         self.search_entry = ttk.Entry(search_row,textvariable=self.search)
@@ -140,7 +147,7 @@ class App(tk.Tk):
         self.tree.bind('<<TreeviewSelect>>',lambda _e:self.details())
         self.tree.bind('<Double-1>',lambda _e:self.edit(self.selected()) if self.selected() else None)
         self.tree.bind('<Configure>',self._resize_columns)
-        ttk.Label(left,text='选择服务查看详情；双击编辑。',style='PanelMuted.TLabel').grid(row=4,column=0,sticky='w',pady=(px(9),0))
+        ttk.Label(left,text='Ctrl+F 查找   ·   双击编辑服务',style='PanelMuted.TLabel').grid(row=4,column=0,sticky='w',pady=(px(9),0))
         right.columnconfigure(0,weight=1)
         right.rowconfigure(1,weight=1)
         detail_head = ttk.Frame(right,style='Panel.TFrame',padding=(px(18),px(15),px(18),px(10)))
@@ -148,7 +155,8 @@ class App(tk.Tk):
         detail_head.columnconfigure(0,weight=1)
         ttk.Label(detail_head,text='服务详情',style='Section.TLabel').grid(row=0,column=0,sticky='w')
         self.detail_state = tk.StringVar()
-        ttk.Label(detail_head,textvariable=self.detail_state,style='PanelMuted.TLabel').grid(row=0,column=1,sticky='e')
+        self.detail_badge = ttk.Label(detail_head,textvariable=self.detail_state,style='Badge.TLabel')
+        self.detail_badge.grid(row=0,column=1,sticky='e')
         self.detail_scroll = ScrollArea(right,px,panel=True)
         self.detail_scroll.grid(row=1,column=0,sticky='nsew',padx=(px(18),px(8)))
         self.detail_content = self.detail_scroll.content
@@ -159,22 +167,23 @@ class App(tk.Tk):
         self.detail_actions.grid(row=2,column=0,sticky='ew')
         self.detail_actions.columnconfigure(0,weight=1)
         self.apply_button = ttk.Button(self.detail_actions,text='应用所选配置',style='Primary.TButton',command=self.apply)
-        self.apply_button.grid(row=0,column=0,sticky='ew',pady=(0,px(8)))
+        ttk.Separator(self.detail_actions).grid(row=0,column=0,sticky='ew',pady=(0,px(12)))
+        self.apply_button.grid(row=1,column=0,sticky='ew',pady=(0,px(8)))
         row = ttk.Frame(self.detail_actions,style='Panel.TFrame')
-        row.grid(row=1,column=0,sticky='ew')
+        row.grid(row=2,column=0,sticky='ew')
         self.action_buttons = []
         for column,(label,action) in enumerate([('编辑服务',lambda:self.edit(self.selected())),('创建副本',self.duplicate),('移除记录',self.remove)]):
             row.columnconfigure(column,weight=1,uniform='actions')
             button = ttk.Button(row,text=label,width=4,command=action)
             button.grid(row=0,column=column,sticky='ew',padx=(0 if column==0 else px(4),0 if column==2 else px(4)))
             self.action_buttons.append(button)
-        self.apply_hint = ttk.Label(self.detail_actions,text='应用前自动备份；重开 Codex 后生效。',style='PanelMuted.TLabel',justify='left')
-        self.apply_hint.grid(row=2,column=0,sticky='ew',pady=(px(10),0))
+        self.apply_hint = ttk.Label(self.detail_actions,text='应用后重开 Codex 即可生效。',style='PanelMuted.TLabel',justify='left')
+        self.apply_hint.grid(row=3,column=0,sticky='ew',pady=(px(10),0))
         self.detail_actions.bind('<Configure>',lambda e:self.apply_hint.configure(wraplength=max(px(100),e.width-px(36))))
         footer = ttk.Frame(self,padding=(px(20),px(10),px(20),px(12)))
         footer.grid(row=3,column=0,sticky='ew')
         footer.columnconfigure(0,weight=1)
-        self.feedback = tk.StringVar(value='就绪。导入后需手动应用；导出不包含密钥。')
+        self.feedback = tk.StringVar(value='就绪 · 导入后手动应用，导出不包含密钥。')
         self.feedback_label = ttk.Label(footer,textvariable=self.feedback,style='Muted.TLabel',justify='left')
         self.feedback_label.grid(row=0,column=0,sticky='ew')
         ttk.Label(footer,text='v'+core.VERSION,style='Muted.TLabel').grid(row=0,column=1,padx=(px(12),0))
@@ -203,7 +212,7 @@ class App(tk.Tk):
         if width<2:return
         minimum_left=min(self.px(360),int(width*.54))
         minimum_right=min(self.px(300),int(width*.43))
-        position=int(width*.55) if initial else self.panes.sashpos(0)
+        position=int(width*.56) if initial else self.panes.sashpos(0)
         self.panes.sashpos(0,max(minimum_left,min(position,width-minimum_right)))
 
     def _resize_columns(self,event):
@@ -241,7 +250,7 @@ class App(tk.Tk):
     def render(self,select=None):
         previous=select or (self.tree.selection()[0] if self.tree.selection() else None)
         self.tree.delete(*self.tree.get_children())
-        self.tree.insert('','end',iid='__account__',values=('官方账号登录','使用现有模型','官方登录'))
+        self.tree.insert('','end',iid='__account__',values=(('● ' if self.active in {'__account__','openai'} else '')+'官方账号登录','使用现有模型','官方登录'))
         q=self.search.get().strip().casefold()
         for p in self.profiles:
             if q and q not in ' '.join(p.values()).casefold():continue
@@ -260,17 +269,37 @@ class App(tk.Tk):
         active=self.active in ({p['id'],'switcher_'+p['id']} if p else {'__account__','openai'})
         self.detail_state.set('需要修正' if issue else ('当前使用中' if active else '未应用'))
         self.apply_button.configure(state='disabled' if issue else 'normal')
+        self.detail_badge.configure(style='WarningBadge.TLabel' if issue else ('ActiveBadge.TLabel' if active else 'Badge.TLabel'))
         title=ttk.Label(self.detail_content,text=name,style='Panel.TLabel',font=('Microsoft YaHei UI',16,'bold'),justify='left')
-        title.grid(row=0,column=0,sticky='ew',pady=(px(3),px(4)));self.detail_labels.append(title)
+        title.grid(row=0,column=0,sticky='ew',pady=(px(5),px(4)));self.detail_labels.append(title)
         subtitle=ttk.Label(self.detail_content,text=('API 服务 · '+p['id']) if p else '使用已有的官方登录信息',style='PanelMuted.TLabel',justify='left')
         subtitle.grid(row=1,column=0,sticky='ew',pady=(0,px(20)));self.detail_labels.append(subtitle)
-        fields=[('服务地址',p['base_url']),('模型',p['model'] or '沿用当前配置中的模型'),('密钥变量',p['env_key']),('密钥状态','需先修正配置' if issue else ('已设置' if get_key(p['env_key']) else '待设置 · 编辑服务后补充')),('接口协议',p['wire_api'] or 'Responses')] if p else [('登录方式','Codex 官方账号'),('当前模型',self.current_model or '未指定'),('配置说明','切回官方模式后，保留现有登录信息、工作区和其他设置。')]
-        if p:fields.append(('推理强度',p.get('reasoning_effort') or '沿用当前配置'))
-        if issue:fields.insert(0,('需要修正',issue+'。原记录已保留，请编辑后再应用。'))
-        for index,(label,value) in enumerate(fields):
-            ttk.Label(self.detail_content,text=label,style='PanelMuted.TLabel').grid(row=2+index*2,column=0,sticky='w',pady=(0,px(5)))
-            widget=ttk.Label(self.detail_content,text=value,style='Panel.TLabel',justify='left')
-            widget.grid(row=3+index*2,column=0,sticky='ew',pady=(0,px(18)));self.detail_labels.append(widget)
+        if p:
+            groups=[('连接', [('服务地址',p['base_url']),('接口协议',p['wire_api'] or 'Responses')]),
+                    ('模型', [('模型名称',p['model'] or '沿用当前配置'),('推理强度',p.get('reasoning_effort') or '沿用当前配置')]),
+                    ('认证', [('密钥变量',p['env_key']),('密钥状态','需先修正配置' if issue else ('已设置' if get_key(p['env_key']) else '待设置 · 编辑服务后补充'))])]
+        else:
+            groups=[('账号', [('登录方式','Codex 官方账号'),('当前模型',self.current_model or '未指定')]),
+                    ('切换说明', [('保留内容','现有登录信息、工作区和其他设置都会保留。')])]
+        if issue: groups.insert(0,('需要修正',[('配置问题',issue+'。原记录已保留，请编辑后再应用。')]))
+        self.detail_fields=[]
+        position=2
+        for heading,fields in groups:
+            ttk.Label(self.detail_content,text=heading,style='Group.TLabel').grid(row=position,column=0,sticky='w',pady=(0,px(5)))
+            position+=1
+            for label,value in fields:
+                field=ttk.Frame(self.detail_content,style='Panel.TFrame')
+                field.grid(row=position,column=0,sticky='ew',pady=(0,px(7)))
+                field.columnconfigure(1,weight=1)
+                ttk.Label(field,text=label,style='Field.TLabel').grid(row=0,column=0,sticky='nw',padx=(0,px(12)))
+                field.columnconfigure(0,minsize=px(72))
+                widget=ttk.Label(field,text=value,style='Panel.TLabel',justify='left')
+                widget.grid(row=0,column=1,sticky='ew')
+                field.bind('<Configure>',lambda e,w=widget:w.configure(wraplength=max(px(65),e.width-px(84))))
+                self.detail_fields.append((field,widget))
+                position+=1
+            ttk.Separator(self.detail_content).grid(row=position,column=0,sticky='ew',pady=(px(2),px(14)))
+            position+=1
         for button in self.action_buttons:button.configure(state='normal' if p else 'disabled')
         self.detail_scroll.canvas.yview_moveto(0)
         self._wrap_detail(type('Size',(),{'width':max(self.px(200),self.detail_content.winfo_width())})())

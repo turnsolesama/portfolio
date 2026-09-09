@@ -4,13 +4,24 @@
 
 ## 下载 Codex Switcher
 
-**[直接下载 Windows 程序包 · v2.3.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.3.0-Windows-x64.zip)**
+**[直接下载 Windows 程序包 · v2.4.0](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.0-Windows-x64.zip)**
 
 完整解压后双击 `Codex Switcher.exe`。包内包含本软件源码，EXE 需要 Python 3.11+（含 Tkinter）与 .NET Framework 4.x。
 
 [下载与 SHA-256 校验](releases/README.md) · [程序源码](codex_switcher.pyw)
 
 一个用于 Windows 的本地 Codex API 服务配置工作台。炭灰界面、服务搜索、当前模式、密钥状态、详情面板和独立 EXE 启动入口。
+
+## v2.4 视觉更新
+
+- 中性炭灰、柔和冰蓝和细分隔线；品牌顶栏与当前配置条分工清晰，保留更多服务管理空间。
+- 服务详情按连接、模型、认证分组，紧凑键值布局自动换行；长内容独立滚动，应用与维护按钮保持可见。
+- 当前使用、未应用、需要修正使用独立状态徽标。列表中官方模式也明确标记当前状态。
+- 新增、导入等日常操作使用低强调配色，主强调色集中在“应用所选配置”；悬停、按下、禁用状态保持清晰对比。
+- 继续支持 JSON / TOML / env / cURL / Python / Node.js 的本地静态导入。
+
+更新后关闭旧切换器窗口，再从桌面快捷方式或 EXE 打开。未强制结束已有窗口。
+设计参考与维护说明见 [DESIGN.md](DESIGN.md)。
 
 ## v2.3 Python / Node.js 导入
 

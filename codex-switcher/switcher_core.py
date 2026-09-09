@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 from switcher_curl import unwrap, is_curl, parse_curl
 from switcher_sdk import language, parse_sdk
 
-VERSION = '2.3.0'
+VERSION = '2.4.0'
 FIELDS = ('id', 'name', 'base_url', 'env_key', 'model', 'wire_api')
 OPTIONAL_FIELDS = ('reasoning_effort',)
 EFFORTS = ('minimal', 'low', 'medium', 'high', 'xhigh')

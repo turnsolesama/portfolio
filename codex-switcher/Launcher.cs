@@ -6,8 +6,8 @@ using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
 [assembly: AssemblyTitle("Codex Switcher")]
-[assembly: AssemblyVersion("2.3.0.0")]
-[assembly: AssemblyFileVersion("2.3.0.0")]
+[assembly: AssemblyVersion("2.4.0.0")]
+[assembly: AssemblyFileVersion("2.4.0.0")]
 class Launcher {
     static string FindPython(string root) {
         string bundled=Path.Combine(root,"runtime","pythonw.exe");

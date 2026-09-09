@@ -1,17 +1,6 @@
 # AI Hub
 
-[返回三个软件的目录](../)
-
-## 下载 AI Hub
-
-| 软件包 | 版本 | 大小 | 直接下载 |
-| --- | --- | --- | --- |
-| Windows x64 桌面包 | 2.3.0 | 451,683 字节 | **[下载 AI Hub](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip)** |
-| 完整源码包 | 2.3.0 | 186,081 字节 | [下载源码](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Source.zip) |
-
-只下载本软件的 ZIP，完整解压后双击 `AI Hub.exe`。需要 Python 3.9+、.NET Framework 4.8+ 和 WebView2 Runtime。
-
-[版本说明与 SHA-256 校验](releases/README.md) · [程序源码](aihub/)
+2.4 视觉更新：紧凑导航、常用创作入口、用途分类和统计区，以及炭灰 / 冰蓝配色。[设计与验证](docs/VISUAL_2.4.md)。
 
 在一个本地工作台里管理模型、LoRA、工作流、出图和资料。
 
@@ -29,7 +18,7 @@ Windows 桌面包包含 `AI Hub.exe`、完整程序源码和使用说明。解�
 
 首次使用：进入 **安全区整理**，选择本机资产目录；需要时创建标准目录，保存后预览自动分类结果并建立分类入口。可选启动时自动整理。新安装没有预设他人的盘符，目录失效时会提示重新设置。详细规则见 [安全区与自动整理](docs/SAFE_ZONE.md)。
 
-当前发行版 **2.3.0**：[Windows 桌面包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Windows-x64.zip) · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.3.0-Source.zip) · [SHA-256](releases/AI-Hub-v2.3.0-SHA256.txt)。
+当前发行版 **2.4.0**：[Windows 桌面包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.4.0-Windows-x64.zip) · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.4.0-Source.zip) · [SHA-256](releases/AI-Hub-v2.4.0-SHA256.txt)。
 
 ## 常用功能
 

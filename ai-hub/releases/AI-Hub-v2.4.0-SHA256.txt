@@ -1,0 +1,2 @@
+0941b257a07324d978492ed44d2be58fb2a65e7e3a434ebac133d35baba6045b  AI-Hub-v2.4.0-Source.zip
+986fed9e26bc91cbe5565dcdd8ab1c12f7e9922f3d219e0c7a638aee1d0feb3e  AI-Hub-v2.4.0-Windows-x64.zip
