@@ -37,6 +37,7 @@ jobs:
       - name: Backend and frontend regression tests
         run: |
           # Synthetic fixtures use canonical paths, including Windows short TEMP paths.
+          # Worker coalescing tests synchronize their bursts; runner disk speed must not change their assertions.
           & ./runtime/python.exe -B -m unittest discover -s tests -v
           if ($LASTEXITCODE) { throw 'Backend tests failed' }
           node --check frontend/app.js

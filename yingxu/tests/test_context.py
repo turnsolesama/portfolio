@@ -104,10 +104,16 @@ class ContextTests(unittest.TestCase):
 
         with patch.object(self.exporter, '_write_index', side_effect=write):
             with patch('yingxu.context.DEBOUNCE_SECONDS', 0.5):
-                for _ in range(100):
-                    queued = self.exporter.request(self.pid)
-                with self.store.connection() as db:
-                    self.assertEqual(db.execute('SELECT count(*) FROM context_exports').fetchone()[0], 1)
+                # Define one producer burst explicitly. A slow disk can spend
+                # longer than MAX_DEBOUNCE_SECONDS writing these 100 requests;
+                # the worker may then legitimately export several snapshots.
+                # Use the production export-lock -> condition order so an
+                # already scheduled worker cannot snapshot a mid-burst revision.
+                with self.exporter._export_lock, self.exporter._condition:
+                    for _ in range(100):
+                        queued = self.exporter.request(self.pid)
+                    with self.store.connection() as db:
+                        self.assertEqual(db.execute('SELECT count(*) FROM context_exports').fetchone()[0], 1)
                 self.wait_exported(queued['revision'])
         self.assertEqual(len(count), 1)
         self.assertEqual(WORK_BATCH, 64)
