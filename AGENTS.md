@@ -6,3 +6,4 @@
 - Before publishing download changes, fetch each current package, verify its byte size, SHA-256, ZIP integrity, and single-application root folder. Check that local Markdown destinations exist.
 - Documentation-only changes require link/package verification, not application startup or changes to real user settings.
 - Follow each application's nearest AGENTS.md for its build and test commands. Never publish local galleries, weights, credentials, databases, proxy rules, or personal configuration.
+- User-facing project categories: Local AI Systems (FrameWeave, a separate repository), Asset Management Systems (YingXu and AI Hub), Tools (Codex Switcher and FlowSwitch). Preserve physical paths and existing download URLs when changing category navigation.
