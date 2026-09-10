@@ -1,4 +1,4 @@
-# 映序 0.2.1 · 运行与构建
+# 映序 0.2.2 · 运行与构建
 
 这是一个完整解压后使用的 Windows x64 应用包。**Python 不是内置组件**，不需要付费服务或帐号。
 
@@ -61,9 +61,10 @@ python -B server.py --port 18791 --data 'D:\YingXuTest\Data' --projects-root 'D:
 python -B -m unittest discover -s tests -v
 node --check frontend/app.js
 node tests/frontend_context_menu.cjs
+node tests/frontend_drag_drop.cjs
 python desktop/build.py --sdk-package 'D:\Downloads\microsoft.web.webview2.1.0.4191.47.nupkg' --output YingXu.exe --test
 python tools/package_release.py
-python tools/verify_release.py releases/YingXu-v0.2.1-Windows-x64.zip
+python tools/verify_release.py releases/YingXu-v0.2.2-Windows-x64.zip
 ```
 
 构建使用 Windows 自带 .NET Framework C# 编译器；SDK 必须事先自行下载。固定 WebView2 SDK 为 `1.0.4191.47`，9,259,926 字节，SHA-256 `f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0`。构建程序只读本地 SDK，不联网。微软 SDK 许可在 `desktop/WebView2-LICENSE.txt`，其运行组件嵌入 EXE。
