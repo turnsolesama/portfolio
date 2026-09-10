@@ -19,7 +19,7 @@ class SearchTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='yingxu-global-search-')
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.store = Store(self.root / 'data', self.root / 'projects')
         with patch('yingxu.skills.Path.home', return_value=self.root / 'home'):
             self.skills = SkillLibrary(self.store)
