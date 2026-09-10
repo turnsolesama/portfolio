@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="/live-markdown.css">
   <script src="/live-markdown.js" defer></script>
   <script src="/project-library.js" defer></script>
+  <link rel="stylesheet" href="/global-search.css">
+  <script src="/global-search.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -39,11 +41,12 @@
         <div class="breadcrumb"><span>创作空间</span><span class="breadcrumb-slash">/</span><span id="breadcrumbProject">开始创作</span></div>
         <div class="topbar-right">
           <div class="search-wrap"><span id="searchIcon"></span><input id="searchInput" type="search" placeholder="搜索素材、剧本、标签…" aria-label="搜索素材、剧本、标签" autocomplete="off"><kbd>Ctrl F</kbd><button id="advancedSearch" class="icon-button" title="高级检索" aria-label="高级检索"></button></div>
+          <button id="globalSearchButton" type="button" class="icon-button global-search-trigger" data-action="global-search" title="全局搜索（Ctrl K）" aria-label="全局搜索"></button>
           <button id="importButton" class="button button-secondary"><span id="importIcon"></span><span>导入</span></button>
           <button id="newItemButton" class="button button-primary"><span id="newItemIcon"></span><span>新建</span></button>
           <div class="topbar-utilities" role="group" aria-label="设置与帮助">
-            <button id="settingsButton" type="button" class="icon-button" data-action="settings" title="设置" aria-label="设置"><span id="settingsIcon" aria-hidden="true"></span></button>
             <button id="helpButton" type="button" class="icon-button" title="使用指南（?）" aria-label="使用指南"><span id="helpIcon" aria-hidden="true"></span></button>
+            <button id="settingsButton" type="button" class="icon-button" data-action="settings" title="设置" aria-label="设置"><span id="settingsIcon" aria-hidden="true"></span></button>
           </div>
         </div>
       </header>

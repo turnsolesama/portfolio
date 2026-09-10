@@ -23,7 +23,7 @@ POST /api/open {id,action:"open"|"reveal"} -> {ok:true}，系统关联打开（�
 POST /api/demo {} -> project object，创建明确标注“示例项目”的合成可编辑示例；默认全新应用先空项目状态，由用户按钮导入示例，安装验收可以创建示例供用户体验。
 GET /api/health -> {app:"yingxu",ok:true,version}，供桌面验证服务身份。
 
-前端：fetch 读请求使用 AbortController/序号避免过时响应覆盖；输入搜索250ms debounce；多标签内容在页内保存未提交稿，关闭脏标签确认；Ctrl+S 保存/Ctrl+K搜索。编辑 Markdown 为 textarea+安全预览（禁止原始HTML脚本）；DOCX显示段落编辑与格式说明。3D文件首版系统应用打开，白模视频用播放器。所有占位内容显式示例，不用伪按钮。
+前端：fetch 读请求使用 AbortController/序号避免过时响应覆盖；输入搜索250ms debounce；多标签内容在页内保存未提交稿，关闭脏标签确认；Ctrl+S 保存，Ctrl+F 聚焦当前页面搜索，Ctrl+K 打开独立全局搜索窗口。编辑 Markdown 为 textarea+安全预览（禁止原始HTML脚本）；DOCX显示段落编辑与格式说明。3D文件首版系统应用打开，白模视频用播放器。所有占位内容显式示例，不用伪按钮。
 
 ## 追加：SKILL 与项目交接
 
@@ -75,3 +75,27 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 - `POST /api/external-open {paths:[绝对路径]}` 受会话令牌保护，返回 `{entries}`，仅注册会话临时 ID。`GET /api/external/ID` 返回元数据及只读 content；`GET /api/external-media/ID` 通过已验证文件句柄流式读取并支持 Range。仅受支持文件可读，不增加项目或复制文件，不提供写接口。预览 ID 会在后台重启或过期后失效。
 - `GET /api/project-library` 返回 `{folders,projects,recent_ids,total}`；项目带 folder_id 和 last_opened。`POST /api/project-folders {name,parent_id?}` 创建逻辑分类；`PATCH /api/project-folders/ID {name?,parent_id?}` 改名或移动，拒绝循环及同级重名；`DELETE /api/project-folders/ID` 仅删除可见项目与子分类均为空的分类，历史归属置为未分类。
 - `PATCH /api/project-library/PROJECT_ID {folder_id}` 归类（null 为未分类）；`POST /api/project-library/PROJECT_ID/visit {}` 记录最近打开，不改写项目磁盘目录。以上写接口沿用同源及会话令牌验证。
+
+## 0.3.4 全局搜索交互边界
+
+- `GET /api/search?q=关键词&limit=30&offset=0` 返回下表字段。仅接受 `q`、`limit`、`offset`，不接收磁盘路径、项目或分类参数；沿用 Host、Origin 和跨站请求校验。bootstrap 的 `capabilities.global_search` 为 `true`。
+- `q` 最多 200 字符，禁止 NUL；按空白分隔最多 12 个关键词。空查询返回空结果且不扫描。`limit` 默认为 30，必须为正整数，最大按 50 处理；`offset` 默认为 0，范围为 0–100000。无效参数返回 400，不可信来源返回 403。
+- 各类结果统一使用 Unicode casefold 后的字面子串匹配；全部关键词都必须命中，可分布在不同可搜索字段中。`night` 可以命中 `midnight`，`café` 可以命中 `CAFÉ`；不把关键词解释为 FTS 表达式、SQL 或通配符。
+
+| 返回字段 | 含义 |
+| --- | --- |
+| `q` | 去除首尾空白的查询 |
+| `results` | 当前页结果数组；每项结构见下文 |
+| `total`、`total_exact` | 本次已找到的结果数量、是否可视为完整数量；不完整时 `total` 只是已找到的数量 |
+| `limit`、`offset`、`has_more` | 实际页大小、偏移、已找到的结果中是否还有下一页 |
+| `truncated`、`warnings` | 是否未完成全部扫描及说明；正常非空查询也会提示索引时效，因此不能仅凭 `warnings` 非空判断失败 |
+| `scope` | `projects`、`items`、`skills`、`content_source` 四项范围与索引时效说明 |
+| `scanned` | `projects`、`items`、`skills` 候选检查计数，以及实际读取的 `skill_bytes`；不是底层数据库扫描行数 |
+| `elapsed_ms` | 本次搜索耗时，单位毫秒 |
+
+结果共有 `type`（`project` / `item` / `skill`）、`id`、`project_id`、`project_name`、`name`、`category`、`folder_id`、`snippet`。文件结果额外有 `kind`；技能结果额外有 `source`，且项目字段为 null；项目结果的 `project_id` 等于自身 `id`，分类与文件夹字段为 null。结果不返回磁盘路径或完整正文。排序优先名称精确匹配，其次名称包含全部关键词，随后其他命中；同级按名称、类型、ID 排序。分页针对本次结果排序后切片，跨请求不提供冻结快照。
+
+- 项目与文件候选每类最多 5000 个，SKILL 候选最多 2000 个；SKILL 单文件正文最多 1 MiB、单次累计最多 32 MiB。另有时间、数据库工作量和锁等待预算；触限、路径失效或记录变更时返回部分结果与原因，`truncated=true`、`total_exact=false`。
+- 全局搜索跨所有项目名称/简介、文件名称/标签/备注及已索引正文（含提取的 DOCX 正文），以及已注册 SKILL 名称/描述和限额正文；不继承当前项目或分类过滤。
+- 返回结果需显示来源、命中摘要和分页信息；超过扫描限额必须明确标记部分结果。未保存草稿不纳入索引，外部项目文件变化需要同步索引。
+- 独立搜索窗口支持上/下选择、Enter 打开及 Esc 关闭；当前页面 Ctrl+F 行为保留。顶栏另提供全局搜索按钮，帮助位于设置左侧、设置最右。

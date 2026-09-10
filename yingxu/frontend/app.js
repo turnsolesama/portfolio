@@ -75,6 +75,62 @@ function sidebarProjects() {
   const ids = [state.projectId,...(state.projectLibrary?.recent_ids || [])].filter(Boolean);
   return [...new Set(ids.map(String))].map(id => state.projects.find(project => String(project.id) === id)).filter(Boolean).slice(0,5);
 }
+let globalSearchUI;
+function globalSearchIsOpen() { return !!globalSearchUI?.isOpen(); }
+function globalSearchDialog() {
+  if (!globalSearchIsOpen() && ($('#appDialog').open || state.modalBusy || state.exitBusy || state.trashBusy || state.globalOpening || !markdownInputReady())) return false;
+  if (!window.YingXuGlobalSearch) { toast('全局搜索尚未载入，请重新打开工作台。','error'); return false; }
+  if (!globalSearchUI) globalSearchUI = window.YingXuGlobalSearch.install({api,openResult:openGlobalSearchResult,escapeHtml,toast,categoryLabel,
+    canOpen:() => !$('#appDialog').open && !state.modalBusy && !state.exitBusy && !state.trashBusy && !state.globalOpening && markdownInputReady()});
+  hideMenu(); return globalSearchUI.open();
+}
+function searchShortcut(event) {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || !['f','k'].includes(event.key.toLowerCase())) return false;
+  event.preventDefault();
+  if (event.key.toLowerCase() === 'k') { globalSearchDialog(); return true; }
+  if ($('#appDialog').open || globalSearchIsOpen() || $('#searchInput').disabled) return true;
+  hideMenu(); $('#searchInput').focus(); $('#searchInput').select(); return true;
+}
+function globalSearchLocation() {
+  return JSON.stringify([state.projectId,state.section,state.category,state.folderId,state.folderScope,state.activeKey,
+    state.q,state.status,state.kind,state.sort,state.offset,state.listSequence,$('#searchInput').value]);
+}
+async function openGlobalSearchResult(result) {
+  if (state.globalOpening || !result || !['project','item','skill'].includes(result.type)) return false;
+  state.globalOpening = true;
+  try {
+    if (!await guardProperties()) return false;
+    const origin = globalSearchLocation();
+    // Resolve the live record before changing navigation. Search results may be stale.
+    const record = result.type === 'item' ? await api(`/api/items/${encodeURIComponent(result.id)}`) : result.type === 'skill' ? await api(`/api/skills/${encodeURIComponent(result.id)}`) : (await api('/api/projects')).projects.find(project => String(project.id) === String(result.id));
+    if (origin !== globalSearchLocation()) return false;
+    if (!record) throw new Error('这个搜索结果已不存在，请重新搜索。');
+    const projectId = result.type === 'project' ? record.id : result.type === 'item' ? record.project_id : null;
+    if (projectId) { await refreshProjects({preserveLocation:true}); await recordProjectVisit(projectId); }
+    if (origin !== globalSearchLocation() || !await guardProperties()) return false;
+    clearTimeout(searchTimer); state.q = ''; state.status = ''; state.kind = ''; state.offset = 0; state.selectedIds.clear();
+    $('#searchInput').value = ''; $('#statusFilter').value = ''; $('#kindFilter').value = '';
+    if (result.type === 'skill') {
+      state.section = 'skills'; renderNavigation(); renderHero(); configureSection();
+      const loading = loadSkills(), destination = globalSearchLocation();
+      await loading;
+      if (destination !== globalSearchLocation() || $('#appDialog').open || state.modalBusy) return false;
+      await openSkill(record.id);
+    } else {
+      state.projectId = projectId; storage.set('yingxu:project',String(projectId)); state.section = 'assets';
+      state.category = result.type === 'item' ? record.category : 'all'; state.folderId = result.type === 'item' ? record.folder_id || null : null;
+      state.folderScope = 'current'; state.folderPage = 0; state.folders = []; state.counts = [];
+      if (result.type === 'project') state.activeKey = null;
+      renderNavigation(); renderHero(); configureSection(); renderWorkspace();
+      const loading = loadItems(), destination = globalSearchLocation();
+      await loading;
+      if (destination !== globalSearchLocation() || $('#appDialog').open || state.modalBusy) return false;
+      if (result.type === 'item') await openItem(record.id);
+    }
+    return true;
+  } finally { state.globalOpening = false; }
+}
+
 let projectLibraryUI;
 async function projectLibraryDialog(projectId) {
   if ($('#appDialog').open) return;
@@ -102,13 +158,13 @@ function renderHero() {
   $('#projectHero').innerHTML = `<div class="compact-project-header"><div><h1 class="hero-title">${escapeHtml(title)}</h1>${description ? `<p class="hero-description">${escapeHtml(description)}</p>` : ''}</div>${state.section === 'trash' ? `<button class="button button-secondary" data-action="empty-trash" ${state.trashBusy ? 'disabled' : ''}>${icon('trash')}清空回收站</button>` : state.section === 'assets' && project ? `<span class="project-summary-inline">${counts.total || 0} 项资源 · ${counts.completed || 0}/${counts.shots || 0} 分镜完成</span>` : ''}</div>`;
 }
 
-async function refreshProjects() {
+async function refreshProjects({preserveLocation = false} = {}) {
   const previousProject = state.projectId; const result = await api('/api/projects'); state.projects = result.projects || [];
   if (state.bootstrap?.capabilities?.project_library) state.projectLibrary = await api('/api/project-library');
-  if (!state.projectId || !state.projects.some(project => String(project.id) === String(state.projectId))) {
+  if (!preserveLocation && (!state.projectId || !state.projects.some(project => String(project.id) === String(state.projectId)))) {
     const saved = storage.get('yingxu:project'); state.projectId = state.projects.find(project => String(project.id) === saved)?.id || state.projects[0]?.id || null;
   }
-  if (!state.projectId || String(previousProject) !== String(state.projectId)) { state.counts = []; state.folderId = null; state.folders = []; state.selectedIds.clear(); }
+  if (!preserveLocation && (!state.projectId || String(previousProject) !== String(state.projectId))) { state.counts = []; state.folderId = null; state.folders = []; state.selectedIds.clear(); }
   renderNavigation(); renderHero();
 }
 async function refreshCategoryCounts() {
@@ -148,7 +204,7 @@ async function loadItems() {
     const [result,folders] = await Promise.all([api(`/api/items?${params}`,{signal:controller.signal}),state.category !== 'all' ? api(`/api/folders?${new URLSearchParams({project:state.projectId,category:state.category})}`,{signal:controller.signal}) : Promise.resolve({folders:[]})]); if (sequence !== state.listSequence || state.section !== 'assets') return;
     state.loadingItems = false; state.folders = folders.folders || []; state.foldersTruncated = !!folders.truncated; state.items = result.items || []; state.total = result.total || 0; state.counts = result.categories || []; state.selectedIds = new Set([...state.selectedIds].filter(id => state.items.some(item => String(item.id) === String(id)))); renderItems(); renderNavigation();
     $('#searchTiming').textContent = state.q && result.elapsed_ms != null ? `${Math.round(result.elapsed_ms)} ms` : '';
-  } catch(error) { if (error.name === 'AbortError') return; state.loadingItems = false; state.items = []; updateSelection(); $('#resourceItems').innerHTML = emptyHtml('暂时没能读取资源',error.message,'refresh','重试','retry'); report(error); }
+  } catch(error) { if (error.name === 'AbortError' || sequence !== state.listSequence || state.section !== 'assets') return; state.loadingItems = false; state.items = []; updateSelection(); $('#resourceItems').innerHTML = emptyHtml('暂时没能读取资源',error.message,'refresh','重试','retry'); report(error); }
 }
 function renderQuery() { $('#activeQuery').hidden = !state.q; $('#activeQuery').innerHTML = `<span>检索：${escapeHtml(state.q)}</span><button class="icon-button" data-action="clear-search" aria-label="清除检索">${icon('close')}</button>`; }
 function emptyHtml(title,description,iconName='folder',buttonLabel='',action='') { return `<div class="empty-state"><div class="empty-state-icon">${icon(iconName)}</div><h3>${escapeHtml(title)}</h3><p>${escapeHtml(description)}</p>${buttonLabel ? `<div class="empty-state-actions"><button class="button button-secondary" data-action="${action}">${escapeHtml(buttonLabel)}</button></div>` : ''}</div>`; }
@@ -341,7 +397,7 @@ async function trashSkill(id) {
 }
 async function loadTrash() {
   const sequence = ++state.listSequence; state.listController?.abort(); configureSection(); $('#resourceItems').className = 'recycle-list'; $('#resourceItems').innerHTML = '<div class="subtle-loading">正在读取回收站…</div>';
-  try { const result = await api(`/api/trash?${new URLSearchParams({q:state.q,limit:state.limit,offset:state.offset})}`); if (sequence !== state.listSequence || state.section !== 'trash') return; state.trashEntries = result.entries || []; state.total = result.total || 0; if (!state.trashEntries.length && state.offset > 0 && state.total <= state.offset) { state.offset = Math.max(0,Math.floor(Math.max(0,state.total-1)/state.limit)*state.limit); return loadTrash(); } renderTrash(); renderInspector(); } catch(error) { $('#resourceItems').innerHTML = emptyHtml('暂时无法读取回收站',error.message,'trash','重试','retry'); report(error); }
+  try { const result = await api(`/api/trash?${new URLSearchParams({q:state.q,limit:state.limit,offset:state.offset})}`); if (sequence !== state.listSequence || state.section !== 'trash') return; state.trashEntries = result.entries || []; state.total = result.total || 0; if (!state.trashEntries.length && state.offset > 0 && state.total <= state.offset) { state.offset = Math.max(0,Math.floor(Math.max(0,state.total-1)/state.limit)*state.limit); return loadTrash(); } renderTrash(); renderInspector(); } catch(error) { if (error.name === 'AbortError' || sequence !== state.listSequence || state.section !== 'trash') return; $('#resourceItems').innerHTML = emptyHtml('暂时无法读取回收站',error.message,'trash','重试','retry'); report(error); }
 }
 function renderTrash() {
   const labels = {project:'项目',folder:'文件夹',items:'文件',skill:'SKILL'}; $('#resourceCount').textContent = state.total; $('#searchTiming').textContent = ''; const entries = state.trashEntries;
@@ -675,7 +731,7 @@ function renameDialog() {
 async function loadSkills() {
   const sequence = ++state.listSequence; state.listController?.abort(); configureSection(); $('#resourceItems').className = 'resource-grid'; $('#resourceItems').innerHTML = '<div class="skeleton"></div><div class="skeleton"></div>';
   try { const params = new URLSearchParams({q:state.q}); if (state.projectId) params.set('project',state.projectId); const result = await api(`/api/skills?${params}`); if (sequence !== state.listSequence || state.section !== 'skills') return; state.skills = result.skills || []; for (const tab of state.tabs.filter(value => value.source === 'skill')) { const current = state.skills.find(skill => String(skill.id) === String(tab.id)); if (current) tab.item.bound = !!current.bound; } renderSkills(); renderInspector(); }
-  catch(error) { $('#resourceItems').innerHTML = emptyHtml('暂时无法读取 SKILL 库',error.message,'skills','重新读取','retry'); report(error); }
+  catch(error) { if (error.name === 'AbortError' || sequence !== state.listSequence || state.section !== 'skills') return; $('#resourceItems').innerHTML = emptyHtml('暂时无法读取 SKILL 库',error.message,'skills','重新读取','retry'); report(error); }
 }
 function renderSkills() {
   const root = $('#resourceItems'); root.className = 'resource-grid skill-grid'; $('#resourceCount').textContent = state.skills.length; $('#searchTiming').textContent = '';
@@ -700,7 +756,7 @@ async function loadContext() {
   const sequence = ++state.listSequence; state.listController?.abort(); configureSection(); $('#resourceItems').className = 'context-page'; $('#resourceCount').textContent = ''; $('#searchTiming').textContent = '';
   if (!state.projectId) { $('#resourceItems').innerHTML = emptyHtml('先建立一个创作项目','项目创建后，这里会汇总进度与创作资源，方便 Codex 等协作者读取。','context','创建项目','new-project'); return; }
   $('#resourceItems').innerHTML = '<div class="editor-loading" style="min-height:260px"><span class="spinner"></span><span>正在读取项目交接…</span></div>';
-  try { const result = await api(`/api/context?project=${encodeURIComponent(state.projectId)}`); if (sequence !== state.listSequence || state.section !== 'context') return; state.context = result; renderContext(); renderInspector(); } catch(error) { $('#resourceItems').innerHTML = emptyHtml('暂时无法读取项目交接',error.message,'context','重试','retry'); report(error); }
+  try { const result = await api(`/api/context?project=${encodeURIComponent(state.projectId)}`); if (sequence !== state.listSequence || state.section !== 'context') return; state.context = result; renderContext(); renderInspector(); } catch(error) { if (error.name === 'AbortError' || sequence !== state.listSequence || state.section !== 'context') return; $('#resourceItems').innerHTML = emptyHtml('暂时无法读取项目交接',error.message,'context','重试','retry'); report(error); }
 }
 function renderContext() {
   const context = state.context || {}; const counts = currentProject()?.counts || {};
@@ -710,9 +766,10 @@ function renderContext() {
 async function copyText(value,message='已复制。') { try { await navigator.clipboard.writeText(String(value || '')); toast(message); } catch { showDialog({title:'复制内容',subtitle:'当前窗口不能直接访问剪贴板，可在下方选择并复制。',body:`<div class="field"><textarea id="copyFallback" readonly style="min-height:200px">${escapeHtml(value)}</textarea></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>完成</button>'}); $('#copyFallback').select(); } }
 async function runNative(action) { const tab = activeTab(); if (!tab || tab.source !== 'file') return; await api('/api/open',{method:'POST',body:{id:tab.id,action}}); }
 function runtimeSummary() { const caps = state.bootstrap?.capabilities || {}; return `<p class="muted">图片缩略图：${caps.image_thumbnails === false ? '组件缺失，请重新解压完整包' : '可用'} · 视频缩略图：${caps.ffmpeg ? '可用' : '组件缺失，请使用完整包'} · 拖出原文件：${window.yingxuDesktopDrag ? '可用' : '请从桌面程序打开'}</p>`; }
-function helpDialog() { showDialog({title:'让每个镜头都有来处',subtitle:'映序把本地创作文件串成项目，你可以从最熟悉的一步开始。',wide:true,body:`${runtimeSummary()}<div class="guide-grid"><div class="guide-item"><strong>${icon('folder')}项目与分类</strong><p>创建项目，再用剧本、分镜、角色、场景、道具等分类整理内容。卡片可拖到左侧分类。</p></div><div class="guide-item"><strong>${icon('script')}像笔记一样写作</strong><p>右键空白处、项目或文件夹可新建笔记。单击打开文件，多标签自由切换；Markdown 支持编辑与预览，Word 可修改正文段落。</p></div><div class="guide-item"><strong>${icon('link')}把创作线索连起来</strong><p>在右侧信息面板把角色、场景、白模视频、生成版本关联到具体分镜，并记录状态与提示词。</p></div><div class="guide-item"><strong>${icon('upload')}导入与拖放</strong><p>导入目录引用原文件；把文件拖进页面会保存项目副本。桌面版直接拖动图片或卡片即可拖到其他软件。先点第一项，按住 Shift 点最后一项可连续多选并一起拖动。</p></div><div class="guide-item"><strong>${icon('skills')}集中管理 SKILL</strong><p>阅读已有 SKILL，创建自己的创作规范。右键 SKILL 可打开其所在位置；绑定到项目后，交接文件会记录相关能力与位置。</p></div><div class="guide-item"><strong>${icon('context')}把进度交给 AI</strong><p>在 AI 协作中刷新项目进度，将本地交接文件路径发给 Codex，继续处理已有项目。</p></div></div><div class="shortcut-list"><span>搜索<kbd>Ctrl F</kbd></span><span>保存<kbd>Ctrl S</kbd></span><span>帮助<kbd>?</kbd></span></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>开始创作</button>'}); }
+function helpDialog() { showDialog({title:'让每个镜头都有来处',subtitle:'映序把本地创作文件串成项目，你可以从最熟悉的一步开始。',wide:true,body:`${runtimeSummary()}<div class="guide-grid"><div class="guide-item"><strong>${icon('folder')}项目与分类</strong><p>创建项目，再用剧本、分镜、角色、场景、道具等分类整理内容。卡片可拖到左侧分类。</p></div><div class="guide-item"><strong>${icon('script')}像笔记一样写作</strong><p>右键空白处、项目或文件夹可新建笔记。单击打开文件，多标签自由切换；Markdown 支持实时预览编辑，Word 可修改正文段落。Ctrl+K 可跨项目查找名称与已索引正文，点击结果直接打开。</p></div><div class="guide-item"><strong>${icon('link')}把创作线索连起来</strong><p>在右侧信息面板把角色、场景、白模视频、生成版本关联到具体分镜，并记录状态与提示词。</p></div><div class="guide-item"><strong>${icon('upload')}导入与拖放</strong><p>导入目录引用原文件；把文件拖进页面会保存项目副本。桌面版直接拖动图片或卡片即可拖到其他软件。先点第一项，按住 Shift 点最后一项可连续多选并一起拖动。</p></div><div class="guide-item"><strong>${icon('skills')}集中管理 SKILL</strong><p>阅读已有 SKILL，创建自己的创作规范。右键 SKILL 可打开其所在位置；绑定到项目后，交接文件会记录相关能力与位置。</p></div><div class="guide-item"><strong>${icon('context')}把进度交给 AI</strong><p>在 AI 协作中刷新项目进度，将本地交接文件路径发给 Codex，继续处理已有项目。</p></div></div><div class="shortcut-list"><span>当前页面搜索<kbd>Ctrl F</kbd></span><span>全局搜索<kbd>Ctrl K</kbd></span><span>保存<kbd>Ctrl S</kbd></span><span>帮助<kbd>?</kbd></span></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>开始创作</button>'}); }
 
 async function handleAction(action,target) {
+  if (action === 'global-search') return globalSearchDialog();
   if (action === 'settings') return settingsDialog();
   if (action === 'project-library') return projectLibraryDialog();
   if (['choose-external-files','register-open-with','unregister-open-with'].includes(action)) return desktopMessage(action);
@@ -743,7 +800,7 @@ async function handleAction(action,target) {
 
 function wireEvents() {
   if ($('#projectLibraryIcon')) $('#projectLibraryIcon').innerHTML = icon('folder'); if ($('#settingsIcon')) $('#settingsIcon').innerHTML = icon('filter'); if ($('#openLocalIcon')) $('#openLocalIcon').innerHTML = icon('open');
-  $('#addProject').innerHTML = icon('plus'); $('#helpIcon').innerHTML = icon('help'); $('#searchIcon').innerHTML = icon('search'); $('#advancedSearch').innerHTML = icon('filter'); $('#importIcon').innerHTML = icon('upload'); $('#newItemIcon').innerHTML = icon('plus'); $('#rescanButton').innerHTML = icon('refresh'); $('#previousPage').innerHTML = icon('left'); $('#nextPage').innerHTML = icon('chevron'); $('#closeDialog').innerHTML = icon('close');
+  $('#addProject').innerHTML = icon('plus'); $('#helpIcon').innerHTML = icon('help'); $('#searchIcon').innerHTML = icon('search'); $('#globalSearchButton').innerHTML = icon('search'); $('#advancedSearch').innerHTML = icon('filter'); $('#importIcon').innerHTML = icon('upload'); $('#newItemIcon').innerHTML = icon('plus'); $('#rescanButton').innerHTML = icon('refresh'); $('#previousPage').innerHTML = icon('left'); $('#nextPage').innerHTML = icon('chevron'); $('#closeDialog').innerHTML = icon('close');
   $('#newFolderButton').innerHTML = `${icon('folder')}新建文件夹`; $('#moveSelectionButton').innerHTML = `${icon('move')}移动到`; $('#deleteSelectionButton').innerHTML = `${icon('trash')}删除`;
   $('#newFolderButton').addEventListener('click',() => newFolderDialog().catch(report)); $('#moveSelectionButton').addEventListener('click',() => moveDialog([...state.selectedIds]).catch(report)); $('#deleteSelectionButton').addEventListener('click',() => (state.selectedIds.size ? trashItems([...state.selectedIds]) : trashFolder(state.folderId)).catch(report));
   $('#selectPageButton').addEventListener('click',() => { if (state.loadingItems) return; state.selectedIds = state.selectedIds.size === state.items.length ? new Set() : new Set(state.items.map(item => String(item.id))); updateSelection(); });
@@ -783,12 +840,13 @@ function wireEvents() {
     const relation = event.target.closest('[data-remove-relation]'); if (relation) { try { await api(`/api/relations/${encodeURIComponent(relation.dataset.removeRelation)}`,{method:'DELETE'}); const tab = activeTab(); if (tab) { tab.item = await api(`/api/items/${encodeURIComponent(tab.id)}`); renderInspector(); } toast('关联已解除。'); } catch(error) { report(error); } }
   });
   document.addEventListener('keydown',event => {
-    if (event.isComposing || activeTab()?.markdownEditor?.isComposing()) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); markdownInputReady(); } return; }
+    if (event.isComposing || activeTab()?.markdownEditor?.isComposing()) { if ((event.ctrlKey || event.metaKey) && ['s','f','k'].includes(event.key.toLowerCase())) { event.preventDefault(); markdownInputReady(); } return; }
+    if (searchShortcut(event) || globalSearchIsOpen()) return;
     if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) && !$('#appDialog').open) { const target = contextMenuTarget(event.target); if (target) { event.preventDefault(); showMenu(target.anchor,target.kind,target.id); return; } }
     if (event.key === 'Escape' && !$('#resourceMenu').hidden) { hideMenu(true); event.preventDefault(); return; }
     if (!$('#resourceMenu').hidden && ['ArrowDown','ArrowUp','Home','End'].includes(event.key) && $('#resourceMenu').contains(document.activeElement)) { const buttons = $$('button',$('#resourceMenu')); const current = buttons.indexOf(document.activeElement); const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length-1 : (current+(event.key === 'ArrowDown' ? 1 : -1)+buttons.length)%buttons.length; buttons[next]?.focus(); event.preventDefault(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); if (!$('#appDialog').open) saveCurrent(); }
-    if ((event.ctrlKey || event.metaKey) && !event.altKey && ['f','k'].includes(event.key.toLowerCase())) { event.preventDefault(); if ($('#appDialog').open || $('#searchInput').disabled) return; hideMenu(); $('#searchInput').focus(); $('#searchInput').select(); }
+
     if (event.key === '?' && !event.ctrlKey && !event.metaKey && !event.target.matches('input,textarea,[contenteditable]') && !$('#appDialog').open) { event.preventDefault(); helpDialog(); }
     if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[role="button"],[role="tab"]')) { event.preventDefault(); event.target.click(); }
   });
@@ -878,7 +936,7 @@ async function settingsDialog() {
   const settings = await api('/api/settings'); state.bootstrap.settings = settings;
   const toggle = (key,title,description) => `<label class="setting-row"><span><strong>${title}</strong><small>${description}</small></span><input type="checkbox" name="${key}" ${settings[key] ? 'checked' : ''}></label>`;
   const desktop = Boolean(window.chrome?.webview?.postMessage);
-  showDialog({title:'设置',subtitle:'按自己的习惯使用映序。设置保存在本机，重开后仍有效。',wide:true,submit:'保存设置',body:`<div class="settings-section"><h3>删除与恢复</h3>${toggle('confirm_delete','移入映序回收站前确认','项目、文件、文件夹和 SKILL 的删除提示。')}${toggle('confirm_trash_delete','清理回收站前确认','关闭后点击删除会直接移入 Windows 回收站；遇到无法处理的条目仍会说明原因。')}</div><div class="settings-section"><h3>窗口与播放</h3>${toggle('close_to_tray','关闭窗口时保留在托盘','双击任务栏右下角的映序图标重新打开；右键菜单可退出。')}${toggle('autoplay_media','打开音视频时自动播放','默认关闭；部分媒体仍可能需要点击播放。')}</div><div class="settings-section"><h3>工作台</h3><div class="fields-two"><div class="field"><label for="settingView">启动时的视图</label><select id="settingView" name="default_view">${optionHtml([{key:'grid',label:'画廊'},{key:'list',label:'列表'},{key:'board',label:'分镜看板'}],settings.default_view)}</select></div><div class="field"><label for="settingSort">启动时的排序</label><select id="settingSort" name="default_sort">${optionHtml([{key:'updated',label:'最近更新'},{key:'name',label:'文件名称'},{key:'order',label:'分镜顺序'}],settings.default_sort)}</select></div></div><p class="field-hint">搜索：Ctrl+F；Ctrl+K 也可使用。保存：Ctrl+S。</p></div><div class="settings-section"><h3>Windows 打开方式</h3><p class="field-hint">把映序添加到文件的“打开方式”候选。打开后可直接只读查看文档、图片、音频与视频。</p><div class="settings-buttons"><button type="button" class="button button-secondary" data-action="register-open-with" ${desktop ? '' : 'disabled'}>添加映序到打开方式</button><button type="button" class="button button-ghost" data-action="unregister-open-with" ${desktop ? '' : 'disabled'}>移除候选</button></div>${desktop ? '' : '<p class="field-hint">此项及托盘功能请在映序桌面窗口中使用。</p>'}</div>`,onSubmit:async form => {
+  showDialog({title:'设置',subtitle:'按自己的习惯使用映序。设置保存在本机，重开后仍有效。',wide:true,submit:'保存设置',body:`<div class="settings-section"><h3>删除与恢复</h3>${toggle('confirm_delete','移入映序回收站前确认','项目、文件、文件夹和 SKILL 的删除提示。')}${toggle('confirm_trash_delete','清理回收站前确认','关闭后点击删除会直接移入 Windows 回收站；遇到无法处理的条目仍会说明原因。')}</div><div class="settings-section"><h3>窗口与播放</h3>${toggle('close_to_tray','关闭窗口时保留在托盘','双击任务栏右下角的映序图标重新打开；右键菜单可退出。')}${toggle('autoplay_media','打开音视频时自动播放','默认关闭；部分媒体仍可能需要点击播放。')}</div><div class="settings-section"><h3>工作台</h3><div class="fields-two"><div class="field"><label for="settingView">启动时的视图</label><select id="settingView" name="default_view">${optionHtml([{key:'grid',label:'画廊'},{key:'list',label:'列表'},{key:'board',label:'分镜看板'}],settings.default_view)}</select></div><div class="field"><label for="settingSort">启动时的排序</label><select id="settingSort" name="default_sort">${optionHtml([{key:'updated',label:'最近更新'},{key:'name',label:'文件名称'},{key:'order',label:'分镜顺序'}],settings.default_sort)}</select></div></div><p class="field-hint">当前页面搜索：Ctrl+F；全局搜索：Ctrl+K。保存：Ctrl+S。</p></div><div class="settings-section"><h3>Windows 打开方式</h3><p class="field-hint">把映序添加到文件的“打开方式”候选。打开后可直接只读查看文档、图片、音频与视频。</p><div class="settings-buttons"><button type="button" class="button button-secondary" data-action="register-open-with" ${desktop ? '' : 'disabled'}>添加映序到打开方式</button><button type="button" class="button button-ghost" data-action="unregister-open-with" ${desktop ? '' : 'disabled'}>移除候选</button></div>${desktop ? '' : '<p class="field-hint">此项及托盘功能请在映序桌面窗口中使用。</p>'}</div>`,onSubmit:async form => {
     const values = new FormData(form); const patch = {};
     for (const key of ['confirm_delete','confirm_trash_delete','close_to_tray','autoplay_media']) patch[key] = values.has(key);
     for (const key of ['default_view','default_sort']) patch[key] = values.get(key);
@@ -908,7 +966,7 @@ async function handleDesktopMessage(data) {
   if (data?.action === 'external-open') return queueExternalFiles(Array.isArray(data.entries) ? data.entries : []);
   if (data?.action === 'prepare-exit') {
     let allow = false;
-    try { if (!$('#appDialog').open && !state.modalBusy && !state.trashBusy && !state.uploading && !state.exitBusy) { state.exitBusy = true; allow = await prepareTabs([...state.tabs]); allow = allow && !state.tabs.some(tab => tab.dirty || tab.propertiesDirty || tab.saving || tab.propertiesSaving || !markdownInputReady(tab)); persistDrafts(true); } }
+    try { if (!$('#appDialog').open && !globalSearchIsOpen() && !state.globalOpening && !state.modalBusy && !state.trashBusy && !state.uploading && !state.exitBusy) { state.exitBusy = true; allow = await prepareTabs([...state.tabs]); allow = allow && !state.tabs.some(tab => tab.dirty || tab.propertiesDirty || tab.saving || tab.propertiesSaving || !markdownInputReady(tab)); persistDrafts(true); } }
     finally { state.exitBusy = false; window.chrome?.webview?.postMessage({action:'exit-response',requestId:data.requestId,allow}); }
     if (!allow) toast('退出已取消，请先完成当前操作或保存文稿。','info');
   }
@@ -920,7 +978,7 @@ async function queueExternalFiles(entries) {
   if (state.externalDraining) return state.externalDraining;
   state.externalDraining = (async () => {
     while (state.externalQueue.length) {
-      while ($('#appDialog').open || state.modalBusy || state.exitBusy) await new Promise(resolve => setTimeout(resolve,150));
+      while ($('#appDialog').open || globalSearchIsOpen() || state.globalOpening || state.modalBusy || state.exitBusy) await new Promise(resolve => setTimeout(resolve,150));
       const id = state.externalQueue.shift();
       try { await openExternal(id); } catch(error) { report(error); }
     }

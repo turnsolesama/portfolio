@@ -52,33 +52,35 @@ jobs:
         run: |
           python tools/package_release.py
           if ($LASTEXITCODE) { throw 'Package failed' }
-          python tools/verify_release.py releases/YingXu-v0.3.3-Windows-x64.zip | Tee-Object releases/YingXu-v0.3.3-verification.json
+          python tools/verify_release.py releases/YingXu-v0.3.4-Windows-x64.zip | Tee-Object releases/YingXu-v0.3.4-verification.json
           if ($LASTEXITCODE) { throw 'Release verification failed' }
       - name: Upload draft, fetch and verify assets, then publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = 'yingxu-v0.3.3'
+          $tag = 'yingxu-v0.3.4'
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) { throw 'Release already exists; preserve its historical assets' }
           @'
           完整解压后双击 YingXu.exe。面向 Windows 10 22H2 / Windows 11 x64，自带 Python、Pillow、FFmpeg 和 WebView2，无需手动配置环境。
 
-          可编辑 Markdown 与自建 SKILL 默认使用实时预览编辑：当前段落显示源码，其余支持的内容显示排版；保留源码、双栏和只读预览，支持 Ctrl+B / Ctrl+I 及标题、粗体、斜体、列表、引用工具栏。
+          Ctrl+K 或顶栏“全局搜索”打开独立窗口，跨所有项目检索项目名称和简介、文件名称/标签/备注及已索引正文（含提取的 DOCX 正文），以及已注册 SKILL 的名称、描述和限额正文，不受当前分类筛选影响。结果显示来源、摘要和分页；达到扫描上限时明确提示部分结果。
 
-          始终保存同一份 Markdown 文本，不把 HTML 转回文稿。超过 50 万字符或混合换行时降级源码；复杂表格、YAML、HTML、代码和图片保留源码。中文输入组合期间避免编辑器重建或关闭，草稿与保存状态保持一致，原有 BOM 和换行格式保留。编辑器组件已在构建时打包到本地，使用完整包无需安装 Node.js，也不连接 CDN。
+          Ctrl+F 保持当前页面搜索。全局窗口支持上/下选择、Enter 打开和 Esc 关闭；顶栏帮助位于设置左边，设置在最右侧。未保存草稿不进入索引，外部修改的项目文件需要先同步。
+
+          保留 Markdown 实时预览、源码与双栏编辑、保存和草稿保护；编辑器组件在本地，使用完整包无需安装 Node.js，也不连接 CDN。
 
           更新前保存编辑、等待导入完成，从托盘菜单退出映序窗口，并运行旧目录内的 Stop-YingXu.ps1。完整解压新版后打开，默认继续使用原项目与应用数据目录。
 
           ZIP 内含源码、组件许可证、逐文件校验清单。附带 SHA-256、包大小与隔离验收记录。媒体播放格式和目标软件文件接收能力仍遵循原有边界。
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/release-notes.md"
-          gh release create $tag releases/YingXu-v0.3.3-Windows-x64.zip releases/YingXu-v0.3.3-SHA256.txt releases/YingXu-v0.3.3-manifest.json releases/YingXu-v0.3.3-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.3.3 · Markdown 实时预览编辑' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
+          gh release create $tag releases/YingXu-v0.3.4-Windows-x64.zip releases/YingXu-v0.3.4-SHA256.txt releases/YingXu-v0.3.4-manifest.json releases/YingXu-v0.3.4-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.3.4 · 跨项目全局搜索' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
           if ($LASTEXITCODE) { throw 'Draft upload failed' }
           gh release download $tag --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/published-check"
           if ($LASTEXITCODE) { throw 'Draft download failed' }
-          $manifest = Get-Content "$env:RUNNER_TEMP/published-check/YingXu-v0.3.3-manifest.json" -Raw | ConvertFrom-Json
-          $zip = Get-Item "$env:RUNNER_TEMP/published-check/YingXu-v0.3.3-Windows-x64.zip"
+          $manifest = Get-Content "$env:RUNNER_TEMP/published-check/YingXu-v0.3.4-manifest.json" -Raw | ConvertFrom-Json
+          $zip = Get-Item "$env:RUNNER_TEMP/published-check/YingXu-v0.3.4-Windows-x64.zip"
           if ($zip.Length -ne $manifest.bytes -or (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower() -ne $manifest.sha256) { throw 'Downloaded asset differs' }
           python tools/verify_release.py $zip.FullName
           if ($LASTEXITCODE) { throw 'Downloaded asset failed verification' }

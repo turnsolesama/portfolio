@@ -49,12 +49,14 @@ class Application:
         self.settings=Settings(self.store.data_root)
         self.external=ExternalPreviews(self.store.data_root)
         self.project_library=ProjectLibrary(self.store)
+        from yingxu.search import GlobalSearch
+        self.search=GlobalSearch(self.store,self.skills)
 
     def bootstrap(self):
         return {'app':'yingxu','version':__version__,'token':self.token,'settings':self.settings.get(),
           'project_root':str(self.store.project_root),'data_root':str(self.store.data_root),
           'categories':[{'key':k,'label':v[0]} for k,v in CATEGORIES.items()], 'statuses':STATUSES,
-          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True}}
+          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True,'global_search':True}}
 
     def changed(self,project_id=None):
         with self.store.connection() as db:
@@ -302,6 +304,9 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/settings':return self.json(self.app.settings.get())
                 if path=='/api/project-library':return self.json(self.app.project_library.snapshot())
                 if path=='/api/projects':return self.json({'projects':self.app.store.list_projects()})
+                if path=='/api/search':
+                    if set(query)-{'q','limit','offset'}:raise UserError('全局搜索仅接受关键词与分页参数。')
+                    return self.json(self.app.search.search(query.get('q',''),query.get('limit',30),query.get('offset',0)))
                 if path=='/api/items':return self.json(self.app.store.list_items(query.get('project',''),**{k:query[k] for k in ('category','q','status','kind','limit','offset','sort','folder') if k in query}))
                 if path=='/api/folders':return self.json(self.app.organize.folders(query.get('project',''),query.get('category','')))
                 if path=='/api/trash':return self.json(self.app.trash(query.get('project',''),query.get('limit',48),query.get('offset',0),query.get('q','')))

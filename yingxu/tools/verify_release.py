@@ -61,7 +61,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.3'
+    assert health['version'] == '0.3.4'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -76,9 +76,14 @@ def check_server(port, data, projects):
     item = request(port, 'POST', '/api/items', {'project_id': project['id'], 'category': 'characters', 'folder_id': folder['id'], 'name': '角色 测试', 'content': '# 合成角色\n不包含用户数据。'}, token)
     assert item['folder_id'] == folder['id']
     assert Path(item['path']).is_file()
+    second = request(port, 'POST', '/api/projects', {'name': '另一合成项目'}, token)
+    second_item = request(port, 'POST', '/api/items', {'project_id': second['id'], 'category': 'scripts', 'name': '搜索文稿', 'content': '# 合成文稿\n跨项目验收令牌'}, token)
+    from urllib.parse import urlencode
+    search = request(port, 'GET', '/api/search?' + urlencode({'q': '跨项目验收令牌', 'limit': 20}))
+    assert any(result['type'] == 'item' and result['id'] == second_item['id'] and result['project_id'] == second['id'] for result in search['results'])
     with socket.socket() as connection:
         connection.connect(('127.0.0.1', port))
-    return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library', 'Chinese project/folder/document creation']
+    return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library', 'Chinese project/folder/document creation', 'global search finds indexed document content across projects']
 
 
 def check_media(port, root, base, interpreter, environment):
@@ -155,6 +160,7 @@ def main():
         assert hashlib.sha256(editor_bytes).hexdigest() == editor['sha256']
         assert editor['dependencies'] and (root / 'frontend/live-markdown.LICENSE.txt').stat().st_size > 0
         assert (root / 'frontend/live-markdown.css').is_file()
+        assert (root / 'frontend/global-search.js').is_file() and (root / 'frontend/global-search.css').is_file()
         assert not any('node_modules' in PurePosixPath(name).parts for name in names)
         checked.append('offline Markdown bundle SHA-256, stylesheet and licenses; no Node runtime')
         environment = os.environ.copy()

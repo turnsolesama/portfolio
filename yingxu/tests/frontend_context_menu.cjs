@@ -13,7 +13,7 @@ function setup() {
     return nodes.get(key);
   }
   document.body=node('body');
-  const window={innerWidth:1000,innerHeight:700,addEventListener(){}};
+  const window={innerWidth:1000,innerHeight:700,addEventListener(){},YingXuGlobalSearch:{install:()=>({open:()=>{calls.push(['global-search']);return true;},isOpen:()=>false})}};
   const context=vm.createContext({document,window,localStorage:{getItem:() => null},console,setTimeout,clearTimeout,URLSearchParams,AbortController,calls});
   let source=fs.readFileSync(path.join(__dirname,'../frontend/app.js'),'utf8').replace(/boot\(\);\s*$/, '');
   vm.runInContext(source+'\napi=async (...args)=>calls.push(args); report=error=>{throw error;}; globalThis.app={state,wireEvents,showMenu,runMenu,contextMenuTarget};',context);
@@ -80,12 +80,15 @@ test('search focus does not inherit popup arrow keys and Ctrl K closes the menu'
   assert.equal(s.node('#resourceMenu').hidden,true);
 });
 
-test('Ctrl F is the primary search shortcut and Ctrl K remains compatible',()=>{
-  for (const key of ['f','F','k']) {
+test('Ctrl F focuses page search and Ctrl K opens a separate global search',()=>{
+  for (const key of ['f','F']) {
     const s=setup();let focused=false,selected=false;s.node('#searchInput').focus=()=>{focused=true;};s.node('#searchInput').select=()=>{selected=true;};
     const event={key,ctrlKey:true,preventDefault(){this.prevented=true;}};s.listeners.get('keydown')(event);
     assert.equal(event.prevented,true);assert.equal(focused,true);assert.equal(selected,true);
   }
+  const s=setup();let focused=false;s.node('#searchInput').focus=()=>{focused=true;};s.node('#searchInput').disabled=true;
+  const event={key:'k',ctrlKey:true,preventDefault(){this.prevented=true;}};s.listeners.get('keydown')(event);
+  assert.equal(event.prevented,true);assert.equal(focused,false);assert.equal(s.calls[0][0],'global-search');
 });
 
 test('search shortcut cannot escape a confirmation dialog or focus a disabled search',()=>{

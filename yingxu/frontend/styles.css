@@ -157,3 +157,5 @@ kbd{font-family:inherit;font-size:10px;line-height:1.6;border:1px solid var(--li
 
 .live-markdown-host{min-width:0;min-height:0;height:100%;overflow:hidden}.text-workspace.split .live-markdown-host{border-right:1px solid var(--line)}.markdown-source-notice{margin:0;padding:6px 12px;color:var(--muted);font-size:11px;border-bottom:1px solid var(--line)}.markdown-source-notice+.text-workspace{height:calc(100% - 45px)}
 @media(max-width:1090px){.text-workspace.split .live-markdown-host{border-right:0;border-bottom:1px solid var(--line)}}
+
+.global-search-trigger{flex:none;width:34px;height:36px;color:var(--muted);border:1px solid var(--line);border-radius:6px}
