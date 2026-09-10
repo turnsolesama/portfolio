@@ -68,6 +68,12 @@ jobs:
           @'
           完整解压后双击 YingXu.exe。面向 Windows 10 22H2 / Windows 11 x64，自带 Python、Pillow、FFmpeg 和 WebView2，无需手动配置环境。
 
+          多选素材后可从工具栏或右键批量追加标签、修改制作状态。保留各素材原标签，重复标签有序合并；未指定字段保持原值，校验或执行失败时整批回滚。正文草稿、原文件和其他制作参数保留。最多200项，新增标签最多50个、每个80字。
+
+          截图默认在选区后停住，支持画笔、箭头、矩形、颜色、粗细、撤销，再确认保存；Esc或右键取消时不复制、不上传。设置中保留快速保存模式，不新增轮询或翻译模型。
+
+          状态栏显示实际界面缩放百分比，点击恢复100%；图片工具栏单独显示图片相对于原始尺寸的比例，适应窗口时也显示实际百分比。
+
           本次新增项目库项目长条行和素材组成员长条行拖动：拖到其他分类或同项目另一组，拖出弹窗到明确空白区域则未分类或移出组；Esc 取消，失败保留原归属。跨组转移原子提交，所有归类只改索引关系，磁盘原文件不动。
 
           保留 0.3.6 标题改名与 Delete 功能。点击项目文件标题打开原有重命名弹窗，名称输入框不含 .md 等原扩展名，确认后保留扩展名与尚未保存的正文。取消不改文件；不是逐字自动重命名。
@@ -88,7 +94,7 @@ jobs:
 
           ZIP 内含源码、组件许可证、逐文件校验清单。附带 SHA-256、包大小与隔离验收记录。媒体播放格式和目标软件文件接收能力仍遵循原有边界。
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/release-notes.md"
-          gh release create $tag releases/YingXu-v0.3.7-Windows-x64.zip releases/YingXu-v0.3.7-SHA256.txt releases/YingXu-v0.3.7-manifest.json releases/YingXu-v0.3.7-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.3.7 · 项目与素材组拖动归类' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
+          gh release create $tag releases/YingXu-v0.3.7-Windows-x64.zip releases/YingXu-v0.3.7-SHA256.txt releases/YingXu-v0.3.7-manifest.json releases/YingXu-v0.3.7-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.3.7 · 批量编辑、截图标注与拖动归类' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
           if ($LASTEXITCODE) { throw 'Draft upload failed' }
           gh release download $tag --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/published-check"
           if ($LASTEXITCODE) { throw 'Draft download failed' }
