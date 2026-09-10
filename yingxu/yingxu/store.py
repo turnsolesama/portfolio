@@ -555,6 +555,73 @@ class Store:
                 self._search_row(db,iid)
         return self.get_item(iid,True)
 
+    def batch_properties(self, data):
+        """Append tags/update status atomically, without reading or changing files."""
+        if not isinstance(data, dict) or set(data) - {'project_id', 'ids', 'tags_add', 'status'}:
+            raise UserError('批量属性字段不正确。')
+        pid, ids = data.get('project_id'), data.get('ids')
+        valid_id = lambda value: isinstance(value, str) and re.fullmatch(r'[a-f0-9]{32}', value)
+        if not valid_id(pid):
+            raise UserError('请选择有效项目。')
+        if (not isinstance(ids, list) or not 1 <= len(ids) <= 200
+                or any(not valid_id(iid) for iid in ids) or len(set(ids)) != len(ids)):
+            raise UserError('请选择 1 至 200 个不重复的有效素材。')
+        if not {'tags_add', 'status'} & data.keys():
+            raise UserError('请填写要追加的标签或选择制作状态。')
+        if 'status' in data and (not isinstance(data['status'], str) or data['status'] not in STATUSES):
+            raise UserError('状态不存在。')
+        additions = None
+        if 'tags_add' in data:
+            values = data['tags_add']
+            if not isinstance(values, list) or not 1 <= len(values) <= 50:
+                raise UserError('请填写 1 至 50 个追加标签。')
+            additions = []
+            for value in values:
+                if (not isinstance(value, str) or not 1 <= len(value.strip()) <= 80
+                        or re.search(r'[\x00-\x1f\x7f]', value)):
+                    raise UserError('每个标签需为 1 至 80 个字符，不能含控制字符。')
+                value = value.strip()
+                if value not in additions:
+                    additions.append(value)
+        with self.lock, self.connection() as db:
+            # SQLite serializes independent Store instances too, so tag merging
+            # always reads the latest committed labels before calculating a union.
+            db.execute('BEGIN IMMEDIATE')
+            self._project(db, pid)
+            marks = ','.join('?' for _ in ids)
+            rows = {row['id']: row for row in db.execute(
+                f'SELECT i.* FROM items i WHERE i.id IN ({marks}) AND i.project_id=? AND i.removed=0 '
+                'AND (i.folder_id IS NULL OR EXISTS(SELECT 1 FROM folders f '
+                'WHERE f.id=i.folder_id AND f.project_id=i.project_id AND f.removed=0))', [*ids, pid])}
+            if len(rows) != len(ids):
+                raise UserError('部分素材已删除、移出项目或不在有效文件夹中，请刷新后重试。整批未修改。', 409)
+            planned = []
+            for iid in ids:
+                row = rows[iid]
+                try:
+                    tags = json.loads(row['tags'])
+                except (ValueError, TypeError):
+                    raise UserError('素材原有标签数据异常，整批未修改。', 409) from None
+                if not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+                    raise UserError('素材原有标签数据异常，整批未修改。', 409)
+                if additions is not None:
+                    tags = list(dict.fromkeys([*tags, *additions]))
+                    if len(tags) > 50:
+                        raise UserError('追加后有素材超过 50 个标签，整批未修改。', 409)
+                planned.append((iid, tags, data.get('status', row['status'])))
+            updated = now()
+            result = []
+            for iid, tags, status in planned:
+                changes = {'updated': updated}
+                if additions is not None:
+                    changes['tags'] = json_text(tags)
+                if 'status' in data:
+                    changes['status'] = status
+                db.execute('UPDATE items SET ' + ','.join(key + '=?' for key in changes) + ' WHERE id=?', [*changes.values(), iid])
+                self._search_row(db, iid)
+                result.append({'id': iid, 'project_id': pid, 'tags': tags, 'status': status, 'updated': updated})
+        return {'items': result}
+
     def remove_item(self,iid):
         from .organize import Organize
         return Organize(self).delete_items([iid])

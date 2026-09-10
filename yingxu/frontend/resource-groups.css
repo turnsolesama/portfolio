@@ -29,6 +29,22 @@
 .yx-group-toolbar,.yx-group-picker-footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
 .yx-group-members,.yx-group-list,.yx-group-picker { display: grid; gap: 8px; }
 .yx-group-member { display: flex; align-items: center; gap: 8px; border: 1px solid #e2e8e3; border-radius: 8px; padding: 8px; }
+.yx-group-member-copy { display:flex;flex:1;min-width:0;align-items:center;gap:12px;cursor:grab;user-select:none;touch-action:pan-y; }
+.yx-group-member-copy > span:last-child { min-width:0; }
+.yx-group-member-copy:active { cursor:grabbing; }
+.yx-member-drag-source { opacity:.45;outline:2px dashed #70987d; }
+.yx-group-dialog.yx-member-dragging { overflow:visible;outline:3px dashed #6d937a; }
+.yx-member-dragging,.yx-member-dragging * { user-select:none!important; }
+.yx-group-dialog.yx-member-outside { outline:4px solid #b77b2b; }
+.yx-member-drop-panel { position:fixed;z-index:1;left:50%;bottom:18px;transform:translateX(-50%);width:min(680px,calc(100vw - 40px));box-sizing:border-box;padding:12px;border:1px solid #9cb5a3;border-radius:10px;background:#f5faf6;box-shadow:0 8px 28px #19362630; }
+.yx-member-drop-panel p { margin:0 0 9px;font-size:13px;font-weight:600;color:#34543f; }
+.yx-member-drop-choices { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;max-height:28vh;overflow:auto; }
+.yx-member-drop-zone { min-width:0;padding:12px 10px;border:1px dashed #9bb4a2;border-radius:7px;background:white;font-size:12px;overflow-wrap:anywhere; }
+.yx-member-drop-zone[data-member-drop="remove"] { border-color:#c9a776;color:#815919; }
+.yx-member-drop-zone.yx-member-drop-active { background:#dcecdf;border:2px solid #3b714a;padding:11px 9px; }
+.yx-member-outside .yx-member-drop-panel { border-color:#b77b2b;background:#fff8ed; }
+@media(max-width:600px) { .yx-member-drop-choices{grid-template-columns:repeat(2,minmax(0,1fr))}.yx-group-member{flex-wrap:wrap}.yx-group-member-copy{flex-basis:100%} }
+@media(prefers-reduced-motion:reduce) { .yx-member-drag-source,.yx-member-drop-zone,.yx-group-dialog.yx-member-dragging{animation:none;transition:none} }
 .yx-group-member > button:first-child,.yx-group-list > button { display: flex; flex: 1; min-width: 0; align-items: center; gap: 12px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
 .yx-group-member .yx-group-mini { width: 46px; height: 46px; flex-shrink: 0; font-size: 16px; }
 .yx-group-member strong,.yx-group-list strong,.yx-group-picker-row strong { display: block; font-weight: 500; font-size: 13px; overflow-wrap: anywhere; }

@@ -236,6 +236,24 @@ class ResourceGroupsHttpTests(unittest.TestCase):
                 self.assertEqual(request('DELETE', path, {'revision': 4})[1]['dissolved'], True)
                 self.assertEqual(request('GET', path)[0], 404)
                 self.assertTrue(all(Path(app.store.get_item(iid)['path']).exists() for iid in ids))
+                extra = app.store.create_item({'project_id': project['id'], 'name': '转移目标'})['id']
+                first = request('POST', '/api/resource-groups', {'project_id': project['id'], 'item_ids': ids[:2]},)[1]
+                second = request('POST', '/api/resource-groups', {'project_id': project['id'], 'item_ids': [ids[2], extra]},)[1]
+                originals = {iid: (app.store.get_item(iid)['path'], Path(app.store.get_item(iid)['path']).read_bytes()) for iid in [*ids, extra]}
+                route = '/api/resource-groups/' + first['id'] + '/transfer'
+                transfer = {'ids': ids[:1], 'revision': 1, 'target_group_id': second['id'], 'target_revision': 1}
+                self.assertEqual(request('POST', route, transfer, {'X-YingXu-Token': ''})[0], 403)
+                self.assertEqual(request('POST', route, transfer, {'Origin': 'https://evil.example'})[0], 403)
+                self.assertEqual(request('DELETE', route, transfer)[0], 404)
+                status, moved = request('POST', route, transfer)
+                self.assertEqual(status, 200)
+                self.assertEqual(moved['source']['member_ids'], ids[1:2])
+                self.assertEqual(moved['target']['member_ids'], [ids[2], extra, ids[0]])
+                self.assertEqual(request('POST', route, transfer)[0], 409)
+                status, removed = request('POST', '/api/resource-groups/' + second['id'] + '/transfer', {'ids': ids[:1], 'revision': 2, 'target_group_id': None})
+                self.assertEqual(status, 200)
+                self.assertIsNone(removed['target'])
+                self.assertEqual(originals, {iid: (app.store.get_item(iid)['path'], Path(app.store.get_item(iid)['path']).read_bytes()) for iid in [*ids, extra]})
             finally:
                 server.shutdown()
                 server.server_close()

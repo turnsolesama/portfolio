@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -107,7 +108,8 @@ namespace YingXu.Desktop
     internal sealed class CaptureServices
     {
         internal Func<Rectangle> ScreenBounds = () => Screen.FromPoint(Cursor.Position).Bounds;
-        internal Func<Rectangle,Bitmap> Select = CapturePlatform.Select;
+        internal Func<Rectangle,Bitmap> Select;
+        internal Func<Rectangle,string,Bitmap> SelectMode = CapturePlatform.Select;
         internal Action<Bitmap> Copy = CapturePlatform.Copy;
         internal Func<Bitmap,string,object> Upload = (image,project) => DesktopApi.UploadCapture(CapturePlatform.Encode(image),project);
     }
@@ -123,6 +125,7 @@ namespace YingXu.Desktop
         private string requestId;
         private bool disposed;
         internal int ContextTimeoutMs = 5000;
+        internal string Mode = "annotate";
         internal bool Busy { get; private set; }
         internal CaptureCoordinator(Func<object,bool> post,Action<string,bool> notify,CaptureServices implementation = null)
         {
@@ -142,6 +145,7 @@ namespace YingXu.Desktop
             if (disposed || Busy) return;
             if (completed.Count >= 8) { notice("工作台尚未接收之前的截图结果，请先重新打开工作台。",true); return; }
             Busy = true; requestId = Guid.NewGuid().ToString("N");
+            string mode = Mode == "quick" ? "quick" : "annotate";
             var result = new CaptureResult { requestId = requestId };
             try
             {
@@ -159,7 +163,7 @@ namespace YingXu.Desktop
                 }
                 context = null;
                 if (disposed) return;
-                using (Bitmap image = services.Select(screen))
+                using (Bitmap image = services.Select == null ? services.SelectMode(screen,mode) : services.Select(screen))
                 {
                     if (image == null) { result.cancelled = true; return; }
                     try { services.Copy(image); result.clipboardCopied = true; }
@@ -208,7 +212,7 @@ namespace YingXu.Desktop
             if (area.Width < 2 || area.Height < 2 || !new Rectangle(Point.Empty,image.Size).Contains(area)) return null;
             return image.Clone(area,PixelFormat.Format32bppRgb);
         }
-        internal static Bitmap Select(Rectangle bounds)
+        internal static Bitmap Select(Rectangle bounds,string mode = "annotate")
         {
             if (bounds.Width <= 0 || bounds.Height <= 0 || (long)bounds.Width*bounds.Height > MaxPixels) throw new InvalidOperationException("当前屏幕尺寸超过截图上限。");
             IntPtr foreground = GetForegroundWindow();
@@ -217,8 +221,8 @@ namespace YingXu.Desktop
                 using (var screen = new Bitmap(bounds.Width,bounds.Height,PixelFormat.Format32bppRgb))
                 {
                     using (var graphics = Graphics.FromImage(screen)) graphics.CopyFromScreen(bounds.Location,Point.Empty,bounds.Size,CopyPixelOperation.SourceCopy);
-                    using (var selector = new CaptureSelector(screen,bounds))
-                        return selector.ShowDialog() == DialogResult.OK ? Crop(screen,selector.Area) : null;
+                    using (var selector = new CaptureSelector(screen,bounds,mode))
+                        return selector.ShowDialog() == DialogResult.OK ? selector.CreateResult() : null;
                 }
             }
             finally { if (foreground != IntPtr.Zero && IsWindow(foreground)) SetForegroundWindow(foreground); }
@@ -227,21 +231,101 @@ namespace YingXu.Desktop
         [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr handle);
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr handle);
     }
+    internal sealed class CaptureStroke
+    {
+        internal string Tool;
+        internal Color Color;
+        internal float Width;
+        internal readonly List<Point> Points = new List<Point>();
+        internal void Draw(Graphics graphics)
+        {
+            if (Points.Count==0) return;
+            using(var pen=new Pen(Color,Width))
+            {
+                pen.StartCap=LineCap.Round; pen.EndCap=LineCap.Round; pen.LineJoin=LineJoin.Round;
+                Point first=Points[0],last=Points[Points.Count-1];
+                if(Tool=="rectangle")
+                {
+                    int x=Math.Min(first.X,last.X),y=Math.Min(first.Y,last.Y);
+                    graphics.DrawRectangle(pen,x,y,Math.Abs(first.X-last.X),Math.Abs(first.Y-last.Y));
+                }
+                else if(Tool=="arrow" && first!=last)
+                {
+                    using(var cap=new AdjustableArrowCap(4,5,true)) { pen.CustomEndCap=cap; graphics.DrawLine(pen,first,last); }
+                }
+                else if(Points.Count>1) graphics.DrawLines(pen,Points.ToArray());
+                else using(var brush=new SolidBrush(Color)) graphics.FillEllipse(brush,first.X-Width/2,first.Y-Width/2,Width,Width);
+            }
+        }
+    }
     internal sealed class CaptureSelector : Form
     {
         private readonly Bitmap screen;
+        private readonly bool quick;
+        private readonly FlowLayoutPanel toolbar;
+        private readonly Button undo;
+        private readonly List<CaptureStroke> strokes=new List<CaptureStroke>();
+        private CaptureStroke pending;
         private Point first;
         private bool selecting;
+        internal bool Annotating { get; private set; }
+        internal string DrawingTool = "pen";
+        internal Color DrawingColor = Color.Red;
+        internal float DrawingWidth = 4;
+        internal int StrokeCount { get { return strokes.Count; } }
         internal Rectangle Area { get; private set; }
-        internal CaptureSelector(Bitmap image,Rectangle bounds)
+        internal CaptureSelector(Bitmap image,Rectangle bounds,string mode = "annotate")
         {
-            screen=image; AutoScaleMode=AutoScaleMode.None; FormBorderStyle=FormBorderStyle.None;
+            screen=image; quick=mode=="quick"; AutoScaleMode=AutoScaleMode.None; FormBorderStyle=FormBorderStyle.None;
             StartPosition=FormStartPosition.Manual; Bounds=bounds; TopMost=true; ShowInTaskbar=false;
             DoubleBuffered=true; KeyPreview=true; Cursor=Cursors.Cross; Text="映序截图 · 拖动选择区域，Esc 取消";
+            toolbar=new FlowLayoutPanel { Visible=false,BackColor=Color.White,Padding=new Padding(6),Size=new Size(Math.Min(520,bounds.Width),48),WrapContents=false,Cursor=Cursors.Default };
+            var tool=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList,Width=86,AccessibleName="标注工具" };
+            tool.Items.AddRange(new object[]{"画笔","箭头","矩形"});tool.SelectedIndex=0;
+            tool.SelectedIndexChanged+=(s,e)=>DrawingTool=new[]{"pen","arrow","rectangle"}[tool.SelectedIndex];
+            var colors=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList,Width=76,AccessibleName="标注颜色" };
+            colors.Items.AddRange(new object[]{"红色","黄色","绿色","蓝色","黑色","白色"});colors.SelectedIndex=0;
+            colors.SelectedIndexChanged+=(s,e)=>DrawingColor=new[]{Color.Red,Color.Yellow,Color.LimeGreen,Color.DodgerBlue,Color.Black,Color.White}[colors.SelectedIndex];
+            var width=new ComboBox { DropDownStyle=ComboBoxStyle.DropDownList,Width=74,AccessibleName="画笔粗细" };
+            width.Items.AddRange(new object[]{"2 像素","4 像素","8 像素","12 像素"});width.SelectedIndex=1;
+            width.SelectedIndexChanged+=(s,e)=>DrawingWidth=new[]{2,4,8,12}[width.SelectedIndex];
+            undo=new Button { Text="撤销",Width=65,Height=28,Enabled=false };undo.Click+=(s,e)=>UndoStroke();
+            var confirm=new Button { Text="确认",Width=65,Height=28 };confirm.Click+=(s,e)=>Confirm();
+            var cancel=new Button { Text="取消",Width=65,Height=28 };cancel.Click+=(s,e)=>CancelCapture();
+            toolbar.Controls.AddRange(new Control[]{tool,colors,width,undo,confirm,cancel});Controls.Add(toolbar);
+        }
+        internal void UndoStroke()
+        {
+            if(pending!=null){pending=null;Capture=false;}
+            else if(strokes.Count>0)strokes.RemoveAt(strokes.Count-1);
+            undo.Enabled=strokes.Count>0;Invalidate();
+        }
+        internal void Confirm() { if(!Annotating||pending!=null)return;DialogResult=DialogResult.OK;Close(); }
+        private void CancelCapture() { pending=null;DialogResult=DialogResult.Cancel;Close(); }
+        internal Bitmap CreateResult()
+        {
+            if(DialogResult!=DialogResult.OK)return null;
+            Bitmap output=CapturePlatform.Crop(screen,Area);if(output==null)return null;
+            try { using(var graphics=Graphics.FromImage(output)) { graphics.TranslateTransform(-Area.X,-Area.Y);DrawStrokes(graphics,false); }return output; }
+            catch {output.Dispose();throw;}
+        }
+        private void DrawStrokes(Graphics graphics,bool includePending)
+        {
+            var saved=graphics.Save();
+            try {graphics.SetClip(Area);graphics.SmoothingMode=SmoothingMode.AntiAlias;foreach(var stroke in strokes)stroke.Draw(graphics);if(includePending&&pending!=null)pending.Draw(graphics);}
+            finally {graphics.Restore(saved);}
+        }
+        private Point Clamp(Point point) { return new Point(Math.Max(Area.Left,Math.Min(Area.Right-1,point.X)),Math.Max(Area.Top,Math.Min(Area.Bottom-1,point.Y))); }
+        private void Extend(Point point)
+        {
+            point=Clamp(point);
+            if(pending.Tool!="pen" && pending.Points.Count>1)pending.Points[1]=point;
+            else if(pending.Points.Count<4096 && pending.Points[pending.Points.Count-1]!=point)pending.Points.Add(point);
         }
         protected override void OnPaint(PaintEventArgs e)
         {
             e.Graphics.DrawImageUnscaled(screen,0,0);
+            if(Annotating)DrawStrokes(e.Graphics,true);
             using (var shade=new SolidBrush(Color.FromArgb(100,0,0,0)))
             using (var outside=new Region(ClientRectangle))
             {
@@ -250,29 +334,55 @@ namespace YingXu.Desktop
             }
             if (Area.Width>0 && Area.Height>0)
                 using (var pen=new Pen(Color.FromArgb(135,208,154),2)) e.Graphics.DrawRectangle(pen,Area.X,Area.Y,Math.Max(0,Area.Width-1),Math.Max(0,Area.Height-1));
-            TextRenderer.DrawText(e.Graphics,"拖动选择当前屏幕区域 · Esc / 右键取消",Font,new Point(18,18),Color.White,Color.FromArgb(35,45,38));
+            TextRenderer.DrawText(e.Graphics,Annotating ? "标注后点击确认 · Esc / 右键取消" : "拖动选择当前屏幕区域 · Esc / 右键取消",Font,new Point(18,18),Color.White,Color.FromArgb(35,45,38));
         }
         protected override void OnMouseDown(MouseEventArgs e)
         {
-            if (e.Button==MouseButtons.Right) { DialogResult=DialogResult.Cancel; Close(); return; }
+            if (e.Button==MouseButtons.Right) { CancelCapture(); return; }
             if (e.Button!=MouseButtons.Left) return;
+            if(Annotating)
+            {
+                if(!Area.Contains(e.Location)||strokes.Count>=200)return;
+                pending=new CaptureStroke {Tool=DrawingTool,Color=DrawingColor,Width=DrawingWidth};pending.Points.Add(e.Location);Capture=true;Invalidate();return;
+            }
             first=e.Location; selecting=true; Capture=true; Area=Rectangle.Empty; Invalidate();
         }
         protected override void OnMouseMove(MouseEventArgs e)
         {
+            if(pending!=null){Extend(e.Location);Invalidate();return;}
             if (!selecting) return; Area=CapturePlatform.Selection(first,e.Location,screen.Size); Invalidate();
         }
         protected override void OnMouseUp(MouseEventArgs e)
         {
-            if (!selecting || e.Button!=MouseButtons.Left) return;
+            if(e.Button!=MouseButtons.Left)return;
+            if(pending!=null){Extend(e.Location);strokes.Add(pending);pending=null;Capture=false;undo.Enabled=true;Invalidate();return;}
+            if (!selecting) return;
             Area=CapturePlatform.Selection(first,e.Location,screen.Size); selecting=false; Capture=false;
             if (Area.Width<2 || Area.Height<2) { Area=Rectangle.Empty; Invalidate(); return; }
-            DialogResult=DialogResult.OK; Close();
+            if(quick){DialogResult=DialogResult.OK;Close();return;}
+            Annotating=true;
+            int top=Area.Bottom+10;if(top+toolbar.Height>ClientSize.Height)top=Math.Max(0,Area.Top-toolbar.Height-10);
+            toolbar.Location=new Point(Math.Max(0,Math.Min(Area.Left,ClientSize.Width-toolbar.Width)),top);
+            toolbar.Visible=true;toolbar.BringToFront();Invalidate();
         }
         protected override void OnKeyDown(KeyEventArgs e)
         {
-            if (e.KeyCode==Keys.Escape) { e.Handled=true; DialogResult=DialogResult.Cancel; Close(); }
+            if (e.KeyCode==Keys.Escape) { e.Handled=true;CancelCapture(); }
+            else if(e.Control&&e.KeyCode==Keys.Z&&Annotating){e.Handled=true;UndoStroke();}
             base.OnKeyDown(e);
+        }
+        protected override void OnMouseCaptureChanged(EventArgs e)
+        {
+            if(!Capture && pending!=null){pending=null;Invalidate();}
+            if(!Capture && selecting){selecting=false;Area=Rectangle.Empty;Invalidate();}
+            base.OnMouseCaptureChanged(e);
+        }
+        protected override bool ProcessCmdKey(ref Message message,Keys keyData)
+        {
+            // Escape also cancels while a toolbar combo box owns keyboard focus.
+            if(keyData==Keys.Escape){CancelCapture();return true;}
+            if(keyData==(Keys.Control|Keys.Z)&&Annotating){UndoStroke();return true;}
+            return base.ProcessCmdKey(ref message,keyData);
         }
     }
 }

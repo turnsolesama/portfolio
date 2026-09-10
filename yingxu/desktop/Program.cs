@@ -18,8 +18,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.3.6.0")]
-[assembly: AssemblyFileVersion("0.3.6.0")]
+[assembly: AssemblyVersion("0.3.7.0")]
+[assembly: AssemblyFileVersion("0.3.7.0")]
 
 namespace YingXu.Desktop
 {
@@ -146,6 +146,7 @@ namespace YingXu.Desktop
         private WebView2 web;
         private readonly Label loading;
         private readonly ToolStripStatusLabel status;
+        private readonly ToolStripStatusLabel zoomStatus;
         private readonly RegisteredWaitHandle activation;
         private readonly CancellationTokenSource closing = new CancellationTokenSource();
         private bool loaded;
@@ -203,6 +204,9 @@ namespace YingXu.Desktop
             var bar = new StatusStrip { BackColor = Color.FromArgb(246, 247, 245), ForeColor = Color.FromArgb(104, 115, 108), SizingGrip = true };
             status = new ToolStripStatusLabel("本地工作台 · 关闭窗口默认保留在托盘，可从设置调整") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
             bar.Items.Add(status);
+            zoomStatus=new ToolStripStatusLabel("界面 100%") { IsLink=true,ToolTipText="点击恢复界面 100%" };
+            zoomStatus.Click+=delegate { if(web!=null&&!web.IsDisposed&&web.CoreWebView2!=null){web.ZoomFactor=1.0;UpdateZoomStatus();} };
+            bar.Items.Add(zoomStatus);
             Controls.Add(bar);
             RestoreWindow();
             if (Program.InitialFiles != null && Program.InitialFiles.Length != 0) pendingFiles.Enqueue(Program.InitialFiles);
@@ -271,6 +275,11 @@ namespace YingXu.Desktop
             string error=captureHotkey.Configure(Handle,captureEnabled,captureShortcut);
             if(error!=null) CaptureNotice(error,true);
         }
+        private void UpdateZoomStatus()
+        {
+            if(web!=null&&!web.IsDisposed&&web.CoreWebView2!=null)
+                zoomStatus.Text="界面 "+Math.Round(web.ZoomFactor*100).ToString(System.Globalization.CultureInfo.InvariantCulture)+"%";
+        }
         private async void StartCapture()
         {
             if (capture==null || capture.Busy || closing.IsCancellationRequested || exitRequest!=null || exitApproved || draggingFile || openingFiles) return;
@@ -320,6 +329,7 @@ namespace YingXu.Desktop
                 closeToTray=!settings.TryGetValue("close_to_tray",out value) || !(value is bool) || (bool)value;
                 captureEnabled=!settings.TryGetValue("capture_enabled",out value) || !(value is bool) || (bool)value;
                 captureShortcut=settings.TryGetValue("capture_hotkey",out value) && value is string ? (string)value : CaptureHotkey.Default;
+                if(capture!=null)capture.Mode=settings.TryGetValue("capture_mode",out value) && (value as string)=="quick" ? "quick" : "annotate";
                 ApplyCaptureHotkey();
             }
             catch (Exception error) { Hub.Log("desktop_settings_error " + error.GetType().Name); }
@@ -453,6 +463,8 @@ namespace YingXu.Desktop
                 if (closing.IsCancellationRequested) return;
                 await web.EnsureCoreWebView2Async(environment);
                 if (closing.IsCancellationRequested) return;
+                web.ZoomFactorChanged+=delegate { UpdateZoomStatus(); };
+                UpdateZoomStatus();
                 var core = web.CoreWebView2;
                 core.Profile.PreferredColorScheme = CoreWebView2PreferredColorScheme.Light;
                 core.Settings.IsStatusBarEnabled = false;

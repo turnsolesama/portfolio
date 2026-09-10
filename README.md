@@ -10,7 +10,7 @@
 
 | 你现在想做什么 | 对应项目 | 当前版本 | 下载 Windows 程序包 |
 | --- | --- | --- | --- |
-| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.3.6 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-Windows-x64.zip)** |
+| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.3.7 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-Windows-x64.zip)** |
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | 导入 API 示例，管理服务、密钥变量和 Codex 配置切换 | **[Codex Switcher](codex-switcher/)** | 2.4.1 | **[下载切换器 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
 | 管理已有代理、统一出口，给程序设置专用线路 | **[流向 FlowSwitch](proxy-switch/)** | 3.6.0 | **[下载 FlowSwitch · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.6.0-Windows-x64.zip)** |
@@ -25,7 +25,8 @@
 - **设置与桌面**：删除确认、托盘与播放偏好可配置；托盘双击唤回，从 Windows“打开方式”直接只读预览本地文件。
 - **项目与分类**：剧本、分镜、角色、场景、道具、参考、白模预演、生成素材和交付。支持多层文件夹，用“跨集共用 / 第 1 集 / 第 2 集”整理系列作品。
 - **文件工作区**：多标签打开、Markdown/文本编辑、Word 普通段落编辑、图片与音视频预览。支持拖入、移动、多选、改名，以及右键打开所在文件夹。
-- **标题改名与删除**：点击项目文件标题打开确认改名弹窗，输入仅名称，保留扩展名与未保存正文；选中素材后按 Delete 移入映序回收站，沿用删除确认设置。编辑标题、正文或其他输入框时只删除文字。
+- **拖动归类**：项目库项目行可拖到其他分类，素材组成员行可拖到同项目其他组；拖出弹窗到空白区域用于未分类或移出组，Esc 取消，磁盘原文件保持不变。
+- **标题改名与删除**：点击项目文件标题打开确认改名弹窗，输入仅名称，保留扩展名与未保存正文；选中素材后按 Delete 移入映序回收站，素材选择框保持焦点时也可使用，沿用删除确认设置。编辑标题、正文或其他输入框时只删除文字。
 - **全局搜索**：Ctrl+K 或顶栏入口跨项目查找项目、文件与已注册 SKILL，显示来源、摘要和分页；Ctrl+F 继续搜索当前页面。
 - **截图与素材组**：按需截取鼠标所在屏幕区域，复制图片并保存项目附件；逻辑素材组跨分类整理文件，保留原位置。资源区空白拖框选择本页可见卡片，文稿独立标题仅显示名称、不含扩展名。
 - **Markdown 实时预览**：可编辑文稿与自建 SKILL 默认边写边看排版，当前段落显示源码；源码、双栏与只读预览继续保留。
@@ -85,7 +86,7 @@
 | Codex Switcher | `Codex Switcher.exe` | Windows x64、Python 3.11+（含 Tkinter）、.NET Framework 4.x |
 | FlowSwitch | `FlowSwitch.exe` | Windows 10 1809+ / 11 x64、PowerShell 5.1、.NET Framework 4.x、curl；自带 Node.js 和独立内核 |
 
-这些 EXE 是桌面启动入口，需要保留完整程序包，并满足各自的运行条件。映序 0.3.6 与 FlowSwitch 3.6.0 完整包已自带主要运行组件；各软件请按自己的说明配置。各包不包含模型权重或代理服务。
+这些 EXE 是桌面启动入口，需要保留完整程序包，并满足各自的运行条件。映序 0.3.7 与 FlowSwitch 3.6.0 完整包已自带主要运行组件；各软件请按自己的说明配置。各包不包含模型权重或代理服务。
 
 如果 GitHub 页面显示 **Error loading page**，可直接使用上表的下载链接；已经下载但不能启动时，请查看对应项目的运行要求。版本升级、数据保留和诊断步骤都放在各软件的独立说明中。
 

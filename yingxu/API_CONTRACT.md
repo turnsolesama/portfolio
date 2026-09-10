@@ -100,6 +100,20 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 - 返回结果需显示来源、命中摘要和分页信息；超过扫描限额必须明确标记部分结果。未保存草稿不纳入索引，外部项目文件变化需要同步索引。
 - 独立搜索窗口支持上/下选择、Enter 打开及 Esc 关闭；当前页面 Ctrl+F 行为保留。顶栏另提供全局搜索按钮，帮助位于设置左侧、设置最右。
 
+## 0.3.7：截图模式与项目、组成员拖动
+
+`POST /api/resource-groups/{source_id}/transfer {ids:[id],revision,target_group_id,target_revision}`：按资源 ID 转移当前组成员；`revision` 是来源组修订号。转入另一组时必须给出 `target_revision`，同一事务校验来源和目标修订号。`target_group_id:null` 表示移出组，不传 `target_revision`。目标仅允许同项目素材组，失败保留原归属。
+
+项目行拖动复用项目库逻辑归类，弹窗外的明确空白放置区域表示未分类。组成员拖动支持同项目换组和移出组；跨组转移需在后台一次事务中校验来源、目标及修订状态，失败保留原归属。客户端仅接受自己的内部拖动载荷，Esc、无效区域或过期请求不提交转移。不根据磁盘路径猜测项目或成员。
+
+素材选择框的 Delete 例外仅限当前资源卡片或列表行内、ID 与所属行一致的选择框。其他输入控件与编辑器继续保护，删除仍走普通映序回收站及现有确认和草稿守卫。
+
+`GET /api/settings`、`PATCH /api/settings` 及 `bootstrap.settings` 新增 `capture_mode`，只允许 `"annotate"`（默认）和 `"quick"`。旧设置缺少此项时使用默认值；非法值返回 400，不覆盖有效设置。`capture_enabled` 仍只控制后台快捷键，主动截图按钮可用。
+
+桌面在一次截图请求开始时锁定模式。`annotate` 在框选后等待标注或确认，只有确认才把结果位图交给已有复制、上传与插入流程；取消返回 `cancelled:true`，不调用复制与上传。`quick` 保留松开鼠标即完成。桥接字段、二进制上传与原笔记匹配规则不变，不传输 base64 图片。
+
+原生状态栏的界面百分比直接来自 WebView `ZoomFactor`，由 `ZoomFactorChanged` 更新；点击将其设为 `1.0`。此状态不新增 HTTP 接口或后台轮询，也不由屏幕 DPI 推算。
+
 ## 0.3.6：标题改名入口
 
 - 项目文件的独立标题打开既有重命名弹窗，仍使用 `POST /api/rename {id,name}`；不新增逐字重命名接口。
@@ -115,3 +129,10 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 - 编辑器 `create({imageResolver})` 只对普通相对路径图片调用回调，默认不加载图片；返回值必须是同源相对路由。`getSelection()` 返回原文 UTF-16 的 `{from,to}`（CRLF 计两个字符）；`insertText(text,from?,to?)` 是一次可撤销文本事务，保留原文换行。输入法组合拒绝插入，非法范围或超过实时编辑限额抛出错误。
 - `GET /api/resource-groups?project=ID` 返回 `{groups,total}`，组摘要含 `id,project_id,name,revision,count,member_ids,categories,preview` 等字段。`GET /api/resource-groups/ID` 追加完整 `members`。`POST /api/resource-groups {project_id,name?,item_ids}` 创建组，至少两个同项目成员。
 - `PATCH /api/resource-groups/ID {name,revision}` 改名；`POST` / `DELETE /api/resource-groups/ID/members {item_ids,revision}` 加入/移出；`DELETE /api/resource-groups/ID {revision}` 解散。写接口要求同源与令牌，修订号冲突返回 409。一素材只属于一组，每组最多 200 成员、每项目最多 500 组；组变更不搬动/删除文件或修改原分类与制作信息。
+# 批量制作信息（0.3.7）
+
+`POST /api/items/batch-properties`，写接口沿用同源与会话令牌校验。
+
+请求仅接受 `project_id`、`ids`、可选 `tags_add`、可选 `status`。项目与素材 ID 是 32 位小写十六进制；`ids` 为 1–200 个不重复的当前活跃项目素材，至少提供一项修改。`tags_add` 为 1–50 个字符串，去掉首尾空白后每项 1–80 字且不含控制字符；追加时有序去重，保留各素材原标签，合并后超出 50 个则整批拒绝。状态仅接受「待开始、进行中、待审核、已完成」；未提供的字段不修改。
+
+所有素材验证通过后在同一数据库事务内修改标签、状态、更新时间和搜索索引。已删除条目、跨项目条目、标签合并溢出或执行错误不会留下部分更新，不读取或改动素材原文件。返回 `{items:[{id,project_id,tags,status,updated}]}`，按输入 ID 顺序排列；不返回正文或大体积制作参数。

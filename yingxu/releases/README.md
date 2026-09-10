@@ -1,11 +1,17 @@
 # 映序 Windows 发布包
 
-当前完整版 **0.3.6**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+当前完整版 **0.3.7**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
 
-**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-verification.json)
+**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-verification.json)
+
+0.3.7 截图默认进入标注后确认，支持画笔、箭头、矩形、颜色/粗细与撤销；设置中保留快速完成，取消不写剪贴板或项目。原生状态栏显示实际界面缩放百分比，点击恢复 100%；图片预览另显示图片自身的实际缩放比例。同时增加项目行与素材组成员长条行的拖动归类：拖到其他分类或同项目的组，拖出弹窗到明确空白区域则未分类或移出组，Esc 取消。全部为逻辑整理，磁盘原文件保持不变；修复素材选择框保持焦点时按 Delete 无响应，仍沿用映序回收站、确认开关与草稿保护。
+
+[历史完整包 0.3.6](https://github.com/turnsolesama/portfolio/releases/tag/yingxu-v0.3.6) 的附件与验收记录保持不变。
+
+本版还支持多选素材后批量追加标签、修改制作状态：工具栏和右键菜单均可进入，保留各素材原标签；整批验证与数据库更新失败时不留下部分修改，不改变原文件。没有新增翻译模型或模型下载要求。
 
 0.3.6 增加标题改名与 Delete 快捷键：点击项目文件标题打开已有重命名弹窗，名称输入不含扩展名，确认时保留原扩展名和未保存正文。不是逐字自动重命名。资源区选中素材后按 Delete 可移入映序回收站，沿用普通删除确认设置；编辑标题、正文或其他输入框时只删除文字，不触发素材删除。0.3.5 的截图、框选、素材组与 Markdown 功能继续保留。
 

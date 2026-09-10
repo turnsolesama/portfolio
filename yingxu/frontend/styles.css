@@ -164,3 +164,6 @@ kbd{font-family:inherit;font-size:10px;line-height:1.6;border:1px solid var(--li
 .markdown-attachment { max-width:100%; max-height:600px; object-fit:contain; border-radius:6px; }
 
 .document-title-button{display:block;max-width:100%;padding:0;border:0;border-radius:3px;background:transparent;color:inherit;font:inherit;text-align:left;overflow-wrap:anywhere;cursor:text}.document-title-button:hover{color:var(--accent)}.document-title-button:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+
+.image-zoom-percent{font-size:12px;min-width:66px;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
+.context-menu{max-height:calc(100vh - 20px);overflow-y:auto}

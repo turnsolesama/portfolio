@@ -136,7 +136,7 @@ namespace YingXu.Desktop
         {
             Action<CaptureSelector,string,object> fire=(form,method,args)=>typeof(CaptureSelector).GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(form,new[]{args});
             using(var image=Picture(640,480))
-            using(var selector=new CaptureSelector(image,new Rectangle(100,100,640,480)))
+            using(var selector=new CaptureSelector(image,new Rectangle(100,100,640,480),"quick"))
             using(var painted=new Bitmap(640,480))
             {
                 fire(selector,"OnMouseDown",new MouseEventArgs(MouseButtons.Left,1,100,100,0));
@@ -153,6 +153,71 @@ namespace YingXu.Desktop
                 Check(selector.DialogResult==DialogResult.Cancel,"native selector Escape cancels without output");
             }
         }
+        private static void Fire(CaptureSelector selector,string method,object args)
+        {
+            typeof(CaptureSelector).GetMethod(method,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(selector,new[]{args});
+        }
+        private static void Drag(CaptureSelector selector,Point first,Point last)
+        {
+            Fire(selector,"OnMouseDown",new MouseEventArgs(MouseButtons.Left,1,first.X,first.Y,0));
+            Fire(selector,"OnMouseMove",new MouseEventArgs(MouseButtons.Left,0,last.X,last.Y,0));
+            Fire(selector,"OnMouseUp",new MouseEventArgs(MouseButtons.Left,1,last.X,last.Y,0));
+        }
+        private static async Task AnnotationWorkflow()
+        {
+            foreach(string tool in new[]{"pen","arrow","rectangle"})
+            using(var image=Picture(640,480))using(var selector=new CaptureSelector(image,new Rectangle(-640,0,640,480)))
+            {
+                Drag(selector,new Point(50,60),new Point(350,260));
+                Check(selector.Annotating&&selector.DialogResult==DialogResult.None&&selector.CreateResult()==null,"default mode stops after selection until explicit confirmation");
+                selector.DrawingTool=tool;selector.DrawingColor=Color.Blue;selector.DrawingWidth=8;
+                Drag(selector,new Point(100,100),new Point(200,tool=="rectangle"?180:100));
+                selector.DrawingColor=Color.Red;selector.DrawingWidth=2;
+                Drag(selector,new Point(100,210),new Point(200,210));
+                Check(selector.StrokeCount==2,"annotation stores separate undoable strokes: "+tool);
+                selector.UndoStroke();Check(selector.StrokeCount==1,"undo removes only the latest annotation");
+                selector.Confirm();using(var result=selector.CreateResult())
+                {
+                    Check(result.Width==300&&result.Height==200,"annotation crop retains physical selected pixel size");
+                    Color marked=result.GetPixel(100,40);
+                    Check(marked.B>200&&marked.R<50,"confirmed crop contains selected annotation color and geometry: "+tool);
+                    Check(result.GetPixel(100,150).ToArgb()==image.GetPixel(150,210).ToArgb(),"undo restores original pixels instead of painting over them");
+                }
+                Check(image.GetPixel(150,100).ToArgb()==Color.FromArgb(46,120,78).ToArgb(),"annotation never mutates the original frozen bitmap");
+            }
+            using(var image=Picture(640,480))using(var selector=new CaptureSelector(image,new Rectangle(0,0,640,480)))
+            {
+                Drag(selector,new Point(50,60),new Point(350,260));Drag(selector,new Point(100,100),new Point(800,900));
+                Check(selector.StrokeCount==1,"drawing outside screen clamps to the selected region");
+                Fire(selector,"OnMouseDown",new MouseEventArgs(MouseButtons.Left,1,120,120,0));
+                Fire(selector,"OnKeyDown",new KeyEventArgs(Keys.Control|Keys.Z));
+                Check(selector.StrokeCount==1&&!selector.Capture,"undo during a held stroke cancels it and releases mouse capture without losing committed marks");
+                Fire(selector,"OnKeyDown",new KeyEventArgs(Keys.Escape));
+                Check(selector.DialogResult==DialogResult.Cancel&&selector.CreateResult()==null,"Escape after annotation never produces an output bitmap");
+            }
+            using(var image=Picture(640,480))using(var selector=new CaptureSelector(image,new Rectangle(0,0,640,480)))
+            {
+                Drag(selector,new Point(50,60),new Point(350,260));
+                Fire(selector,"OnMouseDown",new MouseEventArgs(MouseButtons.Left,1,100,100,0));selector.Capture=false;
+                Check(selector.StrokeCount==0,"lost mouse capture discards an incomplete mark");
+                object[] args={new Message(),Keys.Escape};
+                bool consumed=(bool)typeof(CaptureSelector).GetMethod("ProcessCmdKey",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(selector,args);
+                Check(consumed&&selector.DialogResult==DialogResult.Cancel&&selector.CreateResult()==null,"toolbar command processing consumes Escape and cancels before output");
+            }
+            using(var f=new Fixture())
+            {
+                f.Services.Select=bounds=>{using(var image=Picture(640,480))using(var selector=new CaptureSelector(image,new Rectangle(0,0,640,480))) {
+                    Drag(selector,new Point(50,60),new Point(350,260));Drag(selector,new Point(100,100),new Point(200,100));Fire(selector,"OnKeyDown",new KeyEventArgs(Keys.Escape));return selector.CreateResult(); }};
+                await f.Coordinator.StartAsync();Check(f.Copies==0&&f.Uploads==0&&f.Results[0].cancelled,"annotation cancellation reaches coordinator without clipboard or upload side effects");
+            }
+            using(var f=new Fixture())
+            {
+                f.Reply=false;f.Coordinator.Mode="quick";f.Services.Select=null;string received=null;
+                f.Services.SelectMode=(bounds,mode)=>{received=mode;return null;};
+                var task=f.Coordinator.StartAsync();f.Coordinator.Mode="annotate";f.Coordinator.Receive(Context(f.Request));await task;
+                Check(received=="quick","capture locks configured mode before asynchronous context handshake");
+            }
+        }
         [STAThread]
         private static int Main(string[] args)
         {
@@ -162,7 +227,7 @@ namespace YingXu.Desktop
                 Uri url;if(!Uri.TryCreate(args[1],UriKind.Absolute,out url)||url.Scheme!="http"||url.Host!="127.0.0.1")throw new ArgumentException("Fixture must use loopback HTTP");
                 Hub.Url=url.AbsoluteUri;using(var image=Picture(128,64))Console.WriteLine(Json.Serialize(DesktopApi.UploadCapture(CapturePlatform.Encode(image),args[2])));return 0;
             }
-            GeometryAndHotkeys();SelectorEvents();Workflow().GetAwaiter().GetResult();UploadProtocol().GetAwaiter().GetResult();
+            GeometryAndHotkeys();SelectorEvents();Workflow().GetAwaiter().GetResult();AnnotationWorkflow().GetAwaiter().GetResult();UploadProtocol().GetAwaiter().GetResult();
             var timer=Stopwatch.StartNew();long bytes;
             using(var image=Picture(3840,2160)){using(var region=CapturePlatform.Crop(image,new Rectangle(100,100,1920,1080)))bytes=CapturePlatform.Encode(region).Length;}
             Console.WriteLine("synthetic_4k_crop_png_ms="+timer.ElapsedMilliseconds+" png_bytes="+bytes+" full_frame_bytes="+(3840L*2160*4));

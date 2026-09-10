@@ -37,7 +37,7 @@ const categoryLabel = key => categoryDefs.find(category => category.key === key)
 const storage = {get(key){try{return localStorage.getItem(key);}catch{return null;}},set(key,value){try{localStorage.setItem(key,value);}catch{/* Browser storage is optional. */}}};
 const state = {bootstrap:null,projects:[],projectId:null,section:'assets',category:'all',folderId:null,folderScope:'current',folders:[],selectedIds:new Set(),trashEntries:[],q:'',status:'',kind:'',sort:'updated',view:storage.get('yingxu:view') || 'grid',offset:0,limit:48,items:[],total:0,counts:[],listSequence:0,listController:null,tabs:[],activeKey:null,skills:[],context:null,modalSequence:0,modalBusy:false,thumbCache:new Map(),thumbPending:new Set(),thumbTimers:new Set(),jobs:new Map(),drafts:{}};
 let searchTimer, draftTimer, observer;
-const defaultSettings = {confirm_delete:true,confirm_trash_delete:true,close_to_tray:true,default_view:'grid',default_sort:'updated',autoplay_media:false,capture_enabled:true,capture_hotkey:'Ctrl+Alt+Shift+S'};
+const defaultSettings = {confirm_delete:true,confirm_trash_delete:true,close_to_tray:true,default_view:'grid',default_sort:'updated',autoplay_media:false,capture_enabled:true,capture_hotkey:'Ctrl+Alt+Shift+S',capture_mode:'annotate'};
 function preference(key) { return state.bootstrap?.settings?.[key] ?? defaultSettings[key]; }
 function desktopMessage(action,extra={}) {
   if (!window.chrome?.webview?.postMessage) { toast('请在映序桌面窗口中使用此功能。','info'); return false; }
@@ -85,7 +85,13 @@ function groupController() {
 function selectableResourceIds() { const hidden = new Set($$('#resourceItems [data-yx-group-hidden]').map(node => String(node.dataset.item))); return state.items.map(item => String(item.id)).filter(id => !hidden.has(id)); }
 function deleteSelectionShortcut(event) {
   if (event.key !== 'Delete' || event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
-  const editing = node => node?.isContentEditable || node?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.cm-editor');
+  const editing = node => {
+    if (node?.isContentEditable || node?.closest?.('textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.cm-editor')) return true;
+    const input = node?.closest?.('input');
+    if (!input) return false;
+    const card = input.closest('#resourceItems .resource-card[data-item],#resourceItems .resource-row[data-item]');
+    return input.type !== 'checkbox' || !input.hasAttribute('data-select-item') || !card || String(input.dataset.selectItem) !== String(card.dataset.item);
+  };
   if (editing(event.target) || editing(document.activeElement)) return false;
   if (state.section !== 'assets' || !state.projectId || state.loadingItems || state.deleteShortcutBusy || state.modalBusy || state.trashBusy || state.exitBusy || state.globalOpening || state.uploading || state.restoringDrafts || state.jobs.size) return false;
   if ($('#appDialog').open || $('dialog[open]') || globalSearchIsOpen() || groupsIsOpen() || captureUI?.isBusy() || !$('#resourceMenu').hidden || $('.dragging-card,.external-drag')) return false;
@@ -296,6 +302,7 @@ function renderFolders() {
   $('#newFolderButton').disabled = !state.projectId; $('#sectionTitle').textContent = currentFolder()?.name || categoryLabel(state.category);
 }
 function updateSelection() {
+  $('#batchPropertiesButton').disabled = !state.selectedIds.size || !!state.loadingItems;
   const count = state.selectedIds.size; $('#selectionCount').hidden = !count; $('#selectionCount').textContent = `已选 ${count} 项`; $('#moveSelectionButton').disabled = !count || !!state.loadingItems; $('#deleteSelectionButton').disabled = (!count && !state.folderId) || !!state.loadingItems;
   $('#deleteSelectionButton').innerHTML = `${icon('trash')}${count || !state.folderId ? '删除' : '删除文件夹'}`;
   const visibleCount = selectableResourceIds().length; $('#selectPageButton').disabled = !visibleCount || !!state.loadingItems; $('#selectPageButton').textContent = count && count === visibleCount ? '取消选择' : '全选本页';
@@ -324,6 +331,48 @@ async function openFolder(id) {
   const next = id === 'root' ? null : id; if (String(next || '') !== String(state.folderId || '') && !await guardProperties()) return;
   state.folderId = next; state.folderPage = 0; state.folderScope = 'current'; state.offset = 0; state.selectedIds.clear(); configureSection(); await loadItems(); if (!activeTab()) renderInspector();
 }
+async function batchPropertiesDialog(ids = [...state.selectedIds], focus = 'tags') {
+  if (state.section !== 'assets' || !state.projectId || state.loadingItems || state.batchPropertiesOpening || $('#appDialog').open) return;
+  const projectId = state.projectId, visible = new Set(selectableResourceIds());
+  const selected = [...new Set(ids.map(String))];
+  if (!selected.length) return;
+  if (selected.length > 200 || selected.some(id => !visible.has(id) || !state.items.some(item => String(item.id) === id && String(item.project_id) === String(projectId)))) throw new Error('所选素材已变化，请重新选择后批量编辑。');
+  state.batchPropertiesOpening = true;
+  try {
+    for (const tab of fileTabs(selected)) {
+      if (tab.loading || tab.error || !tab.detailReady) throw new Error('所选素材信息尚未载入，请稍后重试。');
+      if (tab.saving || tab.propertiesSaving || !await guardProperties(tab)) return;
+    }
+    if (state.projectId !== projectId || state.section !== 'assets' || $('#appDialog').open) return;
+    if (selected.some(id => !selectableResourceIds().includes(id))) throw new Error('所选素材已不在当前列表，请重新选择后批量编辑。');
+    let submitting = false;
+    showDialog({title:`批量编辑 ${selected.length} 项素材`,subtitle:'仅修改下方指定的信息；新增标签会保留每项素材原有的标签。',submit:'应用到所选素材',body:`<div class="field"><label for="batchTags">添加标签</label><input id="batchTags" name="tags_add" placeholder="多个标签用逗号分隔，留空则不修改" maxlength="5000" ${focus === 'tags' ? 'autofocus' : ''}></div><div class="field"><label for="batchStatus">制作状态</label><select id="batchStatus" name="status" ${focus === 'status' ? 'autofocus' : ''}><option value="">保持各自状态</option>${statuses.map(status => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join('')}</select></div>`,onSubmit:async form => {
+      if (submitting) return false;
+      if (state.projectId !== projectId || state.section !== 'assets') throw new Error('当前项目已变化，请重新选择素材。');
+      if (state.loadingItems || selected.some(id => !selectableResourceIds().includes(id))) throw new Error('所选素材已不在当前列表，请重新选择后批量编辑。');
+      if (fileTabs(selected).some(tab => tab.loading || tab.error || !tab.detailReady || tab.saving || tab.propertiesSaving || tab.propertiesDirty || !markdownInputReady(tab))) throw new Error('所选素材信息尚未载入或正在编辑，请载入并保存制作信息后重试。');
+      const data = new FormData(form), tags = [...new Set(String(data.get('tags_add') || '').split(/[,，\n]/).map(value => value.trim()).filter(Boolean))];
+      const status = String(data.get('status') || '');
+      if (!tags.length && !status) throw new Error('请添加标签或选择制作状态。');
+      if (tags.length > 50 || tags.some(tag => [...tag].length > 80)) throw new Error('最多添加 50 个标签，每个标签最多 80 字。');
+      if (status && !statuses.includes(status)) throw new Error('请选择有效的制作状态。');
+      const body = {project_id:projectId,ids:selected}; if (tags.length) body.tags_add = tags; if (status) body.status = status;
+      submitting = true;
+      try {
+        const result = await api('/api/items/batch-properties',{method:'POST',body});
+        for (const updated of result.items) {
+          for (const tab of fileTabs([updated.id])) {
+            tab.item = {...tab.item,status:updated.status,tags:updated.tags,updated:updated.updated};
+            if (!tab.propertiesDirty) tab.propertiesDraft = null;
+          }
+        }
+        persistDrafts(true); renderTabs(); renderInspector(); if (activeTab()) renderEditorStatus(activeTab());
+        await refreshProjects().catch(report); if (state.projectId === projectId && state.section === 'assets') await loadItems().catch(report);
+        toast(`已更新 ${result.items.length} 项素材。`);
+      } finally { submitting = false; }
+    }});
+  } finally { state.batchPropertiesOpening = false; }
+}
 function folderOptions(folders,selected) { return '<option value="">分类根目录</option>' + [...folders].sort((a,b) => String(a.relative_path || a.folder_path || a.name).localeCompare(String(b.relative_path || b.folder_path || b.name),'zh-CN')).map(folder => `<option value="${escapeHtml(folder.id)}" ${String(selected) === String(folder.id) ? 'selected' : ''}>${escapeHtml(folder.folder_path || folder.relative_path || folder.name)}</option>`).join(''); }
 async function folderChoices(projectId,category) { const result = await api(`/api/folders?${new URLSearchParams({project:projectId,category})}`); return result.folders || []; }
 function bindFolderSelector(dialog,categorySelector,folderSelector,projectId,initialCategory,initialFolderId) {
@@ -346,7 +395,7 @@ async function newFolderDialog() {
 function hideMenu(restoreFocus = false) { const anchor = state.menu?.anchor; $('#resourceMenu').hidden = true; state.menu = null; if (restoreFocus) anchor?.focus(); }
 function showMenu(anchor,kind,id,point = null) {
   const item = kind === 'skill' ? state.skills.find(value => String(value.id) === String(id)) || state.tabs.find(tab => tab.source === 'skill' && String(tab.id) === String(id))?.item : null;
-  const commands = kind === 'project' ? [['new-note','新建笔记','script'],['classify-project','移到项目分类…','folder'],['reveal-project','打开项目文件夹','folder'],['rename-project','编辑项目名称','file'],['trash-project','删除项目','trash']] : kind === 'folder' ? [['open-folder','在工作台中进入','open'],['new-note','新建笔记','script'],['reveal-folder','打开文件夹','folder'],['rename-folder','重命名文件夹','file'],['trash-folder','删除文件夹','trash']] : kind === 'location' ? [['new-note','新建笔记','script'],['reveal-location','打开文件夹','folder']] : kind === 'skill' ? [['open-skill','打开 SKILL','skills'],['reveal-skill','打开 SKILL 所在位置','folder'],['trash-skill',item?.editable ? '删除自建 SKILL' : '隐藏这个 SKILL','trash']] : [['open-item','打开','file'],['new-note','新建笔记','script'],['reveal-item','打开所在文件夹','folder'],['group-items','将所选素材合为一组','folder'],['manage-groups','管理素材组','folder'],['move-items','移动到…','move'],['rename-item','重命名文件','file'],['trash-items','删除文件','trash']];
+  const commands = kind === 'project' ? [['new-note','新建笔记','script'],['classify-project','移到项目分类…','folder'],['reveal-project','打开项目文件夹','folder'],['rename-project','编辑项目名称','file'],['trash-project','删除项目','trash']] : kind === 'folder' ? [['open-folder','在工作台中进入','open'],['new-note','新建笔记','script'],['reveal-folder','打开文件夹','folder'],['rename-folder','重命名文件夹','file'],['trash-folder','删除文件夹','trash']] : kind === 'location' ? [['new-note','新建笔记','script'],['reveal-location','打开文件夹','folder']] : kind === 'skill' ? [['open-skill','打开 SKILL','skills'],['reveal-skill','打开 SKILL 所在位置','folder'],['trash-skill',item?.editable ? '删除自建 SKILL' : '隐藏这个 SKILL','trash']] : [['open-item','打开','file'],['new-note','新建笔记','script'],['reveal-item','打开所在文件夹','folder'],['group-items','将所选素材合为一组','folder'],['manage-groups','管理素材组','folder'],['batch-tags','批量添加标签…','plus'],['batch-status','批量修改制作状态…','check'],['move-items','移动到…','move'],['rename-item','重命名文件','file'],['trash-items','删除文件','trash']];
   const folder = kind === 'folder' ? state.folders.find(value => String(value.id) === String(id)) : null;
   const resource = kind === 'item' ? state.items.find(value => String(value.id) === String(id)) : null;
   const location = kind === 'location' ? {...id} : kind === 'project' ? {project_id:id,category:'scripts',folder_id:null} : {project_id:state.projectId,category:folder?.category || resource?.category || state.category,folder_id:kind === 'folder' ? id : resource ? resource.folder_id : state.folderId};
@@ -379,6 +428,7 @@ async function runMenu(command,context) {
     if (command === 'rename-project') return projectRenameDialog(id); if (command === 'rename-folder') return folderRenameDialog(id);
     if (command === 'rename-item') { await openItem(id); if (String(activeTab()?.id) === String(id)) return renameDialog(); return; }
     const ids = state.selectedIds.has(String(id)) ? [...state.selectedIds] : [id];
+    if (command === 'batch-tags' || command === 'batch-status') return batchPropertiesDialog(ids,command === 'batch-status' ? 'status' : 'tags');
     if (command === 'group-items') return groupController()?.create(ids); if (command === 'manage-groups') return groupController()?.open();
     if (command === 'move-items') return moveDialog(ids); if (command === 'trash-items') return trashItems(ids);
     if (command === 'trash-project') return trashProject(id); if (command === 'trash-folder') return trashFolder(id); if (command === 'trash-skill') return trashSkill(id);
@@ -579,8 +629,36 @@ function renderTabs() {
 function renderWorkspace() {
   const tab = activeTab(); const editing = !!tab; $('#workspace').classList.toggle('editing',editing); $('#editor').hidden = !editing; $('#editorDivider').hidden = !editing;
   discardUnusedMarkdownEditors(); renderTabs(); renderInspector(); if (state.section === 'assets') $$('#resourceItems [data-item]').forEach(node => node.classList.toggle('selected',state.activeKey === `file:${node.dataset.item}`));
-  if (!tab) return;
+  if (!tab) { stopImageZoomTracking(); return; }
   renderEditorToolbar(tab); renderEditorBody(tab); renderEditorStatus(tab);
+}
+let imageZoomObserver = null;
+function stopImageZoomTracking() { imageZoomObserver?.disconnect(); imageZoomObserver = null; }
+function imageZoomRatio(image) {
+  if (!image?.naturalWidth || !image.naturalHeight) return 0;
+  const bounds = image.getBoundingClientRect();
+  return Math.min(bounds.width / image.naturalWidth, bounds.height / image.naturalHeight);
+}
+function updateImageZoomLabel(image = $('#mainImage')) {
+  const label = $('#imageZoomPercent'); if (!label) return;
+  const ratio = imageZoomRatio(image);
+  label.textContent = ratio > 0 ? `图片 ${Math.round(ratio * 100)}%` : '图片 —';
+}
+function trackImageZoom(tab, image) {
+  const update = () => { if (activeTab() === tab && $('#mainImage') === image) updateImageZoomLabel(image); };
+  image.addEventListener('load',update,{once:true});
+  if (typeof ResizeObserver !== 'undefined') { imageZoomObserver = new ResizeObserver(update); imageZoomObserver.observe(image); }
+  update();
+}
+function changeImageZoom(action) {
+  const image = $('#mainImage'), tab = activeTab();
+  if (!image || !tab || !image.naturalWidth || !['zoom-fit','zoom-in','zoom-out'].includes(action)) return;
+  if (action === 'zoom-fit') { tab.zoom = null; image.classList.remove('zoomed'); image.style.width = ''; image.style.height = ''; }
+  else {
+    tab.zoom = Math.min(4,Math.max(.25,(imageZoomRatio(image) || 1)*(action === 'zoom-in' ? 1.25 : .8)));
+    image.classList.add('zoomed'); image.style.width = `${image.naturalWidth * tab.zoom}px`; image.style.height = 'auto';
+  }
+  updateImageZoomLabel(image);
 }
 function markdownToolbarHtml(tab) {
   if (!canUseMarkdownEditor(tab) || tab.mode === 'preview') return '';
@@ -600,10 +678,11 @@ function applyMarkdownFormat(command) {
 }
 function renderEditorToolbar(tab) {
   const text = tab.source !== 'external' && ['markdown','text','skill'].includes(tab.item.kind); const editable = tab.content?.editable || (tab.source === 'skill' && tab.item.editable);
-  $('#editorToolbar').innerHTML = `${text ? `<div class="editor-mode-switch" role="group" aria-label="文档视图">${canUseMarkdownEditor(tab) ? `<button data-editor-mode="live" class="${tab.mode === 'live' ? 'active' : ''}">实时预览</button>` : ''}<button data-editor-mode="edit" class="${tab.mode === 'edit' ? 'active' : ''}">${editableMarkdown(tab) ? '源码' : '编辑'}</button><button data-editor-mode="split" class="${tab.mode === 'split' ? 'active' : ''}">双栏</button><button data-editor-mode="preview" class="${tab.mode === 'preview' ? 'active' : ''}">预览</button></div>${markdownToolbarHtml(tab)}` : `<span class="editor-type-label">${icon(kindIcons[tab.item.kind])}${kindLabels[tab.item.kind] || '资源预览'}</span>`}<div class="editor-tool-actions"><button type="button" class="icon-button" data-action="capture-screen" title="截图到当前项目并复制图片" aria-label="截图">${icon('image')}</button>${tab.item.kind === 'image' ? `<button class="icon-button" data-action="zoom-out" aria-label="缩小" title="缩小">${icon('minus')}</button><button class="button button-ghost button-small" data-action="zoom-fit">适应</button><button class="icon-button" data-action="zoom-in" aria-label="放大" title="放大">${icon('plus')}</button>` : ''}${editable && !tab.loading ? `<button class="button button-primary button-small" id="saveContentButton" data-action="save-content" ${!tab.dirty || tab.saving ? 'disabled' : ''}>${icon('save')}${tab.saving ? '保存中' : '保存'}</button>` : ''}${tab.source === 'file' ? `<button class="icon-button" data-action="open-native" title="用本机应用打开" aria-label="用本机应用打开">${icon('open')}</button>` : ''}<button class="icon-button inspector-toggle" data-action="toggle-inspector" title="显示资源信息与关联" aria-label="显示资源信息与关联">${icon('panel')}</button></div>`;
+  $('#editorToolbar').innerHTML = `${text ? `<div class="editor-mode-switch" role="group" aria-label="文档视图">${canUseMarkdownEditor(tab) ? `<button data-editor-mode="live" class="${tab.mode === 'live' ? 'active' : ''}">实时预览</button>` : ''}<button data-editor-mode="edit" class="${tab.mode === 'edit' ? 'active' : ''}">${editableMarkdown(tab) ? '源码' : '编辑'}</button><button data-editor-mode="split" class="${tab.mode === 'split' ? 'active' : ''}">双栏</button><button data-editor-mode="preview" class="${tab.mode === 'preview' ? 'active' : ''}">预览</button></div>${markdownToolbarHtml(tab)}` : `<span class="editor-type-label">${icon(kindIcons[tab.item.kind])}${kindLabels[tab.item.kind] || '资源预览'}</span>`}<div class="editor-tool-actions"><button type="button" class="icon-button" data-action="capture-screen" title="截图到当前项目并复制图片" aria-label="截图">${icon('image')}</button>${tab.item.kind === 'image' ? `<button class="icon-button" data-action="zoom-out" aria-label="缩小" title="缩小">${icon('minus')}</button><button class="button button-ghost button-small" data-action="zoom-fit">适应</button><span id="imageZoomPercent" class="image-zoom-percent" aria-live="polite" title="图片相对于原始尺寸的比例">图片 —</span><button class="icon-button" data-action="zoom-in" aria-label="放大" title="放大">${icon('plus')}</button>` : ''}${editable && !tab.loading ? `<button class="button button-primary button-small" id="saveContentButton" data-action="save-content" ${!tab.dirty || tab.saving ? 'disabled' : ''}>${icon('save')}${tab.saving ? '保存中' : '保存'}</button>` : ''}${tab.source === 'file' ? `<button class="icon-button" data-action="open-native" title="用本机应用打开" aria-label="用本机应用打开">${icon('open')}</button>` : ''}<button class="icon-button inspector-toggle" data-action="toggle-inspector" title="显示资源信息与关联" aria-label="显示资源信息与关联">${icon('panel')}</button></div>`;
 }
 function renderEditorBody(tab) {
   if (tab.markdownEditor?.isComposing()) return;
+  stopImageZoomTracking();
   const root = $('#editorContent'); if (tab.loading) { root.innerHTML = '<div class="editor-loading"><span class="spinner"></span><span>正在打开文件…</span></div>'; return; }
   if (tab.error) { root.innerHTML = emptyHtml('这个文件暂时无法打开',tab.error,'alert','重新载入','retry-detail'); return; }
   const item = tab.item;
@@ -623,6 +702,7 @@ function renderEditorBody(tab) {
   else if (item.kind === 'pdf') root.innerHTML = `<div class="media-stage pdf-stage"><iframe title="${escapeHtml(item.name)} PDF 预览" src="${escapeHtml(item.media_url || `/api/media/${encodeURIComponent(item.id)}`)}"></iframe></div>`;
   else root.innerHTML = emptyHtml(item.kind === 'model' ? '3D 模型已归入项目' : '文件已归入项目',item.kind === 'model' ? '可管理分类、制作状态与镜头关联。打开本机的 3D 工具继续编辑，渲染的白模视频可以在这里直接播放。' : '可管理分类、标签与关联，使用本机应用查看这个文件。',kindIcons[item.kind],'用本机应用打开','open-native');
   const media = $('video,audio,#mainImage',root); if (media) media.addEventListener('error',() => toast(tab.source === 'external' ? '当前播放环境无法预览此文件；可复制右侧文件路径，使用其他应用打开。' : '预览未能打开；可使用“用本机应用打开”查看文件。','error',6000),{once:true});
+  if (item.kind === 'image') trackImageZoom(tab,$('#mainImage',root));
 }
 function markDirty(tab) { tab.dirty = true; tab.saved = false; tab.draftStorage = 'pending'; renderTabs(); renderEditorToolbar(tab); renderEditorStatus(tab); persistDrafts(); }
 function renderEditorStatus(tab) { const dirty = tab.dirty || tab.propertiesDirty; $('#editorStatus').innerHTML = `<span class="${dirty ? 'unsaved-state' : 'saved-state'}">${dirty ? (tab.conflict ? '检测到外部更改 · 草稿已保留' : tab.propertiesDirty ? '制作信息未保存' : draftStateLabel(tab)) : `${icon('check')}${tab.saved ? '已保存 · 原版本已备份' : tab.content?.editable ? '文件已载入' : '预览模式'}`}</span><span>${tab.content ? `${(tab.item.kind === 'docx' ? tab.paragraphs?.map(value => value.text).join('') || '' : tab.draft || '').length.toLocaleString()} 字符` : formatSize(tab.item.size)}${tab.content?.editable || tab.propertiesDirty ? ' · Ctrl S 保存' : ''}</span>`; }
@@ -896,7 +976,7 @@ async function handleAction(action,target) {
     if (action === 'copy-context') return copyText(state.context?.markdown,'项目交接内容已复制。'); if (action === 'copy-context-path') return copyText(state.context?.path,'交接文件路径已复制，可以发给 Codex。');
     if (action === 'copy-handoff') return copyText(`请先读取这个本地项目交接文件，了解项目进度、分镜、素材关联和已绑定的 SKILL，再基于现有项目继续协作：\n\n${state.context?.path || ''}\n\n接下来我想：`,'交接指令已复制，粘贴给 Codex 后补上你想继续做的事。');
     if (action === 'remove-item') { const tab = activeTab(); if (tab?.source === 'file') return trashItems([tab.id]); return; }
-    if (action.startsWith('zoom-')) { const image = $('#mainImage'); if (!image) return; const tab = activeTab(); if (action === 'zoom-fit') { tab.zoom = 1; image.classList.remove('zoomed'); image.style.width = ''; image.style.height = ''; } else { tab.zoom = Math.min(4,Math.max(.25,(tab.zoom || 1)*(action === 'zoom-in' ? 1.25 : .8))); image.classList.add('zoomed'); image.style.width = `${image.naturalWidth*tab.zoom}px`; image.style.height = 'auto'; } }
+    if (action.startsWith('zoom-')) changeImageZoom(action);
   } catch(error) { if (target) target.disabled = false; report(error); }
 }
 
@@ -908,6 +988,7 @@ function installResourceMarquee() {
     onChange:ids => { state.selectedIds = new Set(ids); updateSelection(); }});
 }
 function wireEvents() {
+  $('#batchPropertiesButton').addEventListener('click',() => batchPropertiesDialog().catch(report));
   installResourceMarquee();
   if ($('#projectLibraryIcon')) $('#projectLibraryIcon').innerHTML = icon('folder'); if ($('#settingsIcon')) $('#settingsIcon').innerHTML = icon('filter'); if ($('#openLocalIcon')) $('#openLocalIcon').innerHTML = icon('open');
   $('#addProject').innerHTML = icon('plus'); $('#helpIcon').innerHTML = icon('help'); $('#searchIcon').innerHTML = icon('search'); $('#globalSearchButton').innerHTML = icon('search'); if ($('#captureButton')) $('#captureButton').innerHTML = icon('image'); $('#advancedSearch').innerHTML = icon('filter'); $('#importIcon').innerHTML = icon('upload'); $('#newItemIcon').innerHTML = icon('plus'); $('#rescanButton').innerHTML = icon('refresh'); $('#previousPage').innerHTML = icon('left'); $('#nextPage').innerHTML = icon('chevron'); $('#closeDialog').innerHTML = icon('close');
@@ -1054,10 +1135,10 @@ async function settingsDialog() {
   const settings = await api('/api/settings'); state.bootstrap.settings = settings;
   const toggle = (key,title,description) => `<label class="setting-row"><span><strong>${title}</strong><small>${description}</small></span><input type="checkbox" name="${key}" ${settings[key] ? 'checked' : ''}></label>`;
   const desktop = Boolean(window.chrome?.webview?.postMessage);
-  showDialog({title:'设置',subtitle:'按自己的习惯使用映序。设置保存在本机，重开后仍有效。',wide:true,submit:'保存设置',body:`<div class="settings-section"><h3>删除与恢复</h3>${toggle('confirm_delete','移入映序回收站前确认','项目、文件、文件夹和 SKILL 的删除提示。')}${toggle('confirm_trash_delete','清理回收站前确认','关闭后点击删除会直接移入 Windows 回收站；遇到无法处理的条目仍会说明原因。')}</div><div class="settings-section"><h3>窗口与播放</h3>${toggle('close_to_tray','关闭窗口时保留在托盘','双击任务栏右下角的映序图标重新打开；右键菜单可退出。')}${toggle('autoplay_media','打开音视频时自动播放','默认关闭；部分媒体仍可能需要点击播放。')}</div><div class="settings-section"><h3>工作台</h3><div class="fields-two"><div class="field"><label for="settingView">启动时的视图</label><select id="settingView" name="default_view">${optionHtml([{key:'grid',label:'画廊'},{key:'list',label:'列表'},{key:'board',label:'分镜看板'}],settings.default_view)}</select></div><div class="field"><label for="settingSort">启动时的排序</label><select id="settingSort" name="default_sort">${optionHtml([{key:'updated',label:'最近更新'},{key:'name',label:'文件名称'},{key:'order',label:'分镜顺序'}],settings.default_sort)}</select></div></div><p class="field-hint">当前页面搜索：Ctrl+F；全局搜索：Ctrl+K。保存：Ctrl+S。</p></div><div class="settings-section"><h3>截图</h3>${toggle('capture_enabled','后台截图快捷键','映序留在托盘时也可使用；只在按下快捷键时截取鼠标所在屏幕。')}<div class="field"><label for="captureHotkey">截图快捷键</label><input id="captureHotkey" name="capture_hotkey" value="${escapeHtml(settings.capture_hotkey || defaultSettings.capture_hotkey)}" maxlength="40"><p class="field-hint">默认 Ctrl+Alt+Shift+S。使用至少两个 Ctrl/Alt/Shift，加大写字母、数字或 F1–F24（F12 除外）；占用时会提示。截图保存到项目参考资料，并插入当前可编辑 Markdown 草稿；同时复制图片到剪贴板。</p></div></div><div class="settings-section"><h3>Windows 打开方式</h3><p class="field-hint">把映序添加到文件的“打开方式”候选。打开后可直接只读查看文档、图片、音频与视频。</p><div class="settings-buttons"><button type="button" class="button button-secondary" data-action="register-open-with" ${desktop ? '' : 'disabled'}>添加映序到打开方式</button><button type="button" class="button button-ghost" data-action="unregister-open-with" ${desktop ? '' : 'disabled'}>移除候选</button></div>${desktop ? '' : '<p class="field-hint">此项及托盘功能请在映序桌面窗口中使用。</p>'}</div>`,onSubmit:async form => {
+  showDialog({title:'设置',subtitle:'按自己的习惯使用映序。设置保存在本机，重开后仍有效。',wide:true,submit:'保存设置',body:`<div class="settings-section"><h3>删除与恢复</h3>${toggle('confirm_delete','移入映序回收站前确认','项目、文件、文件夹和 SKILL 的删除提示。')}${toggle('confirm_trash_delete','清理回收站前确认','关闭后点击删除会直接移入 Windows 回收站；遇到无法处理的条目仍会说明原因。')}</div><div class="settings-section"><h3>窗口与播放</h3>${toggle('close_to_tray','关闭窗口时保留在托盘','双击任务栏右下角的映序图标重新打开；右键菜单可退出。')}${toggle('autoplay_media','打开音视频时自动播放','默认关闭；部分媒体仍可能需要点击播放。')}</div><div class="settings-section"><h3>工作台</h3><div class="fields-two"><div class="field"><label for="settingView">启动时的视图</label><select id="settingView" name="default_view">${optionHtml([{key:'grid',label:'画廊'},{key:'list',label:'列表'},{key:'board',label:'分镜看板'}],settings.default_view)}</select></div><div class="field"><label for="settingSort">启动时的排序</label><select id="settingSort" name="default_sort">${optionHtml([{key:'updated',label:'最近更新'},{key:'name',label:'文件名称'},{key:'order',label:'分镜顺序'}],settings.default_sort)}</select></div></div><p class="field-hint">当前页面搜索：Ctrl+F；全局搜索：Ctrl+K。保存：Ctrl+S。</p></div><div class="settings-section"><h3>截图</h3>${toggle('capture_enabled','后台截图快捷键','映序留在托盘时也可使用；只在按下快捷键时截取鼠标所在屏幕。')}<div class="field"><label for="captureMode">截图方式</label><select id="captureMode" name="capture_mode">${optionHtml([{key:'annotate',label:'标注后确认（默认）'},{key:'quick',label:'快速完成'}],settings.capture_mode || 'annotate')}</select><p class="field-hint">标注模式在选区后停留，可使用画笔、箭头、矩形和撤销，确认才复制与保存；快速模式在框选松开后立即完成。Esc 取消。</p></div><div class="field"><label for="captureHotkey">截图快捷键</label><input id="captureHotkey" name="capture_hotkey" value="${escapeHtml(settings.capture_hotkey || defaultSettings.capture_hotkey)}" maxlength="40"><p class="field-hint">默认 Ctrl+Alt+Shift+S。使用至少两个 Ctrl/Alt/Shift，加大写字母、数字或 F1–F24（F12 除外）；占用时会提示。截图保存到项目参考资料，并插入当前可编辑 Markdown 草稿；同时复制图片到剪贴板。</p></div></div><div class="settings-section"><h3>Windows 打开方式</h3><p class="field-hint">把映序添加到文件的“打开方式”候选。打开后可直接只读查看文档、图片、音频与视频。</p><div class="settings-buttons"><button type="button" class="button button-secondary" data-action="register-open-with" ${desktop ? '' : 'disabled'}>添加映序到打开方式</button><button type="button" class="button button-ghost" data-action="unregister-open-with" ${desktop ? '' : 'disabled'}>移除候选</button></div>${desktop ? '' : '<p class="field-hint">此项及托盘功能请在映序桌面窗口中使用。</p>'}</div>`,onSubmit:async form => {
     const values = new FormData(form); const patch = {};
     for (const key of ['confirm_delete','confirm_trash_delete','close_to_tray','autoplay_media','capture_enabled']) patch[key] = values.has(key);
-    for (const key of ['default_view','default_sort','capture_hotkey']) patch[key] = values.get(key);
+    for (const key of ['default_view','default_sort','capture_hotkey','capture_mode']) patch[key] = values.get(key);
     const saved = await api('/api/settings',{method:'PATCH',body:patch}); state.bootstrap.settings = saved;
     state.view = saved.default_view; state.sort = saved.default_sort; $('#sortFilter').value = state.sort; storage.set('yingxu:view',state.view);
     window.chrome?.webview?.postMessage({action:'settings-changed'});

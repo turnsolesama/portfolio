@@ -5,8 +5,11 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
 
 namespace YingXu.Desktop
 {
@@ -43,7 +46,8 @@ namespace YingXu.Desktop
                 Program.ActivateEvent = new EventWaitHandle(false,EventResetMode.AutoReset);
                 typeof(Program).GetMethod("PrepareLibraries",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,null);
                 Application.EnableVisualStyles();
-                Run();
+                if(args.Length==3 && args[1]=="--zoom-integration") RunZoomIntegration(args[2]);
+                else Run();
                 Console.WriteLine("Desktop lifecycle tests passed: " + count);
                 return 0;
             }
@@ -54,8 +58,65 @@ namespace YingXu.Desktop
                 if (!resolved.StartsWith(Path.GetFullPath(Path.GetTempPath()),StringComparison.OrdinalIgnoreCase) ||
                     !Path.GetFileName(resolved).StartsWith("yingxu-lifecycle-",StringComparison.Ordinal) ||
                     (File.GetAttributes(resolved)&FileAttributes.ReparsePoint)!=0) throw new IOException("Invalid fixture cleanup path");
-                Directory.Delete(resolved,true);
+                // Native WebView interop assemblies can remain mapped until this
+                // process exits. The explicit integration runner cleans its own
+                // printed fixture path only after observing process completion.
+                if(args.Length==3 && args[1]=="--zoom-integration") Console.WriteLine("ZOOM_FIXTURE_CLEANUP_AFTER_EXIT="+resolved);
+                else Directory.Delete(resolved,true);
             }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void RunZoomIntegration(string browserFolder)
+        {
+            // Explicit, offline integration mode. It never shows a window, connects
+            // to the backend, registers a hotkey or accesses screen/clipboard data.
+            CoreWebView2Environment.SetLoaderDllFolderPath(Program.LoaderFolder);
+            using(var window=new StudioWindow(false))
+            {
+                ((NotifyIcon)Field(window,"tray")).Visible=false;
+                try
+                {
+                    var work=CheckZoomReset(window,browserFolder);
+                    DateTime deadline=DateTime.UtcNow.AddSeconds(15);
+                    while(!work.IsCompleted && DateTime.UtcNow<deadline) { Application.DoEvents();Thread.Sleep(10); }
+                    if(!work.IsCompleted) throw new TimeoutException("Offline WebView zoom integration timed out");
+                    work.GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    ((NotifyIcon)Field(window,"tray")).Dispose();
+                    ((OpenInbox)Field(window,"inbox")).Dispose();
+                    ((RegisteredWaitHandle)Field(window,"activation")).Unregister(null);
+                    ((System.Windows.Forms.Timer)Field(window,"exitTimer")).Dispose();
+                }
+            }
+        }
+        private static async Task CheckZoomReset(StudioWindow window,string browserFolder)
+        {
+            var web=new WebView2 { Dock=DockStyle.Fill };window.Controls.Add(web);Field(window,"web",web);
+            IntPtr initializedHandle=web.Handle;
+            var environment=await CoreWebView2Environment.CreateAsync(browserFolder,Path.Combine(Hub.Cache,"zoom-profile"),
+                new CoreWebView2EnvironmentOptions("--disable-background-networking --no-first-run"));
+            var exited=new TaskCompletionSource<bool>();
+            environment.BrowserProcessExited+=(sender,args)=>exited.TrySetResult(true);
+            await web.EnsureCoreWebView2Async(environment);
+            int events=0;
+            web.ZoomFactorChanged+=(sender,args)=>{events++;Call(window,"UpdateZoomStatus");};
+            var zoom=(ToolStripStatusLabel)Field(window,"zoomStatus");
+            // Normal property assignment intentionally does not emit the SDK event.
+            // An out-of-range assignment invokes the engine's real normalization event.
+            web.ZoomFactor=100;
+            for(int i=0;i<80 && events==0;i++) await Task.Delay(25);
+            Check(events>0 && zoom.Text=="界面 "+Math.Round(web.ZoomFactor*100).ToString(System.Globalization.CultureInfo.InvariantCulture)+"%",
+                "real WebView normalization event updates the product percentage callback");
+            Check(Math.Abs(web.ZoomFactor-1)>0.01,"reset regression starts at a non-default engine zoom");
+            zoom.PerformClick();
+            Check(Math.Abs(web.ZoomFactor-1)<0.000001 && zoom.Text=="界面 100%",
+                "real click resets engine and label synchronously without a setter event");
+            Check(!window.Visible,"offline zoom integration keeps the native window hidden");
+            web.Dispose();
+            for(int i=0;i<100 && !exited.Task.IsCompleted;i++) await Task.Delay(25);
+            Check(exited.Task.IsCompleted,"isolated browser exits before temporary profile cleanup");
         }
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void Run()
@@ -65,6 +126,9 @@ namespace YingXu.Desktop
                 window.Text = "映序桌面生命周期 · 合成测试";
                 var tray = (NotifyIcon)Field(window,"tray");
                 Check(tray.Visible && tray.ContextMenuStrip.Items.Count == 4,"tray icon and open/settings/exit menu exist");
+                var zoom=(ToolStripStatusLabel)Field(window,"zoomStatus");
+                Check(zoom.Text=="界面 100%"&&zoom.IsLink&&zoom.Owner==((ToolStripStatusLabel)Field(window,"status")).Owner,"independent zoom percentage keeps existing status messages in the same status bar");
+                zoom.PerformClick();Check(zoom.Text=="界面 100%","zoom reset safely waits for WebView initialization");
                 Call(window,"BringToUser"); Application.DoEvents();
                 Check(window.Visible,"tray reopen restores visible window");
                 window.Close(); Application.DoEvents();

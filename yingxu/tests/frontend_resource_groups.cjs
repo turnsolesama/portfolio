@@ -164,3 +164,65 @@ test('host selection repaint reuses unchanged group DOM instead of recreating pr
   s.controller.render(s.root);assert.equal(s.elements.length,count);assert.equal(s.root.firstChild,first);
   s.root.append(s.node());const changed=s.elements.length;s.controller.render(s.root);assert.ok(s.elements.length>changed);
 });
+
+function memberDragSetup(){
+ const s=setup(),handlers=new Map(),drops=[],errors=[];
+ function element(tag='div'){
+  const listeners=new Map(),classes=new Set();const n={tagName:tag.toUpperCase(),dataset:{},children:[],parent:null,open:true,
+   classList:{add:(...xs)=>xs.forEach(x=>classes.add(x)),remove:(...xs)=>xs.forEach(x=>classes.delete(x)),contains:x=>classes.has(x),toggle:(x,on)=>on?classes.add(x):classes.delete(x)},
+   addEventListener:(type,fn)=>{const list=listeners.get(type)||[];list.push(fn);listeners.set(type,list);},removeEventListener:(type,fn)=>listeners.set(type,(listeners.get(type)||[]).filter(f=>f!==fn)),
+   fire(type,values={}){const e={button:0,pointerType:'mouse',pointerId:1,clientX:200,clientY:200,target:row,preventDefault(){this.prevented=true;},stopPropagation(){},stopImmediatePropagation(){this.stopped=true;},...values};for(const fn of listeners.get(type)||[]){fn(e);if(e.stopped)break;}return e;},
+   setAttribute:(key,value)=>{n[key]=value;},append(child){n.children.push(child);child.parent=n;},remove(){if(n.parent)n.parent.children=n.parent.children.filter(c=>c!==n);n.parent=null;},
+   contains:child=>child===n || n.children.some(c=>c.contains(child)),
+   closest(selector){const matches=selector==='[data-member-drag]'?n.dataset.memberDrag:selector==='[data-member-drop]'?n.dataset.memberDrop:selector.includes('button')?['BUTTON','INPUT','SELECT','TEXTAREA','A'].includes(n.tagName):false;return matches?n:n.parent?.closest(selector)||null;},
+   querySelectorAll(selector){const found=[];for(const c of n.children){if(selector==='[data-member-drop]'&&c.dataset.memberDrop)found.push(c);if(selector==='[data-member-drag-status]'&&Object.hasOwn(c,'data-member-drag-status'))found.push(c);found.push(...c.querySelectorAll(selector));}return found;},querySelector(selector){return n.querySelectorAll(selector)[0];},
+   getBoundingClientRect:()=>({left:100,top:100,right:500,bottom:400}),setPointerCapture:pid=>n.capture=pid,hasPointerCapture:pid=>n.capture===pid,releasePointerCapture:()=>n.capture=null};return n;
+ }
+ const win={innerWidth:800,innerHeight:600,addEventListener:(type,fn)=>handlers.set(type,fn),removeEventListener:type=>handlers.delete(type)};
+ const doc={defaultView:win,createElement:tag=>element(tag),elementFromPoint:()=>doc.point};
+ const node=element('dialog');node.ownerDocument=doc;const row=element();row.dataset.memberDrag=id(1);node.append(row);
+ const group={id:id(10),project_id:id(100),revision:7,members:[{id:id(1)}]},target={id:id(11),project_id:id(100),revision:3,name:'目标组',count:2};let project=group.project_id,busy=false,drop=async (...args)=>drops.push(args);
+ const controller=s.library.installMemberDrag({node,group,targets:[group,target,{...target,id:id(12),project_id:id(101)}],getProject:()=>project,canDrag:()=>!busy,onDrop:(...args)=>drop(...args),onError:e=>errors.push(e)});
+ function begin(){node.fire('pointerdown');node.fire('pointermove',{clientX:210,clientY:200});}
+ return {...s,node,row,target,group,doc,win,handlers,drops,errors,controller,element,begin,setProject:value=>project=value,setBusy:value=>busy=value,setDrop:fn=>drop=fn};
+}
+test('member transfer is one atomic request with both revisions and never removes first',async()=>{
+ const s=setup(),source={id:id(10),project_id:id(100),revision:7},target={id:id(11),project_id:id(100),revision:3},calls=[];
+ await s.library.transferMember(async(...args)=>calls.push(args),source,id(1),target);
+ assert.equal(calls.length,1);assert.equal(calls[0][0],`/api/resource-groups/${id(10)}/transfer`);assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1])),{method:'POST',body:{ids:[id(1)],revision:7,target_group_id:id(11),target_revision:3}});
+ await assert.rejects(s.library.transferMember(async()=>{},source,id(1),{...target,project_id:id(101)}),/同项目/);
+});
+test('moving a member out uses one atomic null-target request and a failed request never retries removal',async()=>{
+ const s=setup(),source={id:id(10),project_id:id(100),revision:7},calls=[];
+ await assert.rejects(s.library.transferMember(async(...args)=>{calls.push(args);throw Object.assign(new Error('revision conflict'),{status:409});},source,id(1),null),/revision conflict/);
+ assert.equal(calls.length,1);assert.deepEqual(JSON.parse(JSON.stringify(calls[0][1].body)),{ids:[id(1)],revision:7,target_group_id:null});
+});
+test('member drag exposes same-project targets and drops once despite duplicate pointerup',async()=>{
+ const s=memberDragSetup();s.begin();const zones=s.node.querySelectorAll('[data-member-drop]');assert.equal(zones.length,2);s.doc.point=zones.find(z=>z.dataset.memberDrop===s.target.id);
+ s.node.fire('pointermove',{clientX:230,clientY:220});assert.equal(s.doc.point.classList.contains('yx-member-drop-active'),true);
+ s.node.fire('pointerup',{clientX:230,clientY:220});s.node.fire('pointerup',{clientX:230,clientY:220});await flush();assert.equal(s.drops.length,1);assert.equal(s.drops[0][0],id(1));assert.equal(s.drops[0][1].id,id(11));assert.equal(s.node.querySelectorAll('[data-member-drop]').length,0);
+ assert.equal(s.node.fire('click').stopped,true);
+});
+test('dragging outside the dialog highlights removal and release preserves logical-only intent',async()=>{
+ const s=memberDragSetup();s.begin();s.node.fire('pointermove',{clientX:30,clientY:200});assert.equal(s.node.classList.contains('yx-member-outside'),true);assert.match(s.node.querySelector('[data-member-drag-status]').textContent,/原文件保持不变/);
+ s.node.fire('pointerup',{clientX:30,clientY:200});await flush();assert.equal(s.drops.length,1);assert.equal(s.drops[0][1],null);
+});
+test('explicit remove zone works and out-of-window release cancels instead of removing',async()=>{
+ const s=memberDragSetup();s.begin();s.doc.point=s.node.querySelectorAll('[data-member-drop]').find(z=>z.dataset.memberDrop==='remove');s.node.fire('pointerup');await flush();assert.equal(s.drops[0][1],null);
+ const outside=memberDragSetup();outside.begin();outside.node.fire('pointerup',{clientX:-1,clientY:200});await flush();assert.equal(outside.drops.length,0);
+});
+test('Escape, pointer cancellation, lost capture, blur and invalid inside drops never submit',async()=>{
+ for(const type of ['keydown','pointercancel','lostpointercapture','blur','inside']){const s=memberDragSetup();s.begin();if(type==='blur')s.handlers.get('blur')();else if(type==='keydown')assert.equal(s.node.fire(type,{key:'Escape'}).prevented,true);else if(type!=='inside')s.node.fire(type);s.node.fire('pointerup');await flush();assert.equal(s.drops.length,0);assert.equal(s.controller.isBusy(),false);}
+});
+test('member buttons, input fields, right click and subthreshold movement do not start dragging',async()=>{
+ for(const options of [{target:memberDragSetup().element('button')},{target:memberDragSetup().element('input')},{button:2},{pointerType:'touch'}]){const s=memberDragSetup();s.node.fire('pointerdown',options);s.node.fire('pointermove',{clientX:30,clientY:200});s.node.fire('pointerup',{clientX:30,clientY:200});await flush();assert.equal(s.drops.length,0);}
+ const s=memberDragSetup();s.node.fire('pointerdown');s.node.fire('pointermove',{clientX:202,clientY:201});s.node.fire('pointerup',{clientX:202,clientY:201});assert.equal(s.node.children.length,1);assert.equal(s.node.fire('click').stopped,undefined);
+});
+test('pending member drops block another drag and modal Escape until the operation finishes',async()=>{
+ const s=memberDragSetup();let finish;s.setDrop(()=>new Promise(resolve=>{finish=resolve;}));s.begin();s.node.fire('pointerup',{clientX:30,clientY:200});await flush();assert.equal(s.controller.isBusy(),true);assert.equal(s.node.fire('cancel').prevented,true);
+ s.begin();assert.equal(s.node.querySelectorAll('[data-member-drop]').length,0);finish();await flush();assert.equal(s.controller.isBusy(),false);
+});
+test('project switch and busy state cancel member gestures; rejected drop releases lock and reports once',async()=>{
+ for(const change of ['project','busy']){const s=memberDragSetup();s.begin();change==='project'?s.setProject(id(101)):s.setBusy(true);s.node.fire('pointerup',{clientX:30,clientY:200});await flush();assert.equal(s.drops.length,0);}
+ const s=memberDragSetup();s.setDrop(async()=>{throw new Error('conflict');});s.begin();s.node.fire('pointerup',{clientX:30,clientY:200});await flush();assert.equal(s.errors.length,1);assert.equal(s.controller.isBusy(),false);s.controller.destroy();assert.equal(s.handlers.size,0);
+});

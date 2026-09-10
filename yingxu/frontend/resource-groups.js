@@ -18,9 +18,98 @@
     if (!item || ids.includes(item.dataset.item)) return null;
     return {node:item,itemId:item.dataset.item,key:`item:${item.dataset.item}`};
   }
+  async function transferMember(api,source,itemId,target) {
+    if (!validId(itemId) || !validId(source.id) || !Number.isInteger(source.revision) || source.revision < 1) throw new Error('素材组信息已变化，请刷新后重试。');
+    if (target && (target.id === source.id || target.project_id !== source.project_id || !validId(target.id) || !Number.isInteger(target.revision) || target.revision < 1)) throw new Error('请选择同项目内的另一个素材组。');
+    const body = {ids:[itemId],revision:source.revision,target_group_id:target?.id || null};
+    if (target) body.target_revision = target.revision;
+    return api(`/api/resource-groups/${source.id}/transfer`,{method:'POST',body});
+  }
+  function installMemberDrag({node,group,targets,getProject,canDrag,onDrop,onError = () => {}}) {
+    const doc = node.ownerDocument || document, win = doc.defaultView || window;
+    let gesture = null, panel = null, inFlight = false, suppressClick = false, highlightedZone = null, hintKey = null;
+    const subscriptions = [];
+    const on = (target,type,fn,options) => { target.addEventListener?.(type,fn,options); subscriptions.push(() => target.removeEventListener?.(type,fn,options)); };
+    const available = targets.filter(value => value.id !== group.id && value.project_id === group.project_id && validId(value.id));
+    const targetsById = new Map(available.map(value => [value.id,value]));
+    const valid = () => node.open && getProject() === group.project_id && canDrag() && !inFlight;
+    function clear() {
+      const previous = gesture; gesture = null;
+      panel?.remove(); panel = null; node.classList.remove('yx-member-dragging','yx-member-outside');
+      highlightedZone = null; hintKey = null;
+      previous?.row.classList.remove('yx-member-drag-source');
+      if (previous && node.hasPointerCapture?.(previous.id)) node.releasePointerCapture(previous.id);
+      if (previous?.started) suppressClick = true;
+    }
+    function destination(x,y) {
+      if (!(x >= 0 && y >= 0 && x < win.innerWidth && y < win.innerHeight)) return null;
+      const hit = doc.elementFromPoint(x,y),zone = hit?.closest('[data-member-drop]');
+      if (zone && panel?.contains(zone)) {
+        const target = targetsById.get(zone.dataset.memberDrop);
+        return zone.dataset.memberDrop === 'remove' ? {target:null,zone} : target ? {target,zone} : null;
+      }
+      // Buttons, inputs and empty space inside the group remain cancellation
+      // targets. Only the actual outside of the dialog means removing a member.
+      const rect = node.getBoundingClientRect();
+      return x < rect.left || x > rect.right || y < rect.top || y > rect.bottom ? {target:null,zone:null} : null;
+    }
+    function indicate(x,y) {
+      const result = destination(x,y);
+      const zone = result?.zone || null,key = result ? result.target?.id || 'remove' : 'cancel';
+      if (zone !== highlightedZone) { highlightedZone?.classList.remove('yx-member-drop-active'); zone?.classList.add('yx-member-drop-active'); highlightedZone = zone; }
+      if (key !== hintKey) {
+        node.classList.toggle('yx-member-outside',!!result && !result.target);
+        panel.querySelector('[data-member-drag-status]').textContent = result ? result.target ? `松开移到「${result.target.name}」` : '松开移出当前组，原文件保持不变' : '拖到下方目标组，或拖出弹窗移出组；Esc 取消';
+        hintKey = key;
+      }
+      return result;
+    }
+    function showPanel() {
+      panel = doc.createElement('div'); panel.className = 'yx-member-drop-panel';
+      const status = doc.createElement('p'); status.setAttribute('data-member-drag-status',''); status.setAttribute('role','status'); panel.append(status);
+      const choices = doc.createElement('div'); choices.className = 'yx-member-drop-choices';
+      for (const target of [...available,null]) {
+        const zone = doc.createElement('div'); zone.dataset.memberDrop = target?.id || 'remove'; zone.className = 'yx-member-drop-zone';
+        zone.textContent = target ? `移到 ${target.name} · ${target.count} 项` : '移出当前组（保留文件）'; choices.append(zone);
+      }
+      panel.append(choices); node.append(panel); node.classList.add('yx-member-dragging');
+    }
+    on(node,'pointerdown',event => {
+      suppressClick = false;
+      if (gesture || !valid() || event.button !== 0 || (event.pointerType && event.pointerType !== 'mouse') || event.target.closest('button,input,select,textarea,a,[contenteditable]')) return;
+      const row = event.target.closest('[data-member-drag]'),itemId = row?.dataset.memberDrag;
+      if (!row || !node.contains(row) || !group.members.some(item => item.id === itemId)) return;
+      gesture = {id:event.pointerId,itemId,row,x:event.clientX,y:event.clientY,started:false};
+      event.preventDefault(); event.stopPropagation(); node.setPointerCapture(event.pointerId);
+    });
+    on(node,'pointermove',event => {
+      const g = gesture; if (!g || event.pointerId !== g.id) return;
+      if (!valid()) { clear(); return; }
+      if (!g.started && Math.hypot(event.clientX-g.x,event.clientY-g.y) >= 6) { g.started = true; g.row.classList.add('yx-member-drag-source'); showPanel(); }
+      if (g.started) { event.preventDefault(); event.stopPropagation(); indicate(event.clientX,event.clientY); }
+    });
+    on(node,'pointerup',event => {
+      const g = gesture; if (!g || event.pointerId !== g.id) return;
+      const result = g.started && valid() ? destination(event.clientX,event.clientY) : null;
+      if (g.started) { event.preventDefault(); event.stopPropagation(); }
+      clear();
+      if (result) {
+        inFlight = true;
+        Promise.resolve().then(() => onDrop(g.itemId,result.target)).catch(onError).finally(() => { inFlight = false; });
+      }
+    });
+    on(node,'pointercancel',event => { if (gesture?.id === event.pointerId) clear(); });
+    on(node,'lostpointercapture',event => { if (gesture?.id === event.pointerId) clear(); });
+    on(node,'keydown',event => { if (gesture && event.key === 'Escape') { event.preventDefault(); event.stopImmediatePropagation(); clear(); } },true);
+    on(node,'cancel',event => { if (gesture || inFlight) { event.preventDefault(); clear(); } });
+    on(node,'click',event => { if (suppressClick) { suppressClick = false; event.preventDefault(); event.stopImmediatePropagation(); } },true);
+    on(node,'dragstart',event => { if (gesture) event.preventDefault(); });
+    on(win,'blur',clear); on(win,'resize',clear);
+    return {cancel:clear,isBusy:() => !!gesture || inFlight,destroy:() => { clear(); subscriptions.forEach(off => off()); }};
+  }
   function install({api,toast,escapeHtml:esc,openItem,refresh:refreshItems,getContext,guard = async () => true}) {
     let groups = [], projectId = null, sequence = 0, openSequence = 0, root = null, dialog = null, disposed = false, lastRender = null;
-    let drag = null, hover = null, timer = null, pending = false, opening = 0, openingMember = false;
+    let drag = null, hover = null, timer = null, pending = false, opening = 0, openingMember = false, memberPending = 0;
     const subscriptions = [];
     const error = e => toast(e.message || '素材组操作未完成。','error');
     const context = () => getContext() || {};
@@ -77,7 +166,7 @@
     function close() {
       openSequence++;
       const current = dialog; dialog = null;
-      if (current) { if (current.open) current.close(); current.remove(); }
+      if (current) { current.memberDrag?.destroy(); if (current.open) current.close(); current.remove(); }
     }
     function shell(title) {
       close();
@@ -86,7 +175,7 @@
       node.innerHTML = `<div class="yx-group-dialog-head"><h2>${esc(title)}</h2><button type="button" class="icon-button" data-close aria-label="关闭素材组" title="关闭">×</button></div><div class="yx-group-dialog-body"></div>`;
       document.body.append(node); dialog = node;
       node.querySelector('[data-close]').addEventListener('click',close);
-      node.addEventListener('close',() => { if (dialog === node) dialog = null; node.remove(); });
+      node.addEventListener('close',() => { node.memberDrag?.destroy(); if (dialog === node) dialog = null; node.remove(); });
       node.showModal(); return node;
     }
     async function changed() {
@@ -133,7 +222,7 @@
         return;
       }
       const node = shell(group.name), body = node.querySelector('.yx-group-dialog-body');
-      body.innerHTML = `<form class="yx-group-name-form"><label>组名<input name="name" maxlength="80" required value="${esc(group.name)}"></label><button class="button button-secondary" type="submit">重命名</button></form><p class="yx-group-help">${group.count} 个素材 · 可以跨分类整理；移出或解散组均保留原文件。</p><div class="yx-group-toolbar"><button class="button button-secondary" type="button" data-add>添加素材</button><button class="button button-ghost" type="button" data-dissolve>解散素材组</button></div><div class="yx-group-members">${group.members.length ? group.members.map(item => `<div class="yx-group-member"><button type="button" data-open-member="${esc(item.id)}">${tiny(item)}<span><strong>${esc(item.name)}</strong><small>${esc(caption(item))} · ${esc(item.status || '待开始')}</small></span></button><button type="button" class="button button-ghost button-small" data-remove-member="${esc(item.id)}" aria-label="将 ${esc(item.name)} 移出素材组">移出组</button></div>`).join('') : '<p class="yx-group-empty">组内暂无素材。可以添加素材，或解散这个空组。</p>'}</div><div class="yx-group-confirm" hidden><p>解散后，素材将重新显示为独立卡片，文件不会删除。</p><button type="button" class="button button-primary" data-confirm-dissolve>确认解散</button><button type="button" class="button button-ghost" data-cancel-dissolve>取消</button></div>`;
+      body.innerHTML = `<form class="yx-group-name-form"><label>组名<input name="name" maxlength="80" required value="${esc(group.name)}"></label><button class="button button-secondary" type="submit">重命名</button></form><p class="yx-group-help">${group.count} 个素材 · 拖动成员内容可移到其他组；拖出弹窗可移出组，原文件保留。</p><div class="yx-group-toolbar"><button class="button button-secondary" type="button" data-add>添加素材</button><button class="button button-ghost" type="button" data-dissolve>解散素材组</button></div><div class="yx-group-members">${group.members.length ? group.members.map(item => `<div class="yx-group-member" data-member-drag="${esc(item.id)}"><span class="yx-group-member-copy" title="拖到其他组，或拖出弹窗移出组">${tiny(item)}<span><strong>${esc(item.name)}</strong><small>${esc(caption(item))} · ${esc(item.status || '待开始')}</small></span></span><button type="button" class="button button-ghost button-small" data-open-member="${esc(item.id)}" aria-label="打开 ${esc(item.name)}">打开</button><button type="button" class="button button-ghost button-small" data-remove-member="${esc(item.id)}" aria-label="将 ${esc(item.name)} 移出素材组">移出组</button></div>`).join('') : '<p class="yx-group-empty">组内暂无素材。可以添加素材，或解散这个空组。</p>'}</div><div class="yx-group-confirm" hidden><p>解散后，素材将重新显示为独立卡片，文件不会删除。</p><button type="button" class="button button-primary" data-confirm-dissolve>确认解散</button><button type="button" class="button button-ghost" data-cancel-dissolve>取消</button></div>`;
       let busy = false;
       const perform = async action => {
         if (busy) return; busy = true;
@@ -142,6 +231,15 @@
         catch (e) { error(e); if (e.status === 409 && dialog === node) await open(group.id).catch(error); }
         finally { busy = false; if (dialog === node) node.querySelectorAll('button,input').forEach(control => { control.disabled = false; }); }
       };
+      node.memberDrag = installMemberDrag({node,group,targets:groups,getProject:() => context().projectId,canDrag:() => !busy && !pending && dialog === node,onError:error,
+        onDrop:async (itemId,target) => { memberPending++; try { await perform(async () => {
+          if (dialog !== node || context().projectId !== currentProject) return;
+          try { await transferMember(api,group,itemId,target); }
+          catch (e) { if (e.status === 409) await refresh(); throw e; }
+          await changed();
+          if (dialog === node) await open(group.id);
+          toast(target ? `已移到「${target.name}」，原文件保持不变。` : '已移出素材组，原文件保持不变。');
+        }); } finally { memberPending--; } }});
       body.querySelector('form').addEventListener('submit',event => { event.preventDefault(); const name = body.querySelector('input[name="name"]').value; perform(async () => { await mutate(group,'rename',{name}); if (dialog === node) await open(group.id); }); });
       body.querySelectorAll('[data-remove-member]').forEach(button => button.addEventListener('click',() => perform(async () => { await mutate(group,'remove',{item_ids:[button.dataset.removeMember]}); if (dialog === node) await open(group.id); })));
       body.querySelectorAll('[data-open-member]').forEach(button => button.addEventListener('click',() => perform(async () => {
@@ -253,11 +351,11 @@
       // type glyph as a usable preview instead of a broken-image indicator.
       if (event.target?.tagName === 'IMG' && event.target.closest('.yx-group-mini')) event.target.remove();
     },true);
-    return {render,refresh,open,create,add,beginDrag,endDrag,handleNativeDrop,isOpen:() => !!dialog?.open || opening > 0 || openingMember,destroy() {
+    return {render,refresh,open,create,add,beginDrag,endDrag,handleNativeDrop,isOpen:() => !!dialog?.open || opening > 0 || openingMember || memberPending > 0,destroy() {
       disposed = true; sequence++; endDrag(); close(); subscriptions.forEach(remove => remove());
       if (root) { root.querySelectorAll('[data-yx-group-hidden]').forEach(node => { node.hidden = false; node.removeAttribute('data-yx-group-hidden'); }); root.querySelectorAll('.yx-group-card,.yx-groups-bar,.yx-group-board-strip').forEach(node => node.remove()); }
     }};
   }
   window.YingXuResourceGroups = {install};
-  if (typeof module !== 'undefined' && module.exports) module.exports = {install,visibleGroups,dropTarget,uniqueIds};
+  if (typeof module !== 'undefined' && module.exports) module.exports = {install,visibleGroups,dropTarget,uniqueIds,installMemberDrag,transferMember};
 })();

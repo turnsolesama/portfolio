@@ -18,8 +18,10 @@ DEFAULTS = {
     'autoplay_media': False,
     'capture_enabled': True,
     'capture_hotkey': 'Ctrl+Alt+Shift+S',
+    'capture_mode': 'annotate',
 }
-OPTIONS = {'default_view': {'grid','list','board'}, 'default_sort': {'updated','name','order'}}
+OPTIONS = {'default_view': {'grid','list','board'}, 'default_sort': {'updated','name','order'},
+           'capture_mode': {'quick','annotate'}}
 
 
 class Settings:

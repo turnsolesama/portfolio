@@ -10,7 +10,8 @@ const source=fs.readFileSync(path.join(__dirname,'../frontend/app.js'),'utf8').r
 function element({id,tag='',editable=false,cm=false,hidden=false,groupHidden=false}={}) {
   return {dataset:{item:id},hidden,isContentEditable:editable,
     closest(selector) {
-      if(selector.includes('input,textarea') && (['input','textarea','select'].includes(tag)||editable||cm))return this;
+      if(selector==='input' && tag==='input')return this;
+      if(selector.includes('textarea,select') && (['textarea','select'].includes(tag)||editable||cm))return this;
       if(selector.includes('[hidden]')&&(hidden||groupHidden))return this;
       return null;
     },matches:()=>false};
@@ -89,4 +90,44 @@ test('separate Delete presses during pending request cannot submit twice',async(
 });
 test('failed deletion retains selection and unlocks a deliberate retry',async()=>{
   const s=setup();s.context.apiFailure=true;s.press();await s.flush();assert.equal(s.state.selectedIds.has(A),true);assert.equal(s.state.deleteShortcutBusy,false);assert.ok(s.calls.some(call=>call[0]==='error'));s.context.apiFailure=false;s.press();await s.flush();assert.equal(s.writes().length,2);
+});
+
+test('real Chromium DOM permits only the resource selection checkbox to route Delete',async t=>{
+  const os=require('node:os'),{execFile}=require('node:child_process'),{promisify}=require('node:util'),{pathToFileURL}=require('node:url');
+  const browser=[process.env.YINGXU_TEST_BROWSER,path.resolve(__dirname,'../runtime/webview2/msedgewebview2.exe'),
+    'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(value=>value&&fs.existsSync(value));
+  if(!browser){t.skip('An existing local Chromium browser is required; no download occurs');return;}
+  const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'yingxu-delete-dom-'));
+  t.after(()=>{const resolved=path.resolve(temporary);assert.ok(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('yingxu-delete-dom-'));fs.rmSync(resolved,{recursive:true,force:true,maxRetries:10,retryDelay:100});});
+  const start=source.indexOf("  document.addEventListener('keydown',event => {"),end=source.indexOf("  window.addEventListener('resize',hideMenu)",start);
+  const runner=`
+    const actual=[];searchShortcut=()=>false;report=error=>{throw error;};trashItems=async ids=>{actual.push([...ids]);};
+    ${source.slice(start,end)}
+    (async()=>{
+      const results=[];
+      async function check(name,html,target,allowed){
+        document.querySelector('#resourceItems').innerHTML=html;state.items=[{id:'${A}',project_id:'${P}'}];state.projectId='${P}';state.selectedIds=new Set(['${A}']);state.deleteShortcutBusy=false;actual.length=0;
+        const focused=document.querySelector(target);focused.focus();const event=new KeyboardEvent('keydown',{key:'Delete',bubbles:true,cancelable:true});focused.dispatchEvent(event);await Promise.resolve();await Promise.resolve();
+        const ok=(actual.length===1)===allowed && (!allowed || actual[0].join()==='${A}') && event.defaultPrevented===allowed;
+        results.push({name,ok});
+      }
+      const card=(control,extra='')=>'<article class="resource-card" data-item="${A}" '+extra+'><label>'+control+'</label></article>';
+      const checkbox='<input id="target" type="checkbox" data-select-item="${A}" checked>';
+      await check('focused selected card checkbox',card(checkbox),'#target',true);
+      await check('focused selected list row checkbox',card(checkbox).replace('resource-card','resource-row'),'#target',true);
+      await check('unrelated checkbox outside resource card',checkbox,'#target',false);
+      await check('checkbox inside card without selection marker',card('<input id="target" type="checkbox">'),'#target',false);
+      await check('checkbox marker must match owning card',card(checkbox.replace('data-select-item="${A}"','data-select-item="${B}"')),'#target',false);
+      await check('text input inside card remains protected',card(checkbox.replace('type="checkbox"','type="text"')),'#target',false);
+      await check('contenteditable ancestor remains protected',card(checkbox,'contenteditable="true"'),'#target',false);
+      await check('hidden grouped checkbox cannot delete its resource',card(checkbox,'hidden data-yx-group-hidden'),'#target',false);
+      document.querySelector('#result').textContent=JSON.stringify(results);
+    })().catch(error=>document.querySelector('#result').textContent=JSON.stringify({error:String(error)}));`;
+  fs.writeFileSync(path.join(temporary,'app.js'),source);
+  fs.writeFileSync(path.join(temporary,'runner.js'),runner);
+  fs.writeFileSync(path.join(temporary,'fixture.html'),'<!doctype html><meta charset="utf-8"><dialog id="appDialog"></dialog><div id="resourceMenu" hidden></div><div id="resourceItems"></div><pre id="result"></pre><script src="app.js"></script><script src="runner.js"></script>');
+  const {stdout}=await promisify(execFile)(browser,['--headless','--disable-gpu','--no-first-run','--disable-background-networking',`--user-data-dir=${path.join(temporary,'profile')}`,'--dump-dom',pathToFileURL(path.join(temporary,'fixture.html')).href],{timeout:30000,maxBuffer:2*1024*1024,windowsHide:true});
+  const match=stdout.match(/<pre id="result">([^<]+)<\/pre>/);assert.ok(match,stdout.slice(-2000));
+  const results=JSON.parse(match[1].replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));
+  assert.ok(Array.isArray(results),JSON.stringify(results));assert.equal(results.length,8);for(const result of results)assert.equal(result.ok,true,result.name);
 });

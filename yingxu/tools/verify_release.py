@@ -62,7 +62,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.6'
+    assert health['version'] == '0.3.7'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -73,6 +73,10 @@ def check_server(port, data, projects):
     token = bootstrap['token']
     settings = request(port, 'GET', '/api/settings')
     assert settings['capture_enabled'] is True and settings['capture_hotkey'] == 'Ctrl+Alt+Shift+S'
+    assert settings['capture_mode'] == 'annotate'
+    assert request(port, 'PATCH', '/api/settings', {'capture_mode': 'quick'}, token)['capture_mode'] == 'quick'
+    assert request(port, 'GET', '/api/settings')['capture_mode'] == 'quick'
+    assert request(port, 'PATCH', '/api/settings', {'capture_mode': 'annotate'}, token)['capture_mode'] == 'annotate'
     assert bootstrap['capabilities']['resource_groups'] is True
     project = request(port, 'POST', '/api/projects', {'name': '公开包 隔离验收'}, token)
     assert Path(project['root']).is_relative_to(projects.resolve())
@@ -88,13 +92,36 @@ def check_server(port, data, projects):
     assert group['member_ids'] == list(originals) and group['count'] == 2 and group['revision'] == 1
     listed = request(port, 'GET', '/api/resource-groups?' + urlencode({'project': project['id']}))
     assert listed['total'] == 1 and listed['groups'][0]['id'] == group['id']
-    dissolved = request(port, 'DELETE', '/api/resource-groups/' + group['id'], {'revision': group['revision']}, token)
+    extra = [request(port, 'POST', '/api/items', {'project_id': project['id'], 'name': '转移验收' + str(n),
+             'content': '合成素材'}, token) for n in range(2)]
+    for value in extra:
+        originals[value['id']] = (Path(value['path']), Path(value['path']).read_bytes(), value['category'], value['folder_id'])
+    target = request(port, 'POST', '/api/resource-groups', {'project_id': project['id'], 'item_ids': [i['id'] for i in extra]}, token)
+    moved = request(port, 'POST', '/api/resource-groups/' + group['id'] + '/transfer',
+                    {'ids': [item['id']], 'revision': group['revision'], 'target_group_id': target['id'], 'target_revision': target['revision']}, token)
+    assert moved['source']['member_ids'] == [companion['id']]
+    assert moved['target']['member_ids'] == [i['id'] for i in extra] + [item['id']]
+    assert moved['source']['revision'] == 2 and moved['target']['revision'] == 2
+    removed = request(port, 'POST', '/api/resource-groups/' + target['id'] + '/transfer',
+                      {'ids': [item['id']], 'revision': 2, 'target_group_id': None}, token)
+    assert removed['target'] is None and removed['source']['member_ids'] == [i['id'] for i in extra]
+    assert request(port, 'DELETE', '/api/resource-groups/' + target['id'], {'revision': removed['source']['revision']}, token)['dissolved']
+    dissolved = request(port, 'DELETE', '/api/resource-groups/' + group['id'], {'revision': moved['source']['revision']}, token)
     assert dissolved['dissolved'] is True
     assert request(port, 'GET', '/api/resource-groups?' + urlencode({'project': project['id']}))['total'] == 0
     for item_id, (original_path, original_bytes, category, folder_id) in originals.items():
         after = request(port, 'GET', '/api/items/' + item_id)
         assert Path(after['path']) == original_path and original_path.read_bytes() == original_bytes
         assert after['category'] == category and after['folder_id'] == folder_id
+    request(port, 'PATCH', '/api/items/' + item['id'], {'tags': ['原标签甲']}, token)
+    request(port, 'PATCH', '/api/items/' + companion['id'], {'tags': ['原标签乙']}, token)
+    batch = request(port, 'POST', '/api/items/batch-properties',
+                    {'project_id': project['id'], 'ids': [item['id'], companion['id']], 'tags_add': ['共同标签', '共同标签'], 'status': '已完成'}, token)
+    assert [value['id'] for value in batch['items']] == [item['id'], companion['id']]
+    assert [value['tags'] for value in batch['items']] == [['原标签甲', '共同标签'], ['原标签乙', '共同标签']]
+    assert all(value['status'] == '已完成' for value in batch['items'])
+    for original_path, original_bytes, _, _ in originals.values():
+        assert original_path.read_bytes() == original_bytes
     second = request(port, 'POST', '/api/projects', {'name': '另一合成项目'}, token)
     second_item = request(port, 'POST', '/api/items', {'project_id': second['id'], 'category': 'scripts', 'name': '搜索文稿', 'content': '# 合成文稿\n跨项目验收令牌'}, token)
     search = request(port, 'GET', '/api/search?' + urlencode({'q': '跨项目验收令牌', 'limit': 20}))
@@ -102,8 +129,9 @@ def check_server(port, data, projects):
     with socket.socket() as connection:
         connection.connect(('127.0.0.1', port))
     return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library',
-            'Chinese project/folder/document creation', 'capture settings default to enabled and Ctrl+Alt+Shift+S',
-            'cross-category logical group create/list/dissolve preserves file paths, bytes and categories',
+            'Chinese project/folder/document creation', 'capture settings default to enabled, Ctrl+Alt+Shift+S and annotate; quick/annotate modes persist',
+            'cross-category group create/list/atomic transfer/remove/dissolve preserves file paths, bytes and categories',
+            'batch tags append without replacing individual tags and batch status preserves original file bytes',
             'global search finds indexed document content across projects']
 
 

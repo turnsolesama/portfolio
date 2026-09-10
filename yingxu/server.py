@@ -357,8 +357,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.file(static)
             if self.command=='POST' and path=='/api/upload':return self.json(self.app.receive_upload(self,query),201)
             data=self.body()
-            group=re.fullmatch(r'/api/resource-groups/([a-f0-9]{32})(/members)?',path)
+            group=re.fullmatch(r'/api/resource-groups/([a-f0-9]{32})(/members|/transfer)?',path)
             if group:
+                if group[2]=='/transfer':
+                    if self.command=='POST':return self.json(self.app.resource_groups.transfer(group[1],data))
+                    raise UserError('接口或请求方式不存在。',404)
                 if group[2]:
                     if self.command=='POST':return self.json(self.app.resource_groups.add(group[1],data))
                     if self.command=='DELETE':return self.json(self.app.resource_groups.remove(group[1],data))
@@ -381,6 +384,9 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/external-open':return self.json(self.app.external.open(data))
                 if path=='/api/projects':
                     project=self.app.store.create_project(data.get('name',''),data.get('description',''));self.app.context.request(project['id']);return self.json(project,201)
+                if path=='/api/items/batch-properties':
+                    result=self.app.store.batch_properties(data)
+                    self.app.context.request(data['project_id']);return self.json(result)
                 if path=='/api/items':
                     item=self.app.store.create_item(data);self.app.context.request(item['project_id']);return self.json(item,201)
                 if path=='/api/import':return self.json(self.app.jobs.submit(data.get('project_id'),data.get('category','references'),data.get('paths',[]),data.get('folder_id','')),202)

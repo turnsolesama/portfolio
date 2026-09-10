@@ -37,6 +37,17 @@ class SettingsExternalTests(unittest.TestCase):
         self.assertEqual(self.settings.path.read_bytes(),original)
         self.assertEqual(list(self.data.glob('*.tmp')),[])
 
+    def test_capture_mode_defaults_to_annotate_and_persists_only_known_modes(self):
+        self.assertEqual(self.settings.get()['capture_mode'],'annotate')
+        self.settings.update({'capture_mode':'quick'})
+        self.assertEqual(Settings(self.data).get()['capture_mode'],'quick')
+        self.settings.update({'capture_mode':'annotate'})
+        self.assertEqual(Settings(self.data).get()['capture_mode'],'annotate')
+        before=self.settings.path.read_bytes()
+        for invalid in ('', 'silent', None, True, 1, ['quick']):
+            with self.subTest(mode=invalid),self.assertRaises(UserError):self.settings.update({'capture_mode':invalid})
+        self.assertEqual(self.settings.path.read_bytes(),before)
+
     def test_corrupt_or_shared_settings_are_not_overwritten(self):
         self.settings.path.write_text('{broken',encoding='utf-8')
         with self.assertRaises(UserError): self.settings.update({'close_to_tray':False})

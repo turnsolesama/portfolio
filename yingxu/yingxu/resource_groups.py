@@ -176,6 +176,47 @@ class ResourceGroups:
             self._touch(db, group_id)
             return self._describe(db, self._group(db, group_id), detail=True)
 
+    def transfer(self, group_id, body):
+        """Move membership atomically; a failed target never removes the source."""
+        self._body(body, {'ids', 'revision', 'target_group_id', 'target_revision'})
+        ids = self._ids(body.get('ids'))
+        if 'revision' not in body or 'target_group_id' not in body:
+            raise UserError('拖动前请重新读取素材组。')
+        target_id = body['target_group_id']
+        if target_id is not None:
+            self._id(target_id)
+            if 'target_revision' not in body:
+                raise UserError('拖动前请重新读取目标素材组。')
+        elif 'target_revision' in body:
+            raise UserError('移出组不需要目标版本。')
+        with self.store.lock, self.store.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            source = self._group(db, group_id)
+            self._revision(source, body)
+            owned = self._validate_members(db, source['project_id'], ids, group_id)
+            if owned != set(ids):
+                raise UserError('素材已不在这个组中，请刷新后重试。', 409)
+            target = None
+            if target_id is not None:
+                target = self._group(db, target_id)
+                if target['project_id'] != source['project_id']:
+                    raise UserError('只能拖到同一项目的素材组。', 409)
+                self._revision(target, {'revision': body['target_revision']})
+                if target_id == group_id:
+                    detail = self._describe(db, source, detail=True)
+                    return {'source': detail, 'target': detail}
+                count, last = db.execute('SELECT count(*),coalesce(max(sort_order),-1) FROM resource_group_members WHERE group_id=?', (target_id,)).fetchone()
+                if count + len(ids) > MAX_MEMBERS:
+                    raise UserError(f'目标组最多 {MAX_MEMBERS} 个素材，原组保持不变。', 409)
+                db.executemany('UPDATE resource_group_members SET group_id=?,sort_order=? WHERE group_id=? AND item_id=?',
+                               [(target_id, last + 1 + n, group_id, iid) for n, iid in enumerate(ids)])
+                self._touch(db, target_id)
+            else:
+                db.executemany('DELETE FROM resource_group_members WHERE group_id=? AND item_id=?', [(group_id, iid) for iid in ids])
+            self._touch(db, group_id)
+            return {'source': self._describe(db, self._group(db, group_id), detail=True),
+                    'target': self._describe(db, self._group(db, target_id), detail=True) if target is not None else None}
+
     def dissolve(self, group_id, body):
         self._body(body, {'revision'})
         with self.store.lock, self.store.connection() as db:
