@@ -1,0 +1,16 @@
+{
+  "name": "yingxu-markdown-editor-build",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline build inputs for YingXu's local Markdown editor. No runtime installation.",
+  "scripts": {"build": "node build.mjs"},
+  "dependencies": {
+    "@codemirror/state": "6.7.4",
+    "@codemirror/view": "6.43.11",
+    "@codemirror/commands": "6.11.0",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@lezer/markdown": "1.7.2"
+  },
+  "devDependencies": {"esbuild": "0.28.2"}
+}

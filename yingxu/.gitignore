@@ -6,7 +6,9 @@ desktop/build.json
 desktop/verification.json
 runtime/
 .release-work/
+node_modules/
 
 releases/YingXu-v0.3.0-Windows-x64.zip
 releases/YingXu-v0.3.1-Windows-x64.zip
 releases/YingXu-v0.3.2-Windows-x64.zip
+releases/YingXu-v0.3.3-Windows-x64.zip

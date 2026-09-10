@@ -61,7 +61,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.2'
+    assert health['version'] == '0.3.3'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -148,6 +148,15 @@ def main():
             archive.extractall(base)
         checked += ['ZIP CRC and duplicate/path checks', 'all members match SHA-256 manifest', 'single YingXu root']
         root = base / 'YingXu'
+        editor = json.loads((root / 'frontend/live-markdown.manifest.json').read_text(encoding='utf-8'))
+        editor_bytes = (root / 'frontend/live-markdown.js').read_bytes()
+        assert editor['file'] == 'live-markdown.js'
+        assert len(editor_bytes) == editor['bytes']
+        assert hashlib.sha256(editor_bytes).hexdigest() == editor['sha256']
+        assert editor['dependencies'] and (root / 'frontend/live-markdown.LICENSE.txt').stat().st_size > 0
+        assert (root / 'frontend/live-markdown.css').is_file()
+        assert not any('node_modules' in PurePosixPath(name).parts for name in names)
+        checked.append('offline Markdown bundle SHA-256, stylesheet and licenses; no Node runtime')
         environment = os.environ.copy()
         environment.update(USERPROFILE=str(base / '空白用户'), LOCALAPPDATA=str(base / 'Local'),
                            APPDATA=str(base / 'Roaming'), YINGXU_DATA_DIR=str(base / '数据 覆盖'),

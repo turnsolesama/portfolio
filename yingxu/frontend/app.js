@@ -280,7 +280,9 @@ async function prepareTabs(tabs) {
     if (!await guardProperties(tab)) return false;
     if (tab.dirty) { const choice = await choose('文档还有未保存的修改',`先处理「${tab.item.name}」的修改，再继续整理文件。`,[{key:'cancel',label:'继续编辑',style:'ghost'},{key:'discard',label:'放弃修改',style:'secondary'},{key:'save',label:'保存文档',style:'primary'}]); if (!choice || choice === 'cancel') return false; if (choice === 'save' && !await saveTab(tab)) return false; if (choice === 'discard') { tab.dirty = false; tab.draft = String(tab.content?.content || ''); tab.paragraphs = (tab.content?.paragraphs || []).map(paragraph => ({...paragraph})); delete state.drafts[tab.key]; } }
   }
-  persistDrafts(true); renderTabs(); if (tabs.includes(activeTab())) { renderEditorBody(activeTab()); renderEditorStatus(activeTab()); } return true;
+  persistDrafts(true); renderTabs();
+  if (tabs.some(tab => tab.dirty || tab.propertiesDirty || tab.saving || tab.propertiesSaving || !markdownInputReady(tab))) return false;
+  if (tabs.includes(activeTab())) { renderEditorBody(activeTab()); renderEditorStatus(activeTab()); } return true;
 }
 function fileTabs(ids) { const keys = new Set(ids.map(String)); return state.tabs.filter(tab => tab.source === 'file' && keys.has(String(tab.id))); }
 function removeOpenTabs(tabs) { const keys = new Set(tabs.map(tab => tab.key)); state.tabs = state.tabs.filter(tab => !keys.has(tab.key)); for (const key of keys) delete state.drafts[key]; if (keys.has(state.activeKey)) state.activeKey = state.tabs.at(-1)?.key || null; persistDrafts(true); renderWorkspace(); }
@@ -403,7 +405,9 @@ function persistDrafts(immediate = false) {
     const candidates = {...state.drafts}; let length = 0; const drafts = {};
     for (const tab of state.tabs) { if (!tab.dirty && !tab.propertiesDirty) { if (!tab.loading && !tab.error) delete candidates[tab.key]; continue; } candidates[tab.key] = {id:tab.id,source:tab.source,projectId:tab.item.project_id,name:tab.item.name,draft:tab.dirty ? tab.draft : undefined,paragraphs:tab.dirty ? tab.paragraphs : undefined,etag:tab.content?.etag,propertiesDraft:tab.propertiesDirty ? tab.propertiesDraft : undefined,when:Date.now()}; }
     for (const [key,value] of Object.entries(candidates).sort((a,b) => b[1].when-a[1].when)) { const size = JSON.stringify(value).length*2; if (Date.now()-value.when > 7*86400000 || size > 512*1024 || length+size > 2*1024*1024-4096) continue; drafts[key] = value; length += size; }
-    state.drafts = drafts; try { localStorage.setItem('yingxu:drafts',JSON.stringify(drafts)); } catch { /* The open tab still retains the draft. */ }
+    state.drafts = drafts; let stored = false; try { localStorage.setItem('yingxu:drafts',JSON.stringify(drafts)); stored = true; } catch { /* The open tab still retains the draft. */ }
+    for (const tab of state.tabs) if (tab.dirty || tab.propertiesDirty) tab.draftStorage = stored && drafts[tab.key] ? 'saved' : 'memory';
+    if (activeTab()) renderEditorStatus(activeTab());
   }; if (immediate) write(); else draftTimer = setTimeout(write,400);
 }
 function applyDraft(tab) {
@@ -413,13 +417,39 @@ function applyDraft(tab) {
   tab.restored = true;
   toast('已恢复这个文件的本地未保存草稿。','info',6000);
 }
+// Textareas normalize line endings. Preserve every untouched source span.
+function preserveTextNewlines(previous, next) {
+  const before = previous.replace(/\r\n?/g,'\n'), after = next.replace(/\r\n?/g,'\n');
+  if (before === after) return previous;
+  let start = 0, end = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  while (end < before.length-start && end < after.length-start && before[before.length-1-end] === after[after.length-1-end]) end++;
+  const rawOffset = offset => { let raw = 0, normalized = 0; while (normalized < offset) { if (previous[raw] === '\r' && previous[raw+1] === '\n') raw++; raw++; normalized++; } return raw; };
+  const separator = previous.match(/\r\n|\r|\n/)?.[0] || '\n';
+  return previous.slice(0,rawOffset(start)) + after.slice(start,after.length-end).replace(/\n/g,separator) + previous.slice(rawOffset(before.length-end));
+}
+
+const markdownEditorTabs = new Set();
+function editableMarkdown(tab) { return tab?.source !== 'external' && ['markdown','skill'].includes(tab?.item?.kind) && !!tab.content?.editable; }
+function canUseMarkdownEditor(tab) { return editableMarkdown(tab) && !!window.YingXuMarkdown && (!!tab.markdownEditor || window.YingXuMarkdown.supports(tab.draft)); }
+function markdownInputReady(tab = activeTab()) { if (!tab?.markdownEditor?.isComposing()) return true; toast('请先确认正在输入的文字，再继续操作。','info'); return false; }
+function discardUnusedMarkdownEditors() { for (const tab of markdownEditorTabs) { if (!state.tabs.includes(tab)) { tab.markdownEditor.destroy(); delete tab.markdownEditor; markdownEditorTabs.delete(tab); } } }
+function mountMarkdownEditor(tab,parent) {
+  if (!tab.markdownEditor) {
+    tab.markdownEditor = window.YingXuMarkdown.create({parent,value:tab.draft,mode:tab.mode === 'live' ? 'live' : 'source',label:`${tab.item.name} Markdown 编辑`,onChange:(value,meta) => {
+      if (meta?.origin === 'setValue') return; tab.draft = value; markDirty(tab); if (state.activeKey === tab.key && $('#markdownPreview')) updatePreview(tab);
+    }}); markdownEditorTabs.add(tab);
+  } else { tab.markdownEditor.setValue(tab.draft); tab.markdownEditor.setMode(tab.mode === 'live' ? 'live' : 'source'); tab.markdownEditor.mount(parent); }
+}
+function draftStateLabel(tab) { return tab.draftStorage === 'saved' ? '尚未保存 · 本地草稿已暂存' : tab.draftStorage === 'memory' ? '尚未保存 · 仅在当前窗口保留，请及时保存' : '尚未保存'; }
+
 async function openItem(id) {
   const key = `file:${id}`; if (state.activeKey !== key && !await guardProperties()) return; let tab = state.tabs.find(value => value.key === key);
   if (tab) { state.activeKey = key; renderWorkspace(); return; }
   tab = {key,id,source:'file',item:state.items.find(item => String(item.id) === String(id)) || {id,name:'正在打开…',kind:'file'},loading:true,dirty:false,mode:'edit'}; state.tabs.push(tab); state.activeKey = key; renderWorkspace();
   try {
     tab.item = await api(`/api/items/${encodeURIComponent(id)}`); tab.detailReady = true;
-    if (['markdown','text','docx'].includes(tab.item.kind)) { tab.content = await api(`/api/content/${encodeURIComponent(id)}`); tab.draft = String(tab.content.content ?? ''); tab.paragraphs = (tab.content.paragraphs || []).map(paragraph => ({...paragraph})); tab.mode = tab.content.editable ? 'edit' : 'preview'; }
+    if (['markdown','text','docx'].includes(tab.item.kind)) { tab.content = await api(`/api/content/${encodeURIComponent(id)}`); tab.draft = String(tab.content.content ?? ''); tab.paragraphs = (tab.content.paragraphs || []).map(paragraph => ({...paragraph})); tab.mode = tab.content.editable ? (canUseMarkdownEditor(tab) ? 'live' : 'edit') : 'preview'; }
     applyDraft(tab);
     tab.loading = false; if (state.activeKey === key) renderWorkspace(); else renderTabs();
   } catch(error) { tab.loading = false; tab.error = error.message; if (state.activeKey === key) renderWorkspace(); report(error); }
@@ -431,28 +461,33 @@ async function closeTab(key) {
     const choice = await choose('保留这次编辑吗？',`「${tab.item.name}」还有未保存的修改。`,[{key:'cancel',label:'继续编辑',style:'ghost'},{key:'discard',label:'放弃修改',style:'secondary'},{key:'save',label:'保存并关闭',style:'primary'}]);
     if (!choice || choice === 'cancel') return; if (choice === 'save' && !await saveTab(tab)) return;
   }
-  const index = state.tabs.indexOf(tab); state.tabs.splice(index,1); delete state.drafts[key]; if (state.activeKey === key) state.activeKey = state.tabs[Math.min(index,state.tabs.length-1)]?.key || null; persistDrafts(); renderWorkspace();
+  if (!markdownInputReady(tab) || tab.propertiesDirty || tab.propertiesSaving || tab.saving) return;
+  const index = state.tabs.indexOf(tab); if (index < 0) return; state.tabs.splice(index,1); delete state.drafts[key]; if (state.activeKey === key) state.activeKey = state.tabs[Math.min(index,state.tabs.length-1)]?.key || null; persistDrafts(); renderWorkspace();
 }
 function renderTabs() {
   $('#editorTabs').innerHTML = state.tabs.map(tab => `<div class="editor-tab ${tab.key === state.activeKey ? 'active' : ''}" role="tab" tabindex="0" aria-selected="${tab.key === state.activeKey}" data-tab="${escapeHtml(tab.key)}">${icon(kindIcons[tab.item.kind])}<span class="editor-tab-name" title="${escapeHtml(tab.item.name)}">${escapeHtml(tab.item.name)}</span>${tab.dirty || tab.propertiesDirty ? '<span class="dirty-dot" title="文稿或制作信息未保存"></span>' : ''}<button class="tab-close" data-close-tab="${escapeHtml(tab.key)}" aria-label="关闭 ${escapeHtml(tab.item.name)}">${icon('close')}</button></div>`).join('');
 }
 function renderWorkspace() {
   const tab = activeTab(); const editing = !!tab; $('#workspace').classList.toggle('editing',editing); $('#editor').hidden = !editing; $('#editorDivider').hidden = !editing;
-  renderTabs(); renderInspector(); if (state.section === 'assets') $$('#resourceItems [data-item]').forEach(node => node.classList.toggle('selected',state.activeKey === `file:${node.dataset.item}`));
+  discardUnusedMarkdownEditors(); renderTabs(); renderInspector(); if (state.section === 'assets') $$('#resourceItems [data-item]').forEach(node => node.classList.toggle('selected',state.activeKey === `file:${node.dataset.item}`));
   if (!tab) return;
   renderEditorToolbar(tab); renderEditorBody(tab); renderEditorStatus(tab);
 }
 function renderEditorToolbar(tab) {
   const text = tab.source !== 'external' && ['markdown','text','skill'].includes(tab.item.kind); const editable = tab.content?.editable || (tab.source === 'skill' && tab.item.editable);
-  $('#editorToolbar').innerHTML = `${text ? `<div class="editor-mode-switch" role="group" aria-label="文档视图"><button data-editor-mode="edit" class="${tab.mode === 'edit' ? 'active' : ''}">编辑</button><button data-editor-mode="split" class="${tab.mode === 'split' ? 'active' : ''}">双栏</button><button data-editor-mode="preview" class="${tab.mode === 'preview' ? 'active' : ''}">预览</button></div>` : `<span class="editor-type-label">${icon(kindIcons[tab.item.kind])}${kindLabels[tab.item.kind] || '资源预览'}</span>`}<div class="editor-tool-actions">${tab.item.kind === 'image' ? `<button class="icon-button" data-action="zoom-out" aria-label="缩小" title="缩小">${icon('minus')}</button><button class="button button-ghost button-small" data-action="zoom-fit">适应</button><button class="icon-button" data-action="zoom-in" aria-label="放大" title="放大">${icon('plus')}</button>` : ''}${editable && !tab.loading ? `<button class="button button-primary button-small" id="saveContentButton" data-action="save-content" ${!tab.dirty || tab.saving ? 'disabled' : ''}>${icon('save')}${tab.saving ? '保存中' : '保存'}</button>` : ''}${tab.source === 'file' ? `<button class="icon-button" data-action="open-native" title="用本机应用打开" aria-label="用本机应用打开">${icon('open')}</button>` : ''}<button class="icon-button inspector-toggle" data-action="toggle-inspector" title="显示资源信息与关联" aria-label="显示资源信息与关联">${icon('panel')}</button></div>`;
+  $('#editorToolbar').innerHTML = `${text ? `<div class="editor-mode-switch" role="group" aria-label="文档视图">${canUseMarkdownEditor(tab) ? `<button data-editor-mode="live" class="${tab.mode === 'live' ? 'active' : ''}">实时预览</button>` : ''}<button data-editor-mode="edit" class="${tab.mode === 'edit' ? 'active' : ''}">${editableMarkdown(tab) ? '源码' : '编辑'}</button><button data-editor-mode="split" class="${tab.mode === 'split' ? 'active' : ''}">双栏</button><button data-editor-mode="preview" class="${tab.mode === 'preview' ? 'active' : ''}">预览</button></div>${canUseMarkdownEditor(tab) && tab.mode === 'live' ? `<div class="markdown-format-tools" role="group" aria-label="Markdown 格式">${[['heading2','H2','二级标题'],['bold','B','粗体'],['italic','I','斜体'],['bullet','•','项目列表'],['quote','❞','引用']].map(([command,label,title]) => `<button class="icon-button" type="button" data-markdown-format="${command}" title="${title}" aria-label="${title}">${label}</button>`).join('')}</div>` : ''}` : `<span class="editor-type-label">${icon(kindIcons[tab.item.kind])}${kindLabels[tab.item.kind] || '资源预览'}</span>`}<div class="editor-tool-actions">${tab.item.kind === 'image' ? `<button class="icon-button" data-action="zoom-out" aria-label="缩小" title="缩小">${icon('minus')}</button><button class="button button-ghost button-small" data-action="zoom-fit">适应</button><button class="icon-button" data-action="zoom-in" aria-label="放大" title="放大">${icon('plus')}</button>` : ''}${editable && !tab.loading ? `<button class="button button-primary button-small" id="saveContentButton" data-action="save-content" ${!tab.dirty || tab.saving ? 'disabled' : ''}>${icon('save')}${tab.saving ? '保存中' : '保存'}</button>` : ''}${tab.source === 'file' ? `<button class="icon-button" data-action="open-native" title="用本机应用打开" aria-label="用本机应用打开">${icon('open')}</button>` : ''}<button class="icon-button inspector-toggle" data-action="toggle-inspector" title="显示资源信息与关联" aria-label="显示资源信息与关联">${icon('panel')}</button></div>`;
 }
 function renderEditorBody(tab) {
+  if (tab.markdownEditor?.isComposing()) return;
   const root = $('#editorContent'); if (tab.loading) { root.innerHTML = '<div class="editor-loading"><span class="spinner"></span><span>正在打开文件…</span></div>'; return; }
   if (tab.error) { root.innerHTML = emptyHtml('这个文件暂时无法打开',tab.error,'alert','重新载入','retry-detail'); return; }
   const item = tab.item;
   if (['markdown','text','skill'].includes(item.kind)) {
-    root.innerHTML = `<div class="text-workspace ${tab.mode === 'split' ? 'split' : ''}">${tab.mode !== 'preview' ? `<textarea id="textEditor" class="text-editor" aria-label="${escapeHtml(item.name)} 文本编辑" spellcheck="false" ${!tab.content?.editable ? 'readonly' : ''}></textarea>` : ''}${tab.mode !== 'edit' ? '<article id="markdownPreview" class="markdown-preview"></article>' : ''}</div>`;
-    const editor = $('#textEditor'); if (editor) { editor.value = tab.draft; editor.addEventListener('input',() => { tab.draft = editor.value; markDirty(tab); if ($('#markdownPreview')) updatePreview(tab); }); editor.addEventListener('keydown',event => { if (event.key === 'Tab' && !editor.readOnly) { event.preventDefault(); const start = editor.selectionStart,end = editor.selectionEnd; editor.setRangeText('  ',start,end,'end'); tab.draft = editor.value; markDirty(tab); updatePreview(tab); } }); }
+    const enhanced = canUseMarkdownEditor(tab); if (tab.mode === 'live' && !enhanced) tab.mode = 'edit';
+    const editorMarkup = enhanced ? '<div id="liveMarkdownHost" class="live-markdown-host"></div>' : `<textarea id="textEditor" class="text-editor" aria-label="${escapeHtml(item.name)} 文本编辑" spellcheck="false" ${!tab.content?.editable ? 'readonly' : ''}></textarea>`;
+    root.innerHTML = `${editableMarkdown(tab) && window.YingXuMarkdown && !enhanced ? '<p class="markdown-source-notice">此文档使用源码编辑，以保留混合换行或较大的完整内容。</p>' : ''}<div class="text-workspace ${tab.mode === 'split' ? 'split' : ''}">${tab.mode !== 'preview' ? editorMarkup : ''}${['split','preview'].includes(tab.mode) ? '<article id="markdownPreview" class="markdown-preview"></article>' : ''}</div>`;
+    if (enhanced && tab.mode !== 'preview') mountMarkdownEditor(tab,$('#liveMarkdownHost'));
+    const editor = $('#textEditor'); if (editor) { editor.value = tab.draft; editor.addEventListener('input',() => { tab.draft = preserveTextNewlines(tab.draft,editor.value); markDirty(tab); if ($('#markdownPreview')) updatePreview(tab); }); editor.addEventListener('keydown',event => { if (event.key === 'Tab' && !editor.readOnly) { event.preventDefault(); const start = editor.selectionStart,end = editor.selectionEnd; editor.setRangeText('  ',start,end,'end'); tab.draft = preserveTextNewlines(tab.draft,editor.value); markDirty(tab); updatePreview(tab); } }); }
     updatePreview(tab);
   } else if (item.kind === 'docx') {
     root.innerHTML = `<div class="docx-editor"><div class="docx-notice">${icon('info')}<span>${escapeHtml(tab.content?.notice || '编辑段落文字，保存前自动备份。复杂版式、表格与样式请用 Word 打开编辑。')}</span></div>${tab.paragraphs?.length ? tab.paragraphs.map((paragraph,index) => `<div class="docx-paragraph"><span class="paragraph-number">${index+1}</span><textarea data-paragraph="${escapeHtml(paragraph.id)}" aria-label="第 ${index+1} 段" ${!tab.content?.editable || paragraph.editable === false ? 'readonly' : ''}>${escapeHtml(paragraph.text)}</textarea></div>`).join('') : '<p class="relation-empty">这个文档没有可编辑的正文段落，可以使用本机 Word 打开。</p>'}</div>`;
@@ -464,8 +499,8 @@ function renderEditorBody(tab) {
   else root.innerHTML = emptyHtml(item.kind === 'model' ? '3D 模型已归入项目' : '文件已归入项目',item.kind === 'model' ? '可管理分类、制作状态与镜头关联。打开本机的 3D 工具继续编辑，渲染的白模视频可以在这里直接播放。' : '可管理分类、标签与关联，使用本机应用查看这个文件。',kindIcons[item.kind],'用本机应用打开','open-native');
   const media = $('video,audio,#mainImage',root); if (media) media.addEventListener('error',() => toast(tab.source === 'external' ? '当前播放环境无法预览此文件；可复制右侧文件路径，使用其他应用打开。' : '预览未能打开；可使用“用本机应用打开”查看文件。','error',6000),{once:true});
 }
-function markDirty(tab) { tab.dirty = true; tab.saved = false; renderTabs(); renderEditorToolbar(tab); renderEditorStatus(tab); persistDrafts(); }
-function renderEditorStatus(tab) { const dirty = tab.dirty || tab.propertiesDirty; $('#editorStatus').innerHTML = `<span class="${dirty ? 'unsaved-state' : 'saved-state'}">${dirty ? (tab.conflict ? '检测到外部更改 · 草稿已保留' : tab.propertiesDirty ? '制作信息未保存 · 本地草稿暂存' : '尚未保存 · 本地草稿暂存') : `${icon('check')}${tab.saved ? '已保存 · 原版本已备份' : tab.content?.editable ? '文件已载入' : '预览模式'}`}</span><span>${tab.content ? `${(tab.item.kind === 'docx' ? tab.paragraphs?.map(value => value.text).join('') || '' : tab.draft || '').length.toLocaleString()} 字符` : formatSize(tab.item.size)}${tab.content?.editable || tab.propertiesDirty ? ' · Ctrl S 保存' : ''}</span>`; }
+function markDirty(tab) { tab.dirty = true; tab.saved = false; tab.draftStorage = 'pending'; renderTabs(); renderEditorToolbar(tab); renderEditorStatus(tab); persistDrafts(); }
+function renderEditorStatus(tab) { const dirty = tab.dirty || tab.propertiesDirty; $('#editorStatus').innerHTML = `<span class="${dirty ? 'unsaved-state' : 'saved-state'}">${dirty ? (tab.conflict ? '检测到外部更改 · 草稿已保留' : tab.propertiesDirty ? '制作信息未保存' : draftStateLabel(tab)) : `${icon('check')}${tab.saved ? '已保存 · 原版本已备份' : tab.content?.editable ? '文件已载入' : '预览模式'}`}</span><span>${tab.content ? `${(tab.item.kind === 'docx' ? tab.paragraphs?.map(value => value.text).join('') || '' : tab.draft || '').length.toLocaleString()} 字符` : formatSize(tab.item.size)}${tab.content?.editable || tab.propertiesDirty ? ' · Ctrl S 保存' : ''}</span>`; }
 let previewTimer;
 function updatePreview(tab) { clearTimeout(previewTimer); previewTimer = setTimeout(() => { if ($('#markdownPreview') && state.activeKey === tab.key) $('#markdownPreview').innerHTML = markdown(tab.draft); },120); }
 function inlineMarkdown(text) {
@@ -476,7 +511,7 @@ function inlineMarkdown(text) {
   return value.replace(/\u0000(\d+)\u0000/g,(_,index) => tokens[Number(index)] || '');
 }
 function markdown(raw) {
-  const maximum = 140000; const source = String(raw || ''); const truncated = source.length > maximum; const lines = source.slice(0,maximum).replace(/\r\n/g,'\n').split('\n'); let output = truncated ? '<div class="preview-notice">为保持流畅，预览显示前 14 万字符。编辑区保留完整内容。</div>' : ''; let code = false,buffer = [],list = '';
+  const maximum = 140000; const source = String(raw || ''); const truncated = source.length > maximum; const lines = source.slice(0,maximum).replace(/\r\n?/g,'\n').split('\n'); let output = truncated ? '<div class="preview-notice">为保持流畅，预览显示前 14 万字符。编辑区保留完整内容。</div>' : ''; let code = false,buffer = [],list = '';
   const closeList = () => { if (list) { output += `</${list}>`; list = ''; } };
   for (let index = 0; index < lines.length; index++) {
     const line = lines[index]; if (/^\s*```/.test(line)) { closeList(); if (code) { output += `<pre><code>${escapeHtml(buffer.join('\n'))}</code></pre>`; buffer = []; } code = !code; continue; }
@@ -495,6 +530,7 @@ function markdown(raw) {
 }
 
 async function saveTab(tab = activeTab()) {
+  if (!markdownInputReady(tab)) return false;
   if (!tab || !tab.dirty || tab.saving || !tab.content?.editable) return !tab?.dirty; tab.saving = true; if (activeTab() === tab) renderEditorToolbar(tab);
   try {
     const savingDraft = tab.draft; const savingParagraphs = JSON.stringify(tab.paragraphs || []);
@@ -505,7 +541,7 @@ async function saveTab(tab = activeTab()) {
     if (activeTab() === tab) { renderTabs(); renderEditorToolbar(tab); renderEditorStatus(tab); } toast('已保存，原版本已备份。');
     if (tab.source === 'file') { const item = await api(`/api/items/${encodeURIComponent(tab.id)}`); tab.item = item; if (activeTab() === tab) renderInspector(); await refreshProjects(); if (state.section === 'assets') loadItems(); }
     else { tab.item = {...tab.item,...result,kind:'skill',bound:tab.item.bound}; state.skills = state.skills.map(skill => String(skill.id) === String(tab.id) ? {...skill,...tab.item} : skill); if (state.section === 'skills') renderSkills(); renderTabs(); if (activeTab() === tab) renderInspector(); }
-    return !tab.dirty;
+    return !tab.dirty && markdownInputReady(tab);
   } catch(error) {
     tab.saving = false; if (error.status === 409) { tab.conflict = true; toast('文件已被其他程序修改。你的草稿仍保留，请先复制草稿，再重新打开文件核对。','error',11000); }
     else report(error); if (activeTab() === tab) { renderEditorToolbar(tab); renderEditorStatus(tab); } return false;
@@ -563,6 +599,7 @@ async function saveProperties(tab = activeTab()) {
   } catch(error) { tab.propertiesSaving = false; if (activeTab() === tab && $('#propertiesForm')) $('.properties-save',$('#propertiesForm')).disabled = false; persistDrafts(true); report(error); return false; }
 }
 async function guardProperties(tab = activeTab()) {
+  if (!markdownInputReady(tab)) return false;
   if (state.restoringDrafts) return true;
   if (!tab?.propertiesDirty) return true;
   const choice = await choose('制作信息还没有保存',`「${tab.item.name}」的名称、标签、备注或分镜参数有未保存修改。`,[{key:'cancel',label:'继续编辑',style:'ghost'},{key:'discard',label:'放弃修改',style:'secondary'},{key:'save',label:'保存制作信息',style:'primary'}]);
@@ -648,7 +685,7 @@ function renderSkills() {
 async function openSkill(id) {
   const key = `skill:${id}`; if (state.activeKey !== key && !await guardProperties()) return; let tab = state.tabs.find(value => value.key === key); if (tab) { state.activeKey = key; renderWorkspace(); return; }
   const found = state.skills.find(skill => String(skill.id) === String(id)); tab = {key,id,source:'skill',item:{...found,name:found?.name || '正在打开 SKILL…',kind:'skill'},loading:true,dirty:false,mode:'preview'}; state.tabs.push(tab); state.activeKey = key; renderWorkspace();
-  try { const skill = await api(`/api/skills/${encodeURIComponent(id)}`); tab.item = {...found,...skill,bound:found?.bound ?? skill.bound,kind:'skill'}; tab.content = {format:'markdown',content:skill.content,etag:skill.etag,editable:!!skill.editable}; tab.draft = String(skill.content || ''); tab.loading = false; applyDraft(tab); if (state.activeKey === key) renderWorkspace(); else renderTabs(); }
+  try { const skill = await api(`/api/skills/${encodeURIComponent(id)}`); tab.item = {...found,...skill,bound:found?.bound ?? skill.bound,kind:'skill'}; tab.content = {format:'markdown',content:skill.content,etag:skill.etag,editable:!!skill.editable}; tab.draft = String(skill.content || ''); tab.loading = false; applyDraft(tab); if (tab.content.editable && canUseMarkdownEditor(tab)) tab.mode = 'live'; if (state.activeKey === key) renderWorkspace(); else renderTabs(); }
   catch(error) { tab.loading = false; tab.error = error.message; if (state.activeKey === key) renderWorkspace(); report(error); }
 }
 function renderSkillInspector(tab) {
@@ -657,7 +694,7 @@ function renderSkillInspector(tab) {
 }
 async function newSkillDialog(template) {
   if (!await guardProperties()) return;
-  showDialog({title:template ? '保存为自己的 SKILL' : '创建一份创作 SKILL',subtitle:'能力说明采用 Markdown 格式，创建后即可编辑完整内容。',submit:'创建并编辑',body:`<div class="field"><label for="skillName">能力名称</label><input id="skillName" name="name" value="${escapeHtml(template ? `${template.name} · 我的版本` : '')}" placeholder="例如：电影感分镜审阅" required maxlength="100"></div><div class="field"><label for="skillDescription">用途说明</label><textarea id="skillDescription" name="description" placeholder="这个能力用于什么场景，应当如何帮助你…" maxlength="2000">${escapeHtml(template?.description || '')}</textarea></div>`,onSubmit:async form => { const data = new FormData(form); const name = String(data.get('name')).trim(); const description = String(data.get('description')).trim(); const content = template?.content?.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)(?:\r?\n|$)/,'').trimStart() || `# ${name}\n\n${description}\n\n## 适用场景\n\n\n## 工作步骤\n\n1. \n\n## 输出要求\n\n`; const result = await api('/api/skills',{method:'POST',body:{name,description,content}}); state.section = 'skills'; renderNavigation(); renderHero(); await loadSkills(); await openSkill(result.id); const tab = activeTab(); if (tab) { tab.mode = 'edit'; renderWorkspace(); } toast('SKILL 已创建。'); }});
+  showDialog({title:template ? '保存为自己的 SKILL' : '创建一份创作 SKILL',subtitle:'能力说明采用 Markdown 格式，创建后即可编辑完整内容。',submit:'创建并编辑',body:`<div class="field"><label for="skillName">能力名称</label><input id="skillName" name="name" value="${escapeHtml(template ? `${template.name} · 我的版本` : '')}" placeholder="例如：电影感分镜审阅" required maxlength="100"></div><div class="field"><label for="skillDescription">用途说明</label><textarea id="skillDescription" name="description" placeholder="这个能力用于什么场景，应当如何帮助你…" maxlength="2000">${escapeHtml(template?.description || '')}</textarea></div>`,onSubmit:async form => { const data = new FormData(form); const name = String(data.get('name')).trim(); const description = String(data.get('description')).trim(); const content = template?.content?.replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n(?:---|\.\.\.)(?:\r?\n|$)/,'').trimStart() || `# ${name}\n\n${description}\n\n## 适用场景\n\n\n## 工作步骤\n\n1. \n\n## 输出要求\n\n`; const result = await api('/api/skills',{method:'POST',body:{name,description,content}}); state.section = 'skills'; renderNavigation(); renderHero(); await loadSkills(); await openSkill(result.id); const tab = activeTab(); if (tab) { tab.mode = canUseMarkdownEditor(tab) ? 'live' : 'edit'; renderWorkspace(); } toast('SKILL 已创建。'); }});
 }
 async function loadContext() {
   const sequence = ++state.listSequence; state.listController?.abort(); configureSection(); $('#resourceItems').className = 'context-page'; $('#resourceCount').textContent = ''; $('#searchTiming').textContent = '';
@@ -739,12 +776,14 @@ function wireEvents() {
     const category = event.target.closest('[data-category]'); if (category) { selectCategory(category.dataset.category).catch(report); return; }
     const section = event.target.closest('[data-section]'); if (section) { selectSection(section.dataset.section).catch(report); return; }
     const tab = event.target.closest('[data-tab]'); if (tab) { if (state.activeKey !== tab.dataset.tab && !await guardProperties()) return; state.activeKey = tab.dataset.tab; renderWorkspace(); return; }
-    const mode = event.target.closest('[data-editor-mode]'); if (mode) { const tab = activeTab(); if (tab) { tab.mode = mode.dataset.editorMode; renderEditorToolbar(tab); renderEditorBody(tab); } return; }
+    const format = event.target.closest('[data-markdown-format]'); if (format) { const tab = activeTab(); if (tab?.markdownEditor && editableMarkdown(tab) && markdownInputReady(tab)) tab.markdownEditor.format(format.dataset.markdownFormat); return; }
+    const mode = event.target.closest('[data-editor-mode]'); if (mode) { const tab = activeTab(); if (tab && markdownInputReady(tab)) { tab.mode = mode.dataset.editorMode; renderEditorToolbar(tab); renderEditorBody(tab); } return; }
     const item = event.target.closest('[data-item]'); if (item && !event.target.closest('[data-drag-file]')) { selectResource(item.dataset.item,event); if (!event.shiftKey && !event.ctrlKey && !event.metaKey) openItem(item.dataset.item); return; }
     const skill = event.target.closest('[data-skill]'); if (skill) { openSkill(skill.dataset.skill); return; }
     const relation = event.target.closest('[data-remove-relation]'); if (relation) { try { await api(`/api/relations/${encodeURIComponent(relation.dataset.removeRelation)}`,{method:'DELETE'}); const tab = activeTab(); if (tab) { tab.item = await api(`/api/items/${encodeURIComponent(tab.id)}`); renderInspector(); } toast('关联已解除。'); } catch(error) { report(error); } }
   });
   document.addEventListener('keydown',event => {
+    if (event.isComposing || activeTab()?.markdownEditor?.isComposing()) { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') { event.preventDefault(); markdownInputReady(); } return; }
     if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) && !$('#appDialog').open) { const target = contextMenuTarget(event.target); if (target) { event.preventDefault(); showMenu(target.anchor,target.kind,target.id); return; } }
     if (event.key === 'Escape' && !$('#resourceMenu').hidden) { hideMenu(true); event.preventDefault(); return; }
     if (!$('#resourceMenu').hidden && ['ArrowDown','ArrowUp','Home','End'].includes(event.key) && $('#resourceMenu').contains(document.activeElement)) { const buttons = $$('button',$('#resourceMenu')); const current = buttons.indexOf(document.activeElement); const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length-1 : (current+(event.key === 'ArrowDown' ? 1 : -1)+buttons.length)%buttons.length; buttons[next]?.focus(); event.preventDefault(); return; }
@@ -754,7 +793,7 @@ function wireEvents() {
     if ((event.key === 'Enter' || event.key === ' ') && event.target.matches('[role="button"],[role="tab"]')) { event.preventDefault(); event.target.click(); }
   });
   window.addEventListener('resize',hideMenu); $('#resourceViewport').addEventListener('scroll',hideMenu,{passive:true});
-  window.addEventListener('beforeunload',event => { persistDrafts(true); if (state.tabs.some(tab => tab.dirty || tab.propertiesDirty)) { event.preventDefault(); event.returnValue = ''; } });
+  window.addEventListener('beforeunload',event => { persistDrafts(true); if (state.tabs.some(tab => tab.dirty || tab.propertiesDirty || tab.markdownEditor?.isComposing())) { event.preventDefault(); event.returnValue = ''; } });
   window.addEventListener('pagehide',() => persistDrafts(true));
   const divider = $('#editorDivider'); let resizing = false;
   divider.addEventListener('pointerdown',event => { if (event.button !== 0) return; resizing = true; divider.classList.add('dragging'); divider.setPointerCapture(event.pointerId); document.body.style.userSelect = 'none'; });
@@ -869,7 +908,7 @@ async function handleDesktopMessage(data) {
   if (data?.action === 'external-open') return queueExternalFiles(Array.isArray(data.entries) ? data.entries : []);
   if (data?.action === 'prepare-exit') {
     let allow = false;
-    try { if (!$('#appDialog').open && !state.modalBusy && !state.trashBusy && !state.uploading && !state.exitBusy) { state.exitBusy = true; allow = await prepareTabs([...state.tabs]); persistDrafts(true); } }
+    try { if (!$('#appDialog').open && !state.modalBusy && !state.trashBusy && !state.uploading && !state.exitBusy) { state.exitBusy = true; allow = await prepareTabs([...state.tabs]); allow = allow && !state.tabs.some(tab => tab.dirty || tab.propertiesDirty || tab.saving || tab.propertiesSaving || !markdownInputReady(tab)); persistDrafts(true); } }
     finally { state.exitBusy = false; window.chrome?.webview?.postMessage({action:'exit-response',requestId:data.requestId,allow}); }
     if (!allow) toast('退出已取消，请先完成当前操作或保存文稿。','info');
   }

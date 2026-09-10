@@ -7,12 +7,14 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.3.2'
+VERSION = '0.3.3'
 FIXED = (
     'README.md', 'RUNNING.md', 'LICENSE', 'AGENTS.md', 'API_CONTRACT.md', '.gitignore',
     'server.py', 'launcher.pyw', 'start.vbs', 'Stop-YingXu.ps1', 'YingXu.exe',
     'desktop/RuntimeCheck.cs', 'desktop/Core.cs', 'desktop/Program.cs', 'desktop/Tests.cs', 'desktop/build.py',
     'desktop/Integration.cs', 'desktop/Set-OpenWith.ps1', 'desktop/LifecycleTests.cs',
+    'tools/markdown-editor/package.json', 'tools/markdown-editor/package-lock.json', 'tools/markdown-editor/build.mjs',
+    'frontend/live-markdown-source.mjs', 'frontend/live-markdown.LICENSE.txt', 'frontend/live-markdown.manifest.json',
     'desktop/make_icon.py', 'desktop/brand.svg', 'desktop/brand.ico',
     'desktop/app.manifest', 'desktop/WebView2-LICENSE.txt',
     'tools/benchmark.py', 'tools/package_release.py', 'tools/verify_release.py',
@@ -21,7 +23,7 @@ FIXED = (
 )
 PATTERNS = ('yingxu/*.py', 'frontend/*.html', 'frontend/*.css', 'frontend/*.js',
             'tests/test_*.py', 'tests/frontend_*.cjs')
-TEXT_SUFFIXES = {'.md', '.py', '.pyw', '.js', '.cjs', '.css', '.html', '.cs', '.ps1', '.vbs', '.json', '.txt', '.manifest', '.svg'}
+TEXT_SUFFIXES = {'.md', '.py', '.pyw', '.js', '.cjs', '.mjs', '.css', '.html', '.cs', '.ps1', '.vbs', '.json', '.txt', '.manifest', '.svg'}
 
 
 def files_to_package():

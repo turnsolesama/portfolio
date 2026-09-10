@@ -95,6 +95,48 @@ class SkillLibraryTests(unittest.TestCase):
         self.assertEqual(error.exception.status, 404)
         library.bind(self.project["id"], skill["id"], False)
 
+    def test_save_preserves_bom_crlf_and_trailing_blank_lines(self):
+        library = SkillLibrary(self.store)
+        for bom in (b"", b"\xef\xbb\xbf"):
+            with self.subTest(bom=bool(bom)):
+                skill = library.create({"name": "保真检查"})
+                path = Path(skill["path"])
+                text = "---\r\nname: 保真检查\r\n---\r\n\r\n# 正文\r\n\r\n"
+                original = bom + text.encode("utf-8")
+                path.write_bytes(original)
+                loaded = library.get(skill["id"])
+                self.assertEqual(loaded["content"], text)
+                unchanged = library.save(skill["id"], {"etag": loaded["etag"], "content": text})
+                self.assertEqual(path.read_bytes(), original)
+                self.assertEqual(unchanged["etag"], loaded["etag"])
+                self.assertFalse((library.versions_root / skill["id"]).exists())
+
+                edited = text.replace("# 正文", "# 修改正文 😀")
+                saved = library.save(skill["id"], {"etag": loaded["etag"], "content": edited})
+                self.assertEqual(path.read_bytes(), bom + edited.encode("utf-8"))
+                self.assertEqual(saved["content"], edited)
+                self.assertEqual(library.get(skill["id"])["content"], edited)
+                self.assertEqual(saved["etag"], library.get(skill["id"])["etag"])
+                backups = list((library.versions_root / skill["id"]).glob("*.md"))
+                self.assertEqual(len(backups), 1)
+                self.assertEqual(backups[0].read_bytes(), original)
+                with self.assertRaises(UserError) as error:
+                    library.save(skill["id"], {"etag": loaded["etag"], "content": text})
+                self.assertEqual(error.exception.status, 409)
+                self.assertEqual(path.read_bytes(), bom + edited.encode("utf-8"))
+
+    def test_bom_counts_towards_save_size_limit(self):
+        library = SkillLibrary(self.store)
+        skill = library.create({"name": "容量检查"})
+        path = Path(skill["path"])
+        original = b"\xef\xbb\xbf" + path.read_bytes()
+        path.write_bytes(original)
+        loaded = library.get(skill["id"])
+        with patch("yingxu.skills.MAX_SKILL_BYTES", len(original)), self.assertRaises(UserError):
+            library.save(skill["id"], {"etag": loaded["etag"], "content": "a" * len(original)})
+        self.assertEqual(path.read_bytes(), original)
+        self.assertFalse((library.versions_root / skill["id"]).exists())
+
     def test_depth_cache_size_and_count_limits(self):
         self.external("有效")
         base = self.home / ".codex" / "skills"

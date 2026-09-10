@@ -1,0 +1,25 @@
+.yx-markdown-editor.cm-editor{height:100%;min-height:0;outline:none;background:var(--bg,#fff);color:var(--text,#28322d)}
+.yx-markdown-editor .cm-scroller{font-family:"Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.9;overflow:auto}
+.yx-markdown-editor .cm-content{padding:24px 30px 90px;caret-color:var(--accent,#4f715c);min-height:100%;overflow-wrap:anywhere}
+.yx-markdown-editor .cm-line{padding:0 3px}
+.yx-markdown-editor.cm-focused{outline:none}
+.yx-markdown-editor .cm-cursor,.yx-markdown-editor .cm-dropCursor{border-left-color:var(--accent,#4f715c)}
+.yx-markdown-editor .cm-activeLine{background:#f6f8f560}
+.yx-markdown-editor.cm-focused .cm-selectionBackground,.yx-markdown-editor .cm-selectionBackground{background:#cfded180}
+.yx-markdown-editor .yx-md-heading{font-weight:650;line-height:1.55;letter-spacing:.01em;padding-top:12px;padding-bottom:5px}
+.yx-markdown-editor .yx-md-heading-1{font-size:29px;padding-bottom:10px}
+.yx-markdown-editor .yx-md-heading-2{font-size:23px}
+.yx-markdown-editor .yx-md-heading-3{font-size:19px}
+.yx-markdown-editor .yx-md-heading-4{font-size:17px}
+.yx-markdown-editor .yx-md-heading-5,.yx-markdown-editor .yx-md-heading-6{font-size:15px}
+.yx-markdown-editor .yx-md-strong{font-weight:700}
+.yx-markdown-editor .yx-md-emphasis{font-style:italic}
+.yx-markdown-editor .yx-md-strike{text-decoration:line-through;color:var(--muted,#68736c)}
+.yx-markdown-editor .yx-md-code{font-family:Consolas,"Cascadia Code",monospace;font-size:.94em;background:#edf1ec;border-radius:4px;padding:1px 3px;color:#45684f}
+.yx-markdown-editor .yx-md-source-mark{color:#8a998c;font-weight:400;text-decoration:none}
+.yx-markdown-editor .yx-md-quote-line{border-left:3px solid #b8cbbb;padding-left:12px;background:#f5f8f4;color:#526455}
+.yx-markdown-editor .yx-md-list-line{padding-top:1px;padding-bottom:1px}
+.yx-markdown-editor .yx-md-symbol{display:inline-block;min-width:1.1em;white-space:pre;color:var(--accent,#4f715c);font-style:normal;font-weight:500;text-align:left}
+.yx-markdown-editor .yx-md-bullet{padding-left:2px}.yx-markdown-editor .yx-md-task{font-size:1.14em;line-height:1;vertical-align:baseline}
+.yx-markdown-editor.yx-markdown-source .cm-scroller{font-family:Consolas,"Cascadia Code","Microsoft YaHei",monospace;font-size:13px;line-height:1.85}
+@media(max-width:1090px){.yx-markdown-editor .cm-content{padding:20px 18px 70px}.yx-markdown-editor .yx-md-heading-1{font-size:25px}.yx-markdown-editor .yx-md-heading-2{font-size:21px}}

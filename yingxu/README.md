@@ -8,7 +8,7 @@
 
 浅色中文界面，多标签文件工作区，普通目录保存素材。原创代码采用 [MIT](LICENSE)，无需订阅或云账号。
 
-**[下载 Windows x64 完整包 · v0.3.2 · 411.0 MiB](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.2/YingXu-v0.3.2-Windows-x64.zip)**
+**[下载 Windows x64 完整包 · v0.3.3](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.3/YingXu-v0.3.3-Windows-x64.zip)**
 
 自带 Python、图片处理组件、FFmpeg 和 WebView2，完整解压后双击即可使用。
 
@@ -102,12 +102,18 @@ Windows 10 22H2 / Windows 11 x64。完整包自带运行环境，使用系统自
 
 ## 源码与许可
 
-后台为 Python 标准库 + SQLite，前端为原生 HTML / CSS / JavaScript，桌面壳使用 WinForms + WebView2。无需 npm 构建前端；不使用 CDN、远程字体或在线素材库。
+后台为 Python 标准库 + SQLite，前端为 HTML / CSS / JavaScript，桌面壳使用 WinForms + WebView2。Markdown 编辑器采用构建时锁定依赖并打包的本地组件；完整包运行不需要 Node.js/npm，不使用 CDN、远程字体或在线素材库。开发者修改编辑器源码时，按开发说明重新生成 bundle。
 
 [开发说明](docs/开发说明.md) · [接口约定](API_CONTRACT.md) · [运行细节](RUNNING.md) · [MIT 许可](LICENSE) · [WebView2 组件许可](desktop/WebView2-LICENSE.txt)
 
 [完整包验收与性能对比](docs/完整包验收.md)
 
+
+## 0.3.3 新增
+
+- 可编辑 Markdown 与自建 SKILL 默认实时预览：当前活动段落显示 Markdown 源码，其余支持的内容显示排版。源码、双栏和只读预览模式继续保留。
+- 使用 Ctrl+B、Ctrl+I，或工具栏的标题、粗体、斜体、列表、引用按钮编辑格式；保存的是原始 Markdown 文本，不是转换回来的 HTML。
+- 超过 50 万字符或包含混合换行时使用源码模式；复杂表格、YAML、HTML、代码与图片保留源码。中文输入组合、草稿状态、文件 BOM 和换行格式都有对应保护。
 
 ## 0.3.2 新增
 

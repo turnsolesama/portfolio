@@ -360,6 +360,10 @@ class SkillLibrary:
             previous, _content, etag = _read(path)
             if etag != data["etag"]:
                 raise UserError("技能已被其他程序修改。请保留当前草稿，重新打开后合并。", 409)
+            if previous.startswith(b"\xef\xbb\xbf"):
+                raw = b"\xef\xbb\xbf" + raw
+                if len(raw) > MAX_SKILL_BYTES:
+                    raise UserError("技能文本最多 1 MiB。")
             if raw == previous:
                 return self.get(skill_id)
             version_dir = _check_no_links(self.versions_root / row["id"])
@@ -382,7 +386,7 @@ class SkillLibrary:
             finally:
                 if temporary.exists():
                     temporary.unlink()
-            content = raw.decode("utf-8")
+            content = raw.decode("utf-8-sig")
             record = self._record(path, "yingxu", content, hashlib.sha256(raw).hexdigest(), row)
             with self.store.lock, self.store.connection() as db:
                 self._upsert(db, record)
