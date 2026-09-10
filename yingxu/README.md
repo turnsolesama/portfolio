@@ -8,7 +8,7 @@
 
 浅色中文界面，多标签文件工作区，普通目录保存素材。原创代码采用 [MIT](LICENSE)，无需订阅或云账号。
 
-**[Windows x64 完整包下载页面 · v0.3.0](https://github.com/turnsolesama/portfolio/releases)**
+**[下载 Windows x64 完整包 · v0.3.0 · 411.0 MiB](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.0/YingXu-v0.3.0-Windows-x64.zip)**
 
 自带 Python、图片处理组件、FFmpeg 和 WebView2，完整解压后双击即可使用。
 

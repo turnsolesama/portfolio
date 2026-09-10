@@ -4,6 +4,9 @@
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
+
+**[下载完整包 · 411.0 MiB](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.0/YingXu-v0.3.0-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.0/YingXu-v0.3.0-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.0/YingXu-v0.3.0-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.0/YingXu-v0.3.0-verification.json)
+
 ## 历史轻量版
 
 
