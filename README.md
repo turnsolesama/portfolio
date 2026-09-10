@@ -1,10 +1,18 @@
 ![本地创作工具集](docs/assets/portfolio.svg)
 
-# 本地创作工具集
+# 本地创作系统与工具
 
-从整理剧本与分镜，到查找模型、管理服务配置和网络线路。这里的四款 Windows 软件各有独立目录、功能说明与下载包，你可以按需要单独使用。
+项目按本地化 AI 系统、资产管理系统、工具类组织。每个软件保留独立的功能说明与下载包，可按需要单独使用。分类用于导航，现有源码目录、历史版本和下载地址继续保留。
 
 **[映序：视频项目](yingxu/)** · **[AI Hub：模型资产](ai-hub/)** · **[Codex Switcher：服务配置](codex-switcher/)** · **[FlowSwitch：网络线路](proxy-switch/)**
+
+## 项目分类
+
+| 分类 | 项目 | 主要用途 |
+| --- | --- | --- |
+| **本地化 AI 系统** | **FrameWeave 帧织**（独立仓库准备中） | 专业画布、H3 视频与图片生成控制、本地环境缺失检查 |
+| **资产管理系统** | **[映序 YingXu](yingxu/)**、**[AI Hub](ai-hub/)** | 作品项目、文档、素材、分镜与本地模型资产管理 |
+| **工具类** | **[Codex Switcher](codex-switcher/)**、**[流向 FlowSwitch](proxy-switch/)** | Codex 服务配置、代理入口与程序网络分流 |
 
 ## 选择你的工作台
 
@@ -17,7 +25,9 @@
 
 每个 ZIP 只包含对应软件。下载链接直接取得压缩包；完整解压后再运行，保留包内文件夹。各项目页面提供源码说明、校验值和版本记录；映序的程序包已包含源码。
 
-## 01 · 映序 YingXu
+## 资产管理系统
+
+### 映序 YingXu
 
 **把一部作品的剧本、素材和制作进度放在同一个项目里。**
 
@@ -37,7 +47,7 @@
 
 [进入映序 →](yingxu/) · [详细功能](yingxu/docs/功能指南.md) · [安装与运行](yingxu/docs/安装与运行.md)
 
-## 02 · AI Hub
+### AI Hub
 
 **围绕“用什么模型、素材在哪里”建立本地资产目录。**
 
@@ -49,7 +59,9 @@
 
 [进入 AI Hub →](ai-hub/) · [分类规则](ai-hub/docs/CLASSIFICATION.md) · [项目与证据登记](ai-hub/docs/REGISTRY.md) · [安全区整理](ai-hub/docs/SAFE_ZONE.md)
 
-## 03 · Codex Switcher
+## 工具类
+
+### Codex Switcher
 
 **把多组 API 服务配置整理好，再手动应用到 Codex。**
 
@@ -62,7 +74,7 @@
 
 [进入 Codex Switcher →](codex-switcher/) · [支持的导入格式](codex-switcher/#第三方导入格式) · [验证记录](codex-switcher/TEST_REPORT.md)
 
-## 04 · 流向 FlowSwitch
+### 流向 FlowSwitch
 
 **整理已有代理入口，观察软件的连接实际走向。**
 
@@ -98,3 +110,4 @@
 - **AI Hub、Codex Switcher** 当前公开源码，但尚未指定额外开源许可证；请以项目内的许可说明为准。
 
 四款软件的用途和运行条件相互独立，可以根据工作需要组合使用。
+
