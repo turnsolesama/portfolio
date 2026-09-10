@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 
+from .runtime import ffmpeg_path
 from .store import SAFE_EXTENSIONS, UserError, clean_path, has_link, uid
 
 
@@ -99,7 +100,7 @@ class Thumbnails:
         self.store=store;self.root=store.data_root / 'thumbnails';self.root.mkdir(exist_ok=True)
         self.pool=ThreadPoolExecutor(max_workers=2,thread_name_prefix='yingxu-thumbnail')
         self.slots=threading.BoundedSemaphore(64);self.lock=threading.Lock();self.pending=set();self.failed={}
-        self.ffmpeg=shutil.which('ffmpeg');self.generated=0
+        self.ffmpeg=ffmpeg_path();self.generated=0
 
     def request(self,iid):
         item=self.store.get_item(iid)

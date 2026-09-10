@@ -52,6 +52,14 @@ def main():
             subprocess.run(common + ["/target:exe", f"/out:{tests}", str(DESKTOP / "Core.cs"),
                                       str(DESKTOP / "Tests.cs")], check=True)
             subprocess.run([str(tests), str(ROOT)] + ([str(args.alias_root)] if args.alias_root else []), check=True)
+        if args.test and (ROOT / 'runtime/webview2/msedgewebview2.exe').is_file():
+            smoke = folder / 'runtime-check.exe'
+            browser_refs = ["/reference:System.Drawing.dll", "/reference:System.Windows.Forms.dll",
+                            f"/reference:{folder / 'Microsoft.Web.WebView2.Core.dll'}",
+                            f"/reference:{folder / 'Microsoft.Web.WebView2.WinForms.dll'}"]
+            subprocess.run(common + browser_refs + ["/target:exe", f"/out:{smoke}",
+                f"/win32manifest:{DESKTOP / 'app.manifest'}", str(DESKTOP / 'Core.cs'), str(DESKTOP / 'RuntimeCheck.cs')], check=True)
+            subprocess.run([str(smoke), str(ROOT)], check=True, timeout=55)
         exe = folder / "YingXu.exe"
         command = common + ["/target:winexe", f"/out:{exe}",
             "/reference:System.Drawing.dll", "/reference:System.Windows.Forms.dll",

@@ -6,3 +6,5 @@ desktop/build.json
 desktop/verification.json
 runtime/
 .release-work/
+
+releases/YingXu-v0.3.0-Windows-x64.zip

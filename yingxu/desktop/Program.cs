@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -17,8 +17,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.2.3.0")]
-[assembly: AssemblyFileVersion("0.2.3.0")]
+[assembly: AssemblyVersion("0.3.0.0")]
+[assembly: AssemblyFileVersion("0.3.0.0")]
 
 namespace YingXu.Desktop
 {
@@ -205,7 +205,21 @@ namespace YingXu.Desktop
                 };
                 var options = new CoreWebView2EnvironmentOptions();
                 options.Language = "zh-CN";
-                var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Hub.Cache, "WebView2"), options);
+                string bundledBrowser = Hub.BundledBrowserFolder();
+                string browserFolder = bundledBrowser;
+                if (Environment.GetEnvironmentVariable("YINGXU_WEBVIEW2_MODE") != "bundled")
+                {
+                    try
+                    {
+                        string installed = CoreWebView2Environment.GetAvailableBrowserVersionString();
+                        if (bundledBrowser == null || CoreWebView2Environment.CompareBrowserVersions(installed,
+                            CoreWebView2Environment.GetAvailableBrowserVersionString(bundledBrowser)) >= 0) browserFolder = null;
+                    }
+                    catch (WebView2RuntimeNotFoundException) { }
+                }
+                if (browserFolder != null) await Task.Run(() => Hub.PrepareBrowserFolder(browserFolder));
+                Hub.Log("browser_source=" + (browserFolder == null ? "system" : "bundled"));
+                var environment = await CoreWebView2Environment.CreateAsync(browserFolder, Path.Combine(Hub.Cache, "WebView2"), options);
                 if (closing.IsCancellationRequested) return;
                 await web.EnsureCoreWebView2Async(environment);
                 if (closing.IsCancellationRequested) return;

@@ -61,7 +61,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.2.3'
+    assert health['version'] == '0.3.0'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -79,6 +79,51 @@ def check_server(port, data, projects):
     with socket.socket() as connection:
         connection.connect(('127.0.0.1', port))
     return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library', 'Chinese project/folder/document creation']
+
+
+def check_media(port, root, base, interpreter, environment):
+    fixture = base / '合成媒体'
+    fixture.mkdir()
+    png, video = fixture / '图片.png', fixture / '视频.mp4'
+    code = 'from PIL import Image;import sys;Image.new("RGB",(960,540),(64,128,192)).save(sys.argv[1])'
+    subprocess.run([interpreter, '-B', '-c', code, str(png)], env=environment, check=True)
+    ffmpeg = root / 'runtime/ffmpeg/bin/ffmpeg.exe'
+    subprocess.run([str(ffmpeg), '-nostdin', '-hide_banner', '-loglevel', 'error', '-loop', '1', '-i', str(png),
+                    '-t', '1', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', str(video)],
+                   env=environment, capture_output=True, check=True, timeout=30)
+    bootstrap = request(port, 'GET', '/api/bootstrap')
+    assert bootstrap['capabilities']['image_thumbnails'] and bootstrap['capabilities']['ffmpeg']
+    token = bootstrap['token']
+    project = request(port, 'POST', '/api/projects', {'name': '媒体隔离验收'}, token)
+    job = request(port, 'POST', '/api/import', {'project_id': project['id'], 'paths': [str(fixture)]}, token)
+    for _ in range(100):
+        status = request(port, 'GET', '/api/jobs/' + job['job_id'])
+        if status['state'] in ('done', 'error'):
+            break
+        time.sleep(.1)
+    assert status['state'] == 'done' and not status['errors']
+    items = request(port, 'GET', '/api/items?project=' + project['id'])['items']
+    media = [x for x in items if x['kind'] in ('image', 'video')]
+    assert {x['kind'] for x in media} == {'image', 'video'}
+    for item in media:
+        if item['kind'] == 'image':
+            assert item['metadata']['width'] == 960 and item['metadata']['height'] == 540
+        for _ in range(100):
+            connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+            try:
+                connection.request('GET', '/api/thumbnail/' + item['id'])
+                response = connection.getresponse()
+                raw = response.read()
+                if response.status == 200:
+                    assert raw.startswith(b'\xff\xd8') and len(raw) > 100
+                    break
+                assert response.status == 202
+            finally:
+                connection.close()
+            time.sleep(.1)
+        else:
+            raise AssertionError('Bundled thumbnail timed out')
+    return ['bundled Pillow image metadata and JPEG thumbnail', 'bundled FFmpeg H.264 generation and video thumbnail without PATH']
 
 
 def main():
@@ -108,11 +153,23 @@ def main():
                            APPDATA=str(base / 'Roaming'), YINGXU_DATA_DIR=str(base / '数据 覆盖'),
                            YINGXU_PROJECTS_DIR=str(base / '项目 覆盖'), PYTHONUTF8='1', PYTHONDONTWRITEBYTECODE='1')
         environment.pop('YINGXU_RESUME_SESSION_TOKEN', None)
+        environment.pop('YINGXU_PYTHON', None)
+        environment.update(PATH=str(Path(os.environ['WINDIR']) / 'System32'),
+                           PYTHONPATH=str(base / 'not-installed'), PYTHONHOME=str(base / 'not-installed'))
+        interpreter = str(root / 'runtime/python.exe')
+        assert Path(interpreter).is_file() and manifest['python_bundled']
+        probe = subprocess.run([interpreter, '-B', '-c',
+            'import sys,json,PIL,sqlite3;print(json.dumps(dict(executable=sys.executable,paths=sys.path,pillow=PIL.__version__)))'],
+            env=environment, cwd=base, capture_output=True, check=True, text=True, encoding='utf-8')
+        runtime = json.loads(probe.stdout)
+        assert Path(runtime['executable']) == Path(interpreter)
+        assert all(Path(p).is_relative_to(root) for p in runtime['paths'])
+        checked.append('bundled Python/Pillow isolated from PATH, PYTHONHOME and user site-packages')
         data, projects = Path(environment['YINGXU_DATA_DIR']), Path(environment['YINGXU_PROJECTS_DIR'])
         port = free_port()
         pid = None
         try:
-            result = subprocess.run([sys.executable, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
+            result = subprocess.run([interpreter, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
                                     cwd=root, env=environment, capture_output=True, timeout=35)
             if result.returncode:
                 raise RuntimeError('Isolated launcher failed: ' + result.stderr.decode('utf-8', errors='replace'))
@@ -120,12 +177,13 @@ def main():
             assert Path(pid_record['root']) == root and pid_record['port'] == port
             pid = pid_record['pid']
             checked += check_server(port, data, projects)
-            second = subprocess.run([sys.executable, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
+            checked += check_media(port, root, base, interpreter, environment)
+            second = subprocess.run([interpreter, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
                                     cwd=root, env=environment, capture_output=True, timeout=10)
             assert second.returncode == 0 and json.loads(second.stdout)['status'] == 'reused'
             checked.append('launcher cold start and exact-data service reuse')
             foreign = dict(environment, YINGXU_DATA_DIR=str(base / '另一数据目录'))
-            rejected = subprocess.run([sys.executable, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
+            rejected = subprocess.run([interpreter, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
                                       cwd=root, env=foreign, capture_output=True, timeout=10)
             assert rejected.returncode == 1
             assert not (Path(foreign['YINGXU_DATA_DIR']) / 'yingxu.sqlite3').exists()
@@ -138,12 +196,12 @@ def main():
         data, projects = base / '命令行 数据', base / '命令行 项目'
         port = free_port()
         with (base / 'test.log').open('wb') as log:
-            process = subprocess.Popen([sys.executable, '-S', '-B', str(root / 'server.py'), '--port', str(port), '--data', str(data), '--projects-root', str(projects)],
+            process = subprocess.Popen([interpreter, '-S', '-B', str(root / 'server.py'), '--port', str(port), '--data', str(data), '--projects-root', str(projects)],
                                        cwd=root, env=environment, stdout=log, stderr=log, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             try:
                 wait_health(port, process)
                 check_server(port, data, projects)
-                checked.append('CLI path overrides and no site-packages/Pillow startup')
+                checked.append('CLI path overrides with isolated bundled interpreter')
             finally:
                 process.terminate()
                 process.wait(timeout=10)

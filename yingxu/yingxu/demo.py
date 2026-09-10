@@ -1,6 +1,7 @@
 """Explicit, synthetic sample project — never scans the user's existing library."""
 from pathlib import Path
 import shutil
+from .runtime import ffmpeg_path
 import subprocess
 
 
@@ -44,7 +45,7 @@ def create_demo(store):
             d.line([(0,550),(1280,420)],fill=(191,185,163),width=2)
             d.rectangle((40,40,1240,680),outline=(121,135,126),width=2)
             path=folder/f'镜头0{i+1}_白模构图示例.png';im.save(path);media.append(path)
-        ffmpeg=shutil.which('ffmpeg')
+        ffmpeg=ffmpeg_path()
         if ffmpeg:
             video=folder/'镜头01_平面预演示例.mp4'
             subprocess.run([ffmpeg,'-nostdin','-hide_banner','-loglevel','error','-loop','1','-i',str(media[0]),'-vf','scale=960:540','-t','4','-r','24','-c:v','libx264','-threads','1','-pix_fmt','yuv420p','-movflags','+faststart','-y',str(video)],check=True,timeout=30,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))

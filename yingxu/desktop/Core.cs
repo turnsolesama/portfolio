@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -247,10 +247,11 @@ namespace YingXu.Desktop
                     if (count > 65536) return false;
                     var health = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(new string(buffer, 0, count));
                     object name;
-                    object ok, identity;
+                    object ok, identity, version;
                     return health != null && health.TryGetValue("app", out name) && (name as string) == "yingxu" &&
                            health.TryGetValue("ok", out ok) && ok is bool && (bool)ok &&
-                           health.TryGetValue("instance_id", out identity) && (identity as string) == InstanceId();
+                           health.TryGetValue("instance_id", out identity) && (identity as string) == InstanceId() &&
+                           health.TryGetValue("version", out version) && (version as string) == "0.3.0";
                 }
             }
             catch { return false; }
@@ -318,6 +319,38 @@ namespace YingXu.Desktop
             catch { return false; }
         }
 
+        internal static string BundledBrowserFolder()
+        {
+            string folder = Path.Combine(Root, "runtime", "webview2");
+            return File.Exists(Path.Combine(folder, "msedgewebview2.exe")) ? folder : null;
+        }
+
+        internal static void PrepareBrowserFolder(string folder)
+        {
+            // Fixed WebView2 >=120 requires AppContainer read/execute access on Windows 10.
+            if (Environment.OSVersion.Version.Build >= 22000) return;
+            var directory = new DirectoryInfo(folder);
+            var security = directory.GetAccessControl();
+            bool changed = false;
+            foreach (string value in new[] { "S-1-15-2-1", "S-1-15-2-2" })
+            {
+                var sid = new System.Security.Principal.SecurityIdentifier(value);
+                bool granted = false;
+                foreach (System.Security.AccessControl.FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier)))
+                    if (rule.IdentityReference.Equals(sid) && rule.AccessControlType == System.Security.AccessControl.AccessControlType.Allow &&
+                        (rule.FileSystemRights & System.Security.AccessControl.FileSystemRights.ReadAndExecute) == System.Security.AccessControl.FileSystemRights.ReadAndExecute &&
+                        (rule.InheritanceFlags & (System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit)) ==
+                        (System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit)) granted = true;
+                if (granted) continue;
+                security.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(sid,
+                    System.Security.AccessControl.FileSystemRights.ReadAndExecute,
+                    System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+                    System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+                changed = true;
+            }
+            if (changed) directory.SetAccessControl(security);
+        }
+
         internal static string FindPython()
         {
             foreach (string path in PythonCandidates()) if (CompatiblePython(path)) return Path.GetFullPath(path);
@@ -347,7 +380,7 @@ namespace YingXu.Desktop
                 if (!process.WaitForExit(30000))
                     throw new TimeoutException("后台启动超时，请查看 应用数据目录中的 launcher.log 和 server.log。稍后重新打开会复用已启动服务。");
                 if (process.ExitCode != 0 || !Healthy(Port))
-                    throw new InvalidOperationException("后台服务未能启动。端口可能已被占用，详细原因请查看 应用数据目录中的 launcher.log 和 server.log。");
+                    throw new InvalidOperationException("后台服务未能启动。如果刚更新过程序，请保存编辑、等待导入完成，关闭窗口并运行 Stop-YingXu.ps1 后重试。详细原因请查看应用数据目录中的 launcher.log 和 server.log。");
                 string text = output.GetAwaiter().GetResult();
                 error.GetAwaiter().GetResult();
                 return text.Contains("\"started\"") ? "started" : "reused";

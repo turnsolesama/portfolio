@@ -16,6 +16,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import parse_qs,urlsplit
 
 from yingxu import __version__
+from yingxu.runtime import image_support
 from yingxu.paths import default_data_root, default_project_root, instance_id
 from yingxu.store import Store,UserError,CATEGORIES,STATUSES,SAFE_EXTENSIONS
 from yingxu.store import safe_name,uid,clean_path
@@ -44,7 +45,7 @@ class Application:
         return {'app':'yingxu','version':__version__,'token':self.token,
           'project_root':str(self.store.project_root),'data_root':str(self.store.data_root),
           'categories':[{'key':k,'label':v[0]} for k,v in CATEGORIES.items()], 'statuses':STATUSES,
-          'capabilities':{'thumbnails':True,'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True}}
+          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True}}
 
     def changed(self,project_id=None):
         with self.store.connection() as db:

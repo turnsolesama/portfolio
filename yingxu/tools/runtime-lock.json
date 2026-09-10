@@ -1,0 +1,26 @@
+{
+  "python": {
+    "url": "https://www.python.org/ftp/python/3.13.15/python-3.13.15-embed-amd64.zip",
+    "file": "python.zip",
+    "bytes": 11009825,
+    "sha256": "d1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf"
+  },
+  "pillow": {
+    "url": "https://files.pythonhosted.org/packages/a6/9b/7a58e61d62be561da3a356fe2384d4059a6345fc130e23ef1c36a5b81d24/pillow-12.3.0-cp313-cp313-win_amd64.whl",
+    "file": "pillow.zip",
+    "bytes": 7239691,
+    "sha256": "1cca606cd25738df4ed873d5ad46bbdb3d83b5cbca291f6b4ff13a4df6b0bbe8"
+  },
+  "ffmpeg": {
+    "url": "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.1-essentials_build.zip",
+    "file": "ffmpeg.zip",
+    "bytes": 111253802,
+    "sha256": "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9"
+  },
+  "webview2": {
+    "url": "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/0a4a34d9-ccaa-4cef-98b4-58cb313fbfeb/Microsoft.WebView2.FixedVersionRuntime.152.0.4191.62.x64.cab",
+    "file": "webview2.cab",
+    "bytes": 371877369,
+    "sha256": "2dc7d817ddce4d036f33684425c218f1ca2d073911136e5d3f8ce9b2340569b5"
+  }
+}

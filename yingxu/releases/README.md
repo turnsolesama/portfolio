@@ -1,6 +1,13 @@
 # 映序 Windows 发布包
 
-当前版本为 **0.2.3**，使用 MIT 许可证。桌面壳包含的微软 WebView2 SDK 组件遵循包内 `desktop/WebView2-LICENSE.txt`。
+当前完整版 **0.3.0**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+
+组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
+
+## 历史轻量版
+
+
+历史轻量版 **0.2.3**，使用 MIT 许可证。桌面壳包含的微软 WebView2 SDK 组件遵循包内 `desktop/WebView2-LICENSE.txt`。
 
 下载 [YingXu-v0.2.3-Windows-x64.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/yingxu/releases/YingXu-v0.2.3-Windows-x64.zip)，完整解压后双击 `YingXu.exe`。**ZIP 包含应用与源码，不包含 Python 运行环境。** 需要 Windows 10/11 x64、Python 3.11+、.NET Framework 4.8+ 与 WebView2 Runtime；Pillow 和 FFmpeg 为缩略图可选依赖。
 

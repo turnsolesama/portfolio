@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 
+from yingxu import __version__
 from yingxu.paths import default_data_root, default_project_root, instance_id
 
 ROOT = Path(__file__).resolve().parent
@@ -60,12 +61,18 @@ def acquire_mutex(port, timeout):
     return kernel, handle
 
 
+def require_current_service(info):
+    if info and info.get('version') != __version__:
+        raise RuntimeError('旧版映序后台仍在运行。请保存编辑、等待导入完成，关闭窗口并运行 Stop-YingXu.ps1，再打开新版。')
+    return info
+
+
 def ensure_running(port, timeout=22):
-    if health(port):
+    if require_current_service(health(port)):
         return {"status": "reused", "port": port}
     kernel, handle = acquire_mutex(port, timeout)
     try:
-        if health(port):
+        if require_current_service(health(port)):
             return {"status": "reused", "port": port}
         if port_busy(port):
             raise RuntimeError(f"端口 {port} 已被其他服务占用。映序没有接管该服务；请释放此端口后重试。")
@@ -88,7 +95,7 @@ def ensure_running(port, timeout=22):
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), env=environment)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if health(port):
+            if require_current_service(health(port)):
                 record = {"pid": process.pid, "port": port, "root": str(ROOT), "app": "yingxu"}
                 temporary = DATA / "server.pid.json.tmp"
                 temporary.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")

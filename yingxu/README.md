@@ -8,7 +8,9 @@
 
 浅色中文界面，多标签文件工作区，普通目录保存素材。原创代码采用 [MIT](LICENSE)，无需订阅或云账号。
 
-**[下载 Windows x64 程序包 · v0.2.3](https://raw.githubusercontent.com/turnsolesama/portfolio/main/yingxu/releases/YingXu-v0.2.3-Windows-x64.zip)**
+**[Windows x64 完整包下载页面 · v0.3.0](https://github.com/turnsolesama/portfolio/releases)**
+
+自带 Python、图片处理组件、FFmpeg 和 WebView2，完整解压后双击即可使用。
 
 [功能指南](docs/功能指南.md) · [安装与运行](docs/安装与运行.md) · [开发说明](docs/开发说明.md) · [版本与校验](https://github.com/turnsolesama/portfolio/blob/main/yingxu/releases/README.md)
 
@@ -72,7 +74,9 @@ tag:夜景 type:video status:待审核
 
 ## 运行条件与数据
 
-Windows 10 / 11 x64、Python 3.11+、.NET Framework 4.8+ 和 Microsoft Edge WebView2 Runtime。程序包不捆绑 Python 或 WebView2；Pillow、FFmpeg 为可选媒体优化依赖，不会自动下载。
+Windows 10 22H2 / Windows 11 x64。完整包自带运行环境，使用系统自带 .NET Framework，正常使用无需安装 Python、Pillow、FFmpeg 或 WebView2。保留完整目录即可运行，不修改系统 PATH，不在每次启动时解压组件。
+
+下载包和磁盘占用会增加；原有拖拽、Shift 多选、索引、图片与视频缩略图、文档和 AI 交接功能保留。使用指南中可查看媒体组件状态。第三方组件及其许可证见[组件说明](THIRD_PARTY_NOTICES.md)。
 
 | 内容 | 默认位置 |
 | --- | --- |
@@ -101,3 +105,5 @@ Windows 10 / 11 x64、Python 3.11+、.NET Framework 4.8+ 和 Microsoft Edge WebV
 后台为 Python 标准库 + SQLite，前端为原生 HTML / CSS / JavaScript，桌面壳使用 WinForms + WebView2。无需 npm 构建前端；不使用 CDN、远程字体或在线素材库。
 
 [开发说明](docs/开发说明.md) · [接口约定](API_CONTRACT.md) · [运行细节](RUNNING.md) · [MIT 许可](LICENSE) · [WebView2 组件许可](desktop/WebView2-LICENSE.txt)
+
+[完整包验收与性能对比](docs/完整包验收.md)

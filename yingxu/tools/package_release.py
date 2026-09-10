@@ -1,4 +1,5 @@
-"""Package an explicit public-file allowlist; never include runtime/user data."""
+"""Package an explicit public-file allowlist; include only verified private runtime archives, never user data."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -6,15 +7,16 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.2.3'
+VERSION = '0.3.0'
 FIXED = (
     'README.md', 'RUNNING.md', 'LICENSE', 'AGENTS.md', 'API_CONTRACT.md', '.gitignore',
     'server.py', 'launcher.pyw', 'start.vbs', 'Stop-YingXu.ps1', 'YingXu.exe',
-    'desktop/Core.cs', 'desktop/Program.cs', 'desktop/Tests.cs', 'desktop/build.py',
+    'desktop/RuntimeCheck.cs', 'desktop/Core.cs', 'desktop/Program.cs', 'desktop/Tests.cs', 'desktop/build.py',
     'desktop/make_icon.py', 'desktop/brand.svg', 'desktop/brand.ico',
     'desktop/app.manifest', 'desktop/WebView2-LICENSE.txt',
     'tools/benchmark.py', 'tools/package_release.py', 'tools/verify_release.py',
-    'docs/功能指南.md', 'docs/安装与运行.md', 'docs/开发说明.md', 'docs/assets/workspace-map.svg',
+    'tools/prepare_runtime.py', 'tools/runtime-lock.json', 'THIRD_PARTY_NOTICES.md',
+    'docs/完整包验收.md', 'docs/功能指南.md', 'docs/安装与运行.md', 'docs/开发说明.md', 'docs/assets/workspace-map.svg',
 )
 PATTERNS = ('yingxu/*.py', 'frontend/*.html', 'frontend/*.css', 'frontend/*.js',
             'tests/test_*.py', 'tests/frontend_context_menu.cjs', 'tests/frontend_drag_drop.cjs', 'tests/frontend_selection.cjs')
@@ -36,27 +38,53 @@ def files_to_package():
         yield path
 
 
+def runtime_files(folder):
+    manifest = folder / 'RUNTIME_MANIFEST.json'
+    data = json.loads(manifest.read_text(encoding='utf-8'))
+    if data['sources'] != json.loads((ROOT / 'tools/runtime-lock.json').read_text(encoding='utf-8')):
+        raise ValueError('Runtime source lock differs from release')
+    expected = {'RUNTIME_MANIFEST.json'}
+    for item in data['files']:
+        path = folder / item['path']
+        if not path.resolve().is_relative_to(folder.resolve()) or path.is_symlink():
+            raise ValueError('Unsafe runtime member')
+        if path.stat().st_size != item['bytes'] or hashlib.sha256(path.read_bytes()).hexdigest() != item['sha256']:
+            raise ValueError('Modified runtime member: ' + item['path'])
+        expected.add(item['path'])
+        yield path, 'runtime/' + item['path']
+    actual = {p.relative_to(folder).as_posix() for p in folder.rglob('*') if p.is_file()}
+    if actual != expected:
+        raise ValueError('Unlisted files in runtime; do not package a used environment')
+    yield manifest, 'runtime/RUNTIME_MANIFEST.json'
+
+
 def main():
-    target = ROOT / 'releases'
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--runtime-dir', type=Path, default=ROOT / 'runtime')
+    parser.add_argument('--output-dir', type=Path, default=ROOT / 'releases')
+    args = parser.parse_args()
+    target = args.output_dir
     target.mkdir(exist_ok=True)
     package = target / f'YingXu-v{VERSION}-Windows-x64.zip'
-    paths = list(files_to_package())
+    paths = [(p, p.relative_to(ROOT).as_posix()) for p in files_to_package()]
+    paths += list(runtime_files(args.runtime_dir))
     manifest = {
         'application': 'YingXu', 'version': VERSION, 'root': 'YingXu/',
-        'architecture': 'Windows x64', 'python_bundled': False,
-        'requirements': ['Windows 10/11 x64', 'Python >=3.11', '.NET Framework >=4.8', 'Microsoft Edge WebView2 Runtime'],
-        'optional': ['Pillow for image thumbnails', 'FFmpeg on PATH for video thumbnails'],
-        'files': [{'path': p.relative_to(ROOT).as_posix(), 'bytes': p.stat().st_size,
-                   'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in paths],
+        'architecture': 'Windows x64', 'python_bundled': True,
+        'requirements': ['Windows 10 22H2 / Windows 11 x64'],
+        'bundled': ['CPython 3.13.15', 'Pillow 12.3.0', 'FFmpeg 9.0.1', 'WebView2 152.0.4191.62 x64'],
+        'system_component': '.NET Framework 4.8, included in supported Windows versions',
+        'files': [{'path': name, 'bytes': p.stat().st_size,
+                   'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p, name in paths],
     }
     with zipfile.ZipFile(package, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        for path in paths:
-            archive.writestr('YingXu/' + path.relative_to(ROOT).as_posix(), path.read_bytes())
+        for path, name in paths:
+            archive.write(path, 'YingXu/' + name)
         archive.writestr('YingXu/RELEASE_MANIFEST.json', json.dumps(manifest, ensure_ascii=False, indent=2))
     result = {'file': package.name, 'version': VERSION, 'bytes': package.stat().st_size,
               'sha256': hashlib.sha256(package.read_bytes()).hexdigest(),
               'entries': len(paths) + 1, 'root': 'YingXu/', 'contains_user_data': False,
-              'python_bundled': False}
+              'python_bundled': True}
     (target / f'YingXu-v{VERSION}-manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     (target / f'YingXu-v{VERSION}-SHA256.txt').write_text(f"{result['sha256']}  {package.name}\n", encoding='ascii')
     print(json.dumps(result, ensure_ascii=False))
