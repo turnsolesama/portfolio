@@ -99,3 +99,13 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 - 全局搜索跨所有项目名称/简介、文件名称/标签/备注及已索引正文（含提取的 DOCX 正文），以及已注册 SKILL 名称/描述和限额正文；不继承当前项目或分类过滤。
 - 返回结果需显示来源、命中摘要和分页信息；超过扫描限额必须明确标记部分结果。未保存草稿不纳入索引，外部项目文件变化需要同步索引。
 - 独立搜索窗口支持上/下选择、Enter 打开及 Esc 关闭；当前页面 Ctrl+F 行为保留。顶栏另提供全局搜索按钮，帮助位于设置左侧、设置最右。
+
+## 0.3.5：截图、Markdown 图片与逻辑素材组
+
+- 设置新增 `capture_enabled`（默认 true）与 `capture_hotkey`（默认 `Ctrl+Alt+Shift+S`）。快捷键需要至少两个不同的 Ctrl/Alt/Shift 修饰键和大写字母、数字或 F1–F24，排除 F12；关闭后台快捷键不关闭主动截图按钮。
+- 原生桥接 `capture-context-request {requestId}` → `capture-context {requestId,projectId,itemId}` 锁定目标；仅接受同源页面、匹配 ID 与严格字段。5 秒未取得上下文时只尝试剪贴板。截图只在主动触发时读取鼠标所在单屏，最大 40000000 像素，无持续截图或剪贴板轮询。
+- 原生 PNG 通过原有 `POST /api/upload?project=ID&category=references&name=文件名` 上传二进制，带新取得的会话令牌与同源头。`capture-result` 返回 `requestId,item,clipboardCopied,cancelled,error,clipboardError,saveError`；复制与保存独立报告。前端只在原项目/笔记/草稿及可编辑模式仍匹配、且没有保存中或输入法组合时插入 Markdown 草稿，不自动保存笔记。
+- `GET /api/markdown-assets/link?note=ID&image=ID` 返回 `{relative_path,markdown,preview_url}`；仅为同项目已登记的独立 Markdown 与光栅图片生成相对引用，不改文稿。`GET /api/markdown-assets/image?note=ID&path=编码相对路径` 按安全文件句柄流式读取、支持 Range；拒绝越界、网络协议、UNC、回收对象、硬/软链接及超过 32 MiB 的图片。
+- 编辑器 `create({imageResolver})` 只对普通相对路径图片调用回调，默认不加载图片；返回值必须是同源相对路由。`getSelection()` 返回原文 UTF-16 的 `{from,to}`（CRLF 计两个字符）；`insertText(text,from?,to?)` 是一次可撤销文本事务，保留原文换行。输入法组合拒绝插入，非法范围或超过实时编辑限额抛出错误。
+- `GET /api/resource-groups?project=ID` 返回 `{groups,total}`，组摘要含 `id,project_id,name,revision,count,member_ids,categories,preview` 等字段。`GET /api/resource-groups/ID` 追加完整 `members`。`POST /api/resource-groups {project_id,name?,item_ids}` 创建组，至少两个同项目成员。
+- `PATCH /api/resource-groups/ID {name,revision}` 改名；`POST` / `DELETE /api/resource-groups/ID/members {item_ids,revision}` 加入/移出；`DELETE /api/resource-groups/ID {revision}` 解散。写接口要求同源与令牌，修订号冲突返回 409。一素材只属于一组，每组最多 200 成员、每项目最多 500 组；组变更不搬动/删除文件或修改原分类与制作信息。

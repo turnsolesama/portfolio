@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import urlencode
 import zipfile
 
 
@@ -61,7 +62,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.4'
+    assert health['version'] == '0.3.5'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -70,20 +71,40 @@ def check_server(port, data, projects):
     assert request(port, 'GET', '/api/projects')['projects'] == []
     assert request(port, 'GET', '/api/skills')['skills'] == []
     token = bootstrap['token']
+    settings = request(port, 'GET', '/api/settings')
+    assert settings['capture_enabled'] is True and settings['capture_hotkey'] == 'Ctrl+Alt+Shift+S'
+    assert bootstrap['capabilities']['resource_groups'] is True
     project = request(port, 'POST', '/api/projects', {'name': '公开包 隔离验收'}, token)
     assert Path(project['root']).is_relative_to(projects.resolve())
     folder = request(port, 'POST', '/api/folders', {'project_id': project['id'], 'category': 'characters', 'name': '第 1 集'}, token)
     item = request(port, 'POST', '/api/items', {'project_id': project['id'], 'category': 'characters', 'folder_id': folder['id'], 'name': '角色 测试', 'content': '# 合成角色\n不包含用户数据。'}, token)
     assert item['folder_id'] == folder['id']
     assert Path(item['path']).is_file()
+    companion = request(port, 'POST', '/api/items', {'project_id': project['id'], 'category': 'scripts',
+                        'name': '分组合成笔记', 'content': '素材组不会搬动原文件。'}, token)
+    originals = {value['id']: (Path(value['path']), Path(value['path']).read_bytes(), value['category'], value['folder_id'])
+                 for value in (item, companion)}
+    group = request(port, 'POST', '/api/resource-groups', {'project_id': project['id'], 'item_ids': list(originals)}, token)
+    assert group['member_ids'] == list(originals) and group['count'] == 2 and group['revision'] == 1
+    listed = request(port, 'GET', '/api/resource-groups?' + urlencode({'project': project['id']}))
+    assert listed['total'] == 1 and listed['groups'][0]['id'] == group['id']
+    dissolved = request(port, 'DELETE', '/api/resource-groups/' + group['id'], {'revision': group['revision']}, token)
+    assert dissolved['dissolved'] is True
+    assert request(port, 'GET', '/api/resource-groups?' + urlencode({'project': project['id']}))['total'] == 0
+    for item_id, (original_path, original_bytes, category, folder_id) in originals.items():
+        after = request(port, 'GET', '/api/items/' + item_id)
+        assert Path(after['path']) == original_path and original_path.read_bytes() == original_bytes
+        assert after['category'] == category and after['folder_id'] == folder_id
     second = request(port, 'POST', '/api/projects', {'name': '另一合成项目'}, token)
     second_item = request(port, 'POST', '/api/items', {'project_id': second['id'], 'category': 'scripts', 'name': '搜索文稿', 'content': '# 合成文稿\n跨项目验收令牌'}, token)
-    from urllib.parse import urlencode
     search = request(port, 'GET', '/api/search?' + urlencode({'q': '跨项目验收令牌', 'limit': 20}))
     assert any(result['type'] == 'item' and result['id'] == second_item['id'] and result['project_id'] == second['id'] for result in search['results'])
     with socket.socket() as connection:
         connection.connect(('127.0.0.1', port))
-    return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library', 'Chinese project/folder/document creation', 'global search finds indexed document content across projects']
+    return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library',
+            'Chinese project/folder/document creation', 'capture settings default to enabled and Ctrl+Alt+Shift+S',
+            'cross-category logical group create/list/dissolve preserves file paths, bytes and categories',
+            'global search finds indexed document content across projects']
 
 
 def check_media(port, root, base, interpreter, environment):
@@ -128,7 +149,36 @@ def check_media(port, root, base, interpreter, environment):
             time.sleep(.1)
         else:
             raise AssertionError('Bundled thumbnail timed out')
-    return ['bundled Pillow image metadata and JPEG thumbnail', 'bundled FFmpeg H.264 generation and video thumbnail without PATH']
+    # Upload a project-owned PNG. The media fixture above is an external source
+    # and deliberately cannot be used as a Markdown attachment.
+    png_bytes = png.read_bytes()
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    try:
+        connection.request('POST', '/api/upload?' + urlencode({'project': project['id'], 'category': 'references', 'name': '截图验收.png'}),
+                           body=png_bytes, headers={'Content-Type': 'image/png', 'X-YingXu-Token': token})
+        response = connection.getresponse()
+        uploaded = json.loads(response.read())
+        assert response.status == 201
+    finally:
+        connection.close()
+    assert Path(uploaded['path']).is_relative_to(Path(project['root']))
+    note = request(port, 'POST', '/api/items', {'project_id': project['id'], 'category': 'scripts',
+                   'name': '截图附件笔记', 'content': '# 附件验收\n正文保持不变。'}, token)
+    note_bytes = Path(note['path']).read_bytes()
+    link = request(port, 'GET', '/api/markdown-assets/link?' + urlencode({'note': note['id'], 'image': uploaded['id']}))
+    assert link['markdown'].startswith('![') and link['relative_path'] in link['markdown']
+    assert link['preview_url'].startswith('/api/markdown-assets/image?')
+    connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+    try:
+        connection.request('GET', link['preview_url'])
+        response = connection.getresponse()
+        assert response.status == 200 and response.getheader('Content-Type') == 'image/png'
+        assert response.read() == png_bytes
+    finally:
+        connection.close()
+    assert Path(note['path']).read_bytes() == note_bytes
+    return ['bundled Pillow image metadata and JPEG thumbnail', 'bundled FFmpeg H.264 generation and video thumbnail without PATH',
+            'project PNG upload and Markdown link/image routes preserve exact image bytes and original note']
 
 
 def main():
@@ -161,6 +211,9 @@ def main():
         assert editor['dependencies'] and (root / 'frontend/live-markdown.LICENSE.txt').stat().st_size > 0
         assert (root / 'frontend/live-markdown.css').is_file()
         assert (root / 'frontend/global-search.js').is_file() and (root / 'frontend/global-search.css').is_file()
+        for relative in ('frontend/capture.js', 'frontend/resource-groups.js', 'frontend/resource-groups.css',
+                         'yingxu/markdown_assets.py', 'yingxu/resource_groups.py'):
+            assert (root / relative).is_file()
         assert not any('node_modules' in PurePosixPath(name).parts for name in names)
         checked.append('offline Markdown bundle SHA-256, stylesheet and licenses; no Node runtime')
         environment = os.environ.copy()

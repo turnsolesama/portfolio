@@ -53,6 +53,12 @@ def main():
                                       str(DESKTOP / "Integration.cs"),
                                       str(DESKTOP / "Tests.cs")], check=True)
             subprocess.run([str(tests), str(ROOT)] + ([str(args.alias_root)] if args.alias_root else []), check=True)
+            capture_tests = folder / "capture-tests.exe"
+            subprocess.run(common + ["/target:exe", f"/out:{capture_tests}",
+                "/reference:System.Drawing.dll", "/reference:System.Windows.Forms.dll",
+                str(DESKTOP / "Core.cs"), str(DESKTOP / "Integration.cs"),
+                str(DESKTOP / "Capture.cs"), str(DESKTOP / "CaptureTests.cs")], check=True)
+            subprocess.run([str(capture_tests)],check=True,timeout=30)
         if args.test and (ROOT / 'runtime/webview2/msedgewebview2.exe').is_file():
             smoke = folder / 'runtime-check.exe'
             browser_refs = ["/reference:System.Drawing.dll", "/reference:System.Windows.Forms.dll",
@@ -70,12 +76,12 @@ def main():
             f"/resource:{DESKTOP / 'brand.ico'},brand.ico"]
         for name in members:
             command.append(f"/resource:{folder / name},{name}")
-        subprocess.run(command + [str(DESKTOP / "Core.cs"), str(DESKTOP / "Integration.cs"), str(DESKTOP / "Program.cs")], check=True)
+        subprocess.run(command + [str(DESKTOP / "Core.cs"), str(DESKTOP / "Integration.cs"), str(DESKTOP / "Capture.cs"), str(DESKTOP / "Program.cs")], check=True)
         if args.test:
             lifecycle = folder / "lifecycle-tests.exe"
             lifecycle_command = [value for value in command if not value.startswith('/target:') and not value.startswith('/out:')]
             subprocess.run(lifecycle_command + ["/target:exe", f"/out:{lifecycle}", "/main:YingXu.Desktop.LifecycleTests",
-                str(DESKTOP / "Core.cs"), str(DESKTOP / "Integration.cs"), str(DESKTOP / "Program.cs"),
+                str(DESKTOP / "Core.cs"), str(DESKTOP / "Integration.cs"), str(DESKTOP / "Capture.cs"), str(DESKTOP / "Program.cs"),
                 str(DESKTOP / "LifecycleTests.cs")], check=True)
             subprocess.run([str(lifecycle),str(ROOT)],check=True,timeout=30)
         shutil.copy2(exe, output)

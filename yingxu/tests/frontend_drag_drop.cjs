@@ -5,8 +5,8 @@ const path = require('node:path');
 const vm = require('node:vm');
 const {test} = require('node:test');
 
-function setup(desktop = false) {
-  const listeners = new Map(), nodes = [], moves = [], uploads = [], messages = [];
+function setup(desktop = false, groups = false) {
+  const listeners = new Map(), nodes = [], moves = [], uploads = [], messages = [], groupEvents = [];
   function node(dataset = {}) {
     const classes = new Set();
     const element = {dataset, classList:{add:(...names)=>names.forEach(n=>classes.add(n)), remove:(...names)=>names.forEach(n=>classes.delete(n)), contains:n=>classes.has(n)},
@@ -17,6 +17,7 @@ function setup(desktop = false) {
   const document = {body:node(), addEventListener:(type,fn)=>{const previous=listeners.get(type);listeners.set(type,previous ? e=>{previous(e);return fn(e);} : fn);}, querySelectorAll:()=>nodes};
   const hostListeners = new Map();
   const context = vm.createContext({document, window:{innerWidth:1000,innerHeight:600,yingxuDesktopDrag:desktop,chrome:{webview:{postMessage:m=>messages.push(m),addEventListener:(type,fn)=>hostListeners.set(type,fn)}}}, localStorage:{getItem:()=>null}, console, setTimeout, clearTimeout, moves, uploads});
+  if (groups) context.window.YingXuResourceGroups = {install:() => ({beginDrag:ids=>groupEvents.push(['begin',...ids]),endDrag:()=>groupEvents.push(['end']),handleNativeDrop:()=>false})};
   const source = fs.readFileSync(path.join(__dirname,'../frontend/app.js'),'utf8').replace(/boot\(\);\s*$/, '');
   vm.runInContext(source+`\nhideMenu=()=>{}; performMove=async (...args)=>moves.push(args); uploadFiles=async (...args)=>uploads.push(args); report=error=>{throw error;}; globalThis.app={state,wireDragAndDrop,cardHtml,rowHtml};`,context);
   Object.assign(context.app.state,{projectId:'synthetic',section:'assets',category:'references',folderId:'current'});
@@ -25,7 +26,7 @@ function setup(desktop = false) {
     return {files, data:{...data}, get types(){return [...Object.keys(this.data),...(files.length?['Files']:[])];}, clearData(){this.data={};}, setData(k,v){this.data[k]=v;}, getData(k){return this.data[k]||'';}};
   }
   function fire(type,target,dataTransfer) { const e={type,target,dataTransfer,button:0,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}}; return {event:e,result:listeners.get(type)(e)}; }
-  return {app:context.app,document,node,transfer,fire,moves,uploads,messages,hostListeners};
+  return {app:context.app,document,node,transfer,fire,moves,uploads,messages,hostListeners,groupEvents};
 }
 
 test('thumbnail drag with browser Files payload moves the selected resources without an import overlay',async()=>{
@@ -84,6 +85,17 @@ test('external overlay and target highlight clear after leaving or cancelling a 
 test('native drag-out handle still sends the desktop file request',()=>{
   const s=setup();s.fire('pointerdown',s.node({dragFile:'a'}));
   assert.deepEqual(JSON.parse(JSON.stringify(s.messages)),[{action:'drag-file',id:'a'}]);
+});
+
+test('desktop card enables grouping while dedicated drag-out handle cancels grouping and preserves file drag',()=>{
+  const s=setup(true,true),card=s.node({item:'a'});
+  s.fire('dragstart',card,s.transfer());
+  assert.deepEqual(s.groupEvents,[['begin','a']]);
+  s.hostListeners.get('message')({data:{action:'native-drag-ended'}});
+  s.groupEvents.length=0;s.messages.length=0;
+  s.fire('pointerdown',s.node({dragFile:'a'}));
+  assert.deepEqual(s.groupEvents,[['end']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(s.messages)),[{action:'drag-files',ids:['a']}]);
 });
 
 test('card and list thumbnails defer dragging to their resource container',()=>{

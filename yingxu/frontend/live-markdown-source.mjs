@@ -1,13 +1,14 @@
 /* Offline CodeMirror live preview. Markdown source is the only document model. */
 import {Annotation,Compartment,EditorSelection,EditorState,Facet,StateEffect,Text} from '@codemirror/state';
 import {Decoration,EditorView,ViewPlugin,WidgetType,keymap,drawSelection,highlightActiveLine} from '@codemirror/view';
-import {defaultKeymap,history,historyKeymap,indentWithTab,isolateHistory} from '@codemirror/commands';
+import {defaultKeymap,history,historyKeymap,indentWithTab,isolateHistory,undo,redo} from '@codemirror/commands';
 import {syntaxTree,indentOnInput} from '@codemirror/language';
 import {markdown,markdownKeymap} from '@codemirror/lang-markdown';
 import {GFM} from '@lezer/markdown';
 
 const MAX_LENGTH = 500000;
 const liveMode = Facet.define({combine:values => values[0] || 'live'});
+const localImageResolver = Facet.define({combine:values => values[0] || null});
 const repaint = StateEffect.define();
 const replacement = Annotation.define();
 
@@ -37,17 +38,76 @@ class SymbolWidget extends WidgetType {
   ignoreEvent() { return false; }
 }
 
-function frontmatterEnd(state) {
-  if (!/^\uFEFF?---\s*$/.test(state.doc.line(1).text)) return -1;
-  for (let number = 2; number <= state.doc.lines; number++) {
-    const line = state.doc.line(number);
-    if (/^(?:---|\.\.\.)\s*$/.test(line.text)) return line.to;
+class LocalImageWidget extends WidgetType {
+  constructor(src,alt) { super(); this.src = src; this.alt = alt; }
+  eq(other) { return this.src === other.src && this.alt === other.alt; }
+  get estimatedHeight() { return 220; }
+  toDOM(view) {
+    const doc = view.dom.ownerDocument,span = doc.createElement('span'),img = doc.createElement('img');
+    span.className = 'yx-md-image'; span.contentEditable = 'false'; span.tabIndex = 0;
+    span.setAttribute('role','button'); span.setAttribute('aria-label',`编辑图片 Markdown：${this.alt || '图片'}`);
+    img.alt = this.alt; img.loading = 'lazy'; img.decoding = 'async'; img.referrerPolicy = 'no-referrer';
+    const measure = () => { if (view.dom.isConnected) view.requestMeasure(); };
+    img.addEventListener('load',measure);
+    img.addEventListener('error',() => { img.hidden = true; span.classList.add('yx-md-image-error'); span.appendChild(doc.createTextNode(`图片暂不可用${this.alt ? ' · '+this.alt : ''}`)); measure(); },{once:true});
+    const edit = event => {
+      if (event.type === 'keydown' && !['Enter',' '].includes(event.key)) return;
+      if (event.type === 'mousedown' && event.button !== 0) return;
+      event.preventDefault();
+      if (view.composing || view.compositionStarted || view.plugin(previewPlugin)?.frozen) return;
+      const position = view.posAtDOM(span);
+      view.dispatch({selection:{anchor:Math.min(position+1,view.state.doc.length)}}); view.focus();
+    };
+    span.addEventListener('mousedown',edit); span.addEventListener('keydown',edit);
+    span.appendChild(img); img.src = this.src;
+    return span;
   }
-  return state.doc.length;
+  ignoreEvent(event) { return ['mousedown','keydown','load','error'].includes(event.type); }
+}
+
+function imageWidget(state,node) {
+  const resolve = state.facet(localImageResolver);
+  if (!resolve || state.doc.lineAt(node.from).number !== state.doc.lineAt(node.to).number) return null;
+  let destination,altEnd;
+  for (let child = node.firstChild; child; child = child.nextSibling) {
+    if (child.name === 'URL') destination = state.doc.sliceString(child.from,child.to);
+    if (child.name === 'LinkMark' && state.doc.sliceString(child.from,child.to) === ']' && altEnd === undefined) altEnd = child.from;
+  }
+  if (!destination || altEnd === undefined) return null;
+  const unescape = text => text.replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\]\\^_`{|}~])/g,'$1');
+  const url = unescape(destination.startsWith('<') && destination.endsWith('>') ? destination.slice(1,-1) : destination);
+  let decoded;
+  try { decoded = decodeURIComponent(url); } catch { return null; }
+  if (!url || /[\x00-\x20\x7f]/.test(url.replace(/ /g,'')) || /^(?:[a-z][a-z0-9+.-]*:|[\\/]|[?#])/i.test(decoded.trim()) || /[\x00-\x1f\x7f\\]/.test(decoded)) return null;
+  const alt = unescape(state.doc.sliceString(node.from+2,altEnd));
+  let src;
+  try { src = resolve(url,alt); } catch { return null; }
+  // Only origin-relative routes returned by the host are permitted. No remote,
+  // protocol-relative, data/blob/file URLs or browser navigation are inferred.
+  if (typeof src !== 'string' || !src.startsWith('/') || /^\/[\\/]/.test(src) || /[\x00-\x20\x7f\\]/.test(src)) return null;
+  return new LocalImageWidget(src,alt);
+}
+
+// CodeMirror Text objects are immutable: selection/viewport changes reuse this
+// key, while any document edit creates a new one. Weak keys retain no old docs.
+const frontmatterCache = new WeakMap();
+function frontmatterEnd(state) {
+  const doc = state.doc;
+  if (frontmatterCache.has(doc)) return frontmatterCache.get(doc);
+  let end = -1;
+  if (/^\uFEFF?---\s*$/.test(doc.line(1).text)) {
+    end = doc.length;
+    for (let number = 2; number <= doc.lines; number++) {
+      const line = doc.line(number);
+      if (/^(?:---|\.\.\.)\s*$/.test(line.text)) { end = line.to; break; }
+    }
+  }
+  frontmatterCache.set(doc,end);
+  return end;
 }
 
 const untouched = new Set(['FencedCode','CodeBlock','HTMLBlock','CommentBlock','ProcessingInstructionBlock',
-  'Table','Image','Link','Autolink','LinkReference','HTMLTag','Comment','ProcessingInstruction','SetextHeading1','SetextHeading2']);
+  'Table','Link','Autolink','LinkReference','HTMLTag','Comment','ProcessingInstruction','SetextHeading1','SetextHeading2']);
 const inlineClasses = {StrongEmphasis:'yx-md-strong',Emphasis:'yx-md-emphasis',Strikethrough:'yx-md-strike',InlineCode:'yx-md-code'};
 const hiddenMarks = new Set(['HeaderMark','EmphasisMark','StrikethroughMark','CodeMark','QuoteMark','ListMark','TaskMarker']);
 
@@ -57,7 +117,9 @@ function previewDecorations(state,visibleRanges = [{from:0,to:state.doc.length}]
   const visible = (from,to) => visibleRanges.some(range => range.from <= to && range.to >= from);
   const touched = node => hasFocus && state.selection.ranges.some(range => range.from <= node.to && range.to >= node.from);
   const lineStyle = (position,style) => {
-    const from = state.doc.lineAt(position).from, key = `${from}:${style}`;
+    const line = state.doc.lineAt(position);
+    if (!visible(line.from,line.to)) return;
+    const from = line.from, key = `${from}:${style}`;
     if (!lineClasses.has(key)) { lineClasses.add(key); decorations.push(Decoration.line({class:style}).range(from)); }
   };
   const marker = (node,active) => {
@@ -77,12 +139,20 @@ function previewDecorations(state,visibleRanges = [{from:0,to:state.doc.length}]
   };
   const visit = (node,active) => {
     if (!visible(node.from,node.to) || node.from <= yamlEnd || untouched.has(node.name)) return;
+    if (node.name === 'Image') {
+      if (!touched(node)) { const widget = imageWidget(state,node); if (widget) decorations.push(Decoration.replace({widget,inclusive:false}).range(node.from,node.to)); }
+      return;
+    }
     if (node.name === 'ListItem') active = touched(node);
     const heading = /^ATXHeading([1-6])$/.exec(node.name);
     if (heading) lineStyle(node.from,`yx-md-heading yx-md-heading-${heading[1]}`);
     if (node.name === 'Blockquote') {
-      const first = state.doc.lineAt(node.from).number, last = state.doc.lineAt(node.to).number;
-      for (let number = first; number <= last; number++) lineStyle(state.doc.line(number).from,'yx-md-quote-line');
+      for (const range of visibleRanges) {
+        const from = Math.max(node.from,range.from),to = Math.min(node.to,range.to);
+        if (from > to) continue;
+        const first = state.doc.lineAt(from).number,last = state.doc.lineAt(to).number;
+        for (let number = first; number <= last; number++) lineStyle(state.doc.line(number).from,'yx-md-quote-line');
+      }
     }
     if (node.name === 'ListItem') lineStyle(node.from,'yx-md-list-line');
     if (inlineClasses[node.name] && node.to > node.from) decorations.push(Decoration.mark({class:inlineClasses[node.name]}).range(node.from,node.to));
@@ -133,7 +203,7 @@ const previewPlugin = ViewPlugin.fromClass(LivePreviewPlugin, {
 });
 
 function formatSpec(state,command) {
-  const wrapper = {bold:'**',italic:'*'}[command];
+  const wrapper = {bold:'**',italic:'*',strike:'~~'}[command];
   if (wrapper) {
     const change = state.changeByRange(range => {
       const selected = state.doc.sliceString(range.from,range.to);
@@ -151,8 +221,17 @@ function formatSpec(state,command) {
     });
     return {...change,scrollIntoView:true,userEvent:'input.format',annotations:isolateHistory.of('full')};
   }
-  const prefix = {heading2:'## ',bullet:'- ',quote:'> '}[command];
-  if (!prefix) return null;
+  if (command === 'link') {
+    const change = state.changeByRange(range => {
+      const label = state.doc.sliceString(range.from,range.to) || '链接文字';
+      const insert = '['+label+'](https://)';
+      return {changes:{from:range.from,to:range.to,insert:Text.of(insert.split('\n'))},range:EditorSelection.range(range.from+label.length+3,range.from+insert.length-1)};
+    });
+    return {...change,scrollIntoView:true,userEvent:'input.format',annotations:isolateHistory.of('full')};
+  }
+  const heading = /^heading([1-6])$/.exec(command);
+  const prefix = heading ? '#'.repeat(Number(heading[1]))+' ' : {bullet:'- ',quote:'> ',ordered:'1. ',task:'- [ ] ',paragraph:''}[command];
+  if (prefix === undefined && !['rule','codeblock'].includes(command)) return null;
   const numbers = new Set();
   for (const range of state.selection.ranges) {
     const first = state.doc.lineAt(range.from).number;
@@ -160,12 +239,32 @@ function formatSpec(state,command) {
     for (let number = first; number <= state.doc.lineAt(end).number; number++) numbers.add(number);
   }
   const lines = [...numbers].sort((a,b)=>a-b).map(number => state.doc.line(number));
-  const remove = lines.every(line => line.text.startsWith(prefix));
-  const edits = lines.flatMap(line => {
-    if (!remove && line.text.startsWith(prefix)) return [];
-    const oldHeading = command === 'heading2' ? /^#{1,6}\s+/.exec(line.text)?.[0] || '' : '';
-    return [{from:line.from,to:line.from+(remove ? prefix.length : oldHeading.length),insert:remove ? '' : prefix}];
-  });
+  const edits = [];
+  if (command === 'rule' || command === 'codeblock') {
+    const groups = [];
+    for (const line of lines) {
+      const group = groups.at(-1);
+      if (group && group.at(-1).number+1 === line.number) group.push(line); else groups.push([line]);
+    }
+    for (const group of groups) {
+      const from = group[0].from,to = group.at(-1).to;
+      if (command === 'rule') { edits.push({from:to,insert:Text.of(['','','---',''])}); continue; }
+      const text = state.doc.sliceString(from,to), longest = Math.max(2,...(text.match(/`+/g) || []).map(value => value.length));
+      const fence = '`'.repeat(longest+1);
+      edits.push({from,insert:Text.of([fence,''])},{from:to,insert:Text.of(['',fence])});
+    }
+  } else {
+    const list = ['bullet','ordered','task'].includes(command);
+    const pattern = heading || command === 'paragraph' ? /^#{1,6}\s+/ : list ? /^(?:[-+*]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/ : /^>\s?/;
+    const hasStyle = text => heading ? text.startsWith(prefix) : command === 'paragraph' ? false : command === 'ordered' ? /^\d+[.)]\s+/.test(text) : command === 'task' ? /^[-+*]\s+\[[ xX]\]\s+/.test(text) : command === 'bullet' ? /^[-+*]\s+(?!\[[ xX]\]\s)/.test(text) : /^>\s?/.test(text);
+    const remove = lines.every(line => hasStyle(line.text));
+    lines.forEach((line,index) => {
+      if (!remove && hasStyle(line.text) && command !== 'ordered') return;
+      const old = pattern.exec(line.text)?.[0] || '';
+      const insert = remove || command === 'paragraph' ? '' : command === 'ordered' ? `${index+1}. ` : prefix;
+      if (old !== insert) edits.push({from:line.from,to:line.from+old.length,insert});
+    });
+  }
   const changes = state.changes(edits);
   return {changes,selection:state.selection.map(changes,1),scrollIntoView:true,userEvent:'input.format',annotations:isolateHistory.of('full')};
 }
@@ -173,16 +272,17 @@ function formatSpec(state,command) {
 function formatCommand(command) {
   return view => {
     if (view.composing || view.compositionStarted || view.plugin(previewPlugin)?.frozen) return true;
+    if (command === 'undo' || command === 'redo') return (command === 'undo' ? undo : redo)(view);
     const spec = formatSpec(view.state,command);
     if (!spec) return false;
     view.dispatch(spec); return true;
   };
 }
 
-function buildEditorState(value,mode,label,onChange) {
+function buildEditorState(value,mode,label,onChange,imageResolver) {
   const source = sourceText(value), modeSlot = new Compartment(), lineSlot = new Compartment();
   const state = EditorState.create({doc:source.text,extensions:[
-    lineSlot.of(EditorState.lineSeparator.of(source.separator)), modeSlot.of(liveMode.of(mode)),
+    lineSlot.of(EditorState.lineSeparator.of(source.separator)), modeSlot.of(liveMode.of(mode)),localImageResolver.of(typeof imageResolver === 'function' ? imageResolver : null),
     EditorState.allowMultipleSelections.of(true), history(), drawSelection(), highlightActiveLine(), indentOnInput(),
     markdown({extensions:GFM,addKeymap:false,completeHTMLTags:false}),
     keymap.of([{key:'Mod-b',run:formatCommand('bold'),preventDefault:true},{key:'Mod-i',run:formatCommand('italic'),preventDefault:true},...markdownKeymap,...defaultKeymap,...historyKeymap,indentWithTab]),
@@ -197,9 +297,27 @@ function buildEditorState(value,mode,label,onChange) {
   return {state,modeSlot,lineSlot};
 }
 
-export const create = ({parent,value = '',mode = 'live',label = 'Markdown 实时编辑',onChange} = {}) => {
+function sourceSelection(state) {
+  const range = state.selection.main;
+  return {from:state.sliceDoc(0,range.from).length,to:state.sliceDoc(0,range.to).length};
+}
+
+function insertionSpec(state,text,from,to) {
+  if (typeof text !== 'string') throw new TypeError('插入内容必须是 Markdown 文本。');
+  const current = state.sliceDoc(),selection = sourceSelection(state),implicit = from === undefined;
+  from = implicit ? selection.from : from; to = to === undefined ? (implicit ? selection.to : from) : to;
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < from || to > current.length) throw new RangeError('插入位置已失效。');
+  for (const offset of [from,to]) if (current[offset-1] === '\r' && current[offset] === '\n') throw new RangeError('插入位置不能位于换行符中间。');
+  const insert = text.replace(/\r\n|\r|\n/g,state.lineBreak);
+  if (current.length-(to-from)+insert.length > MAX_LENGTH) throw new RangeError('文稿超过实时编辑大小限制，请使用源码编辑。');
+  const position = offset => current.slice(0,offset).replace(/\r\n|\r/g,'\n').length;
+  const start = position(from),end = position(to),doc = Text.of(insert.split(state.lineBreak));
+  return {changes:{from:start,to:end,insert:doc},selection:{anchor:start+doc.length},scrollIntoView:true,userEvent:'input.insert',annotations:isolateHistory.of('full')};
+}
+
+export const create = ({parent,value = '',mode = 'live',label = 'Markdown 实时编辑',onChange,imageResolver} = {}) => {
   if (!parent || !['live','source'].includes(mode)) throw new Error('Markdown 编辑器的挂载位置或模式无效。');
-  const config = buildEditorState(value,mode,label,onChange);
+  const config = buildEditorState(value,mode,label,onChange,imageResolver);
   const view = new EditorView({state:config.state,parent});
   let destroyed = false;
   const alive = () => { if (destroyed) throw new Error('Markdown 编辑器已关闭。'); };
@@ -214,10 +332,12 @@ export const create = ({parent,value = '',mode = 'live',label = 'Markdown 实时
       view.dispatch({changes:{from:0,to:view.state.doc.length,insert:source.text},effects:config.lineSlot.reconfigure(EditorState.lineSeparator.of(source.separator)),annotations:[replacement.of(true),isolateHistory.of('full')],selection:{anchor:Math.min(view.state.selection.main.head,source.text.length)}});
     },
     getValue() { alive(); return view.state.sliceDoc(); },
+    getSelection() { alive(); return sourceSelection(view.state); },
+    insertText(text,from,to) { alive(); if (composing()) return false; view.dispatch(insertionSpec(view.state,text,from,to)); view.focus(); return true; },
     focus() { alive(); view.focus(); },
     destroy() { if (!destroyed) { destroyed = true; view.destroy(); } },
     isComposing:composing,
-    format(command) { alive(); if (composing()) return false; const spec = formatSpec(view.state,command); if (!spec) return false; view.dispatch(spec); view.focus(); return true; }
+    format(command) { alive(); if (composing()) return false; const changed = formatCommand(command)(view); view.focus(); return changed; }
   };
 };
 

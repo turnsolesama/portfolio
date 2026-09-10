@@ -51,12 +51,16 @@ class Application:
         self.project_library=ProjectLibrary(self.store)
         from yingxu.search import GlobalSearch
         self.search=GlobalSearch(self.store,self.skills)
+        from yingxu.resource_groups import ResourceGroups
+        self.resource_groups=ResourceGroups(self.store)
+        from yingxu.markdown_assets import MarkdownAssets
+        self.markdown_assets=MarkdownAssets(self.store)
 
     def bootstrap(self):
         return {'app':'yingxu','version':__version__,'token':self.token,'settings':self.settings.get(),
           'project_root':str(self.store.project_root),'data_root':str(self.store.data_root),
           'categories':[{'key':k,'label':v[0]} for k,v in CATEGORIES.items()], 'statuses':STATUSES,
-          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True,'global_search':True}}
+          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True,'global_search':True,'resource_groups':True}}
 
     def changed(self,project_id=None):
         with self.store.connection() as db:
@@ -303,6 +307,20 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/bootstrap':return self.json(self.app.bootstrap())
                 if path=='/api/settings':return self.json(self.app.settings.get())
                 if path=='/api/project-library':return self.json(self.app.project_library.snapshot())
+                if path=='/api/markdown-assets/link':
+                    if set(query)-{'note','image'}:raise UserError('图片引用仅接受笔记与素材 ID。')
+                    return self.json(self.app.markdown_assets.link(query.get('note',''),query.get('image','')))
+                if path=='/api/markdown-assets/image':
+                    if set(query)-{'note','path'}:raise UserError('笔记图片仅接受笔记 ID 与相对路径。')
+                    with self.app.markdown_assets.open_image(query.get('note',''),query.get('path','')) as opened:
+                        return self.file(opened.name,media=True,opened=opened)
+                if path=='/api/resource-groups':
+                    if set(query)-{'project'}:raise UserError('素材组列表仅接受项目参数。')
+                    return self.json(self.app.resource_groups.list(query.get('project','')))
+                group=re.fullmatch(r'/api/resource-groups/([a-f0-9]{32})',path)
+                if group:
+                    if query:raise UserError('素材组详情仅接受素材组 ID。')
+                    return self.json(self.app.resource_groups.get(group[1]))
                 if path=='/api/projects':return self.json({'projects':self.app.store.list_projects()})
                 if path=='/api/search':
                     if set(query)-{'q','limit','offset'}:raise UserError('全局搜索仅接受关键词与分页参数。')
@@ -339,6 +357,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self.file(static)
             if self.command=='POST' and path=='/api/upload':return self.json(self.app.receive_upload(self,query),201)
             data=self.body()
+            group=re.fullmatch(r'/api/resource-groups/([a-f0-9]{32})(/members)?',path)
+            if group:
+                if group[2]:
+                    if self.command=='POST':return self.json(self.app.resource_groups.add(group[1],data))
+                    if self.command=='DELETE':return self.json(self.app.resource_groups.remove(group[1],data))
+                else:
+                    if self.command=='PATCH':return self.json(self.app.resource_groups.rename(group[1],data))
+                    if self.command=='DELETE':return self.json(self.app.resource_groups.dissolve(group[1],data))
+                raise UserError('接口或请求方式不存在。',404)
             if self.command=='PATCH' and path=='/api/settings':return self.json(self.app.settings.update(data))
             library_folder=re.fullmatch(r'/api/project-folders/([a-f0-9]{32})',path)
             if library_folder:
@@ -349,6 +376,7 @@ class Handler(BaseHTTPRequestHandler):
                 if self.command=='POST' and library_project[2]:return self.json(self.app.project_library.visit(library_project[1]))
                 if self.command=='PATCH' and not library_project[2]:return self.json(self.app.project_library.assign_project(library_project[1],data))
             if self.command=='POST':
+                if path=='/api/resource-groups':return self.json(self.app.resource_groups.create(data),201)
                 if path=='/api/project-folders':return self.json(self.app.project_library.create_folder(data),201)
                 if path=='/api/external-open':return self.json(self.app.external.open(data))
                 if path=='/api/projects':

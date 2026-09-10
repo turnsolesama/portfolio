@@ -129,7 +129,7 @@ test('new note keeps the right-click folder and creates plain Markdown even in s
   const saved={};s.context.localStorage.setItem=(key,value)=>{saved[key]=value;};
   await s.context.dialog.onSubmit({name:'拍摄想法',category:'shots',folder_id:'episode'});
   assert.equal(s.calls[0][0],'/api/project-library/project/visit');
-  assert.deepEqual(JSON.parse(JSON.stringify(s.calls[1][1].body)),{project_id:'project',category:'shots',folder_id:'episode',name:'拍摄想法',content:'# 拍摄想法\n\n',status:'待开始'});
+  assert.deepEqual(JSON.parse(JSON.stringify(s.calls[1][1].body)),{project_id:'project',category:'shots',folder_id:'episode',name:'拍摄想法',content:'',status:'待开始'});
   assert.equal(saved['yingxu:project'],'project');
   assert.equal(s.context.opened,'note-id');assert.equal(s.app.state.projectId,'project');
 });

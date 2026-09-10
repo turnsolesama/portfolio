@@ -7,6 +7,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -49,6 +50,18 @@ namespace YingXu.Desktop
 
     internal static class DesktopApi
     {
+        private static Dictionary<string,object> ReadResponse(WebResponse response)
+        {
+            using (response)
+            using (var reader = new StreamReader(response.GetResponseStream(),Encoding.UTF8))
+            {
+                var chars=new char[2097153]; int count=reader.ReadBlock(chars,0,chars.Length);
+                if (count==chars.Length) throw new InvalidDataException("本地服务返回的数据过大。");
+                var result=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(new string(chars,0,count));
+                if (result==null) throw new InvalidDataException("本地服务返回的数据无效。");
+                return result;
+            }
+        }
         internal static Dictionary<string, object> Request(string path, object payload = null, string token = null)
         {
             var request = (HttpWebRequest)WebRequest.Create(Hub.Url.TrimEnd('/') + path);
@@ -63,13 +76,28 @@ namespace YingXu.Desktop
                 request.ContentLength = bytes.Length;
                 using (var stream = request.GetRequestStream()) stream.Write(bytes, 0, bytes.Length);
             }
-            using (var response = request.GetResponse())
-            using (var reader = new StreamReader(response.GetResponseStream(), Encoding.UTF8))
-            {
-                var chars = new char[2097153]; int count = reader.ReadBlock(chars, 0, chars.Length);
-                if (count == chars.Length) throw new InvalidDataException("本地服务返回的数据过大。");
-                return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(new string(chars,0,count));
-            }
+            return ReadResponse(request.GetResponse());
+        }
+        internal static object UploadCapture(byte[] png,string projectId)
+        {
+            if (projectId==null || !Regex.IsMatch(projectId,"\\A[a-f0-9]{32}\\z")) throw new InvalidDataException("截图目标项目无效。");
+            byte[] signature={137,80,78,71,13,10,26,10};
+            if (png==null || png.Length<signature.Length || png.Length>160*1024*1024) throw new InvalidDataException("截图图片大小无效。");
+            for(int i=0;i<signature.Length;i++) if(png[i]!=signature[i]) throw new InvalidDataException("截图图片格式无效。");
+            var bootstrap=Request("/api/bootstrap"); object token;
+            if(!bootstrap.TryGetValue("token",out token) || !(token is string)) throw new InvalidDataException("后台未提供截图保存令牌。");
+            string name="截图_"+DateTime.Now.ToString("yyyyMMdd_HHmmss_fff")+"_"+Guid.NewGuid().ToString("N").Substring(0,6)+".png";
+            var request=(HttpWebRequest)WebRequest.Create(Hub.Url.TrimEnd('/')+"/api/upload?project="+projectId+"&category=references&name="+Uri.EscapeDataString(name));
+            request.Proxy=null; request.AllowAutoRedirect=false; request.Timeout=30000; request.ReadWriteTimeout=30000;
+            request.Method="POST"; request.ContentType="image/png"; request.ContentLength=png.Length;
+            request.Headers["Origin"]=Hub.Url.TrimEnd('/'); request.Headers["X-YingXu-Token"]=(string)token;
+            using(var output=request.GetRequestStream()) output.Write(png,0,png.Length);
+            var result=ReadResponse(request.GetResponse()); object id,project,kind;
+            if(!result.TryGetValue("id",out id) || !(id is string) || !Regex.IsMatch((string)id,"\\A[a-f0-9]{32}\\z") ||
+                !result.TryGetValue("project_id",out project) || (project as string)!=projectId ||
+                !result.TryGetValue("kind",out kind) || (kind as string)!="image")
+                throw new InvalidDataException("截图保存响应不完整，请在项目参考资料中核对。");
+            return result;
         }
         internal static object OpenFiles(string[] paths)
         {

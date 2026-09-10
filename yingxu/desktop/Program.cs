@@ -18,8 +18,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.3.4.0")]
-[assembly: AssemblyFileVersion("0.3.4.0")]
+[assembly: AssemblyVersion("0.3.5.0")]
+[assembly: AssemblyFileVersion("0.3.5.0")]
 
 namespace YingXu.Desktop
 {
@@ -166,6 +166,12 @@ namespace YingXu.Desktop
         private bool pageFailed;
         private bool exitUnresponsive;
         private readonly Func<bool> confirmUnavailableExit;
+        private CaptureCoordinator capture;
+        private CaptureHotkey captureHotkey;
+        private bool captureEnabled;
+        private string captureShortcut = CaptureHotkey.Default;
+        private int settingsRevision;
+        private bool showAfterCapture;
 
         internal StudioWindow(bool initialize = true, Func<bool> failedExitConfirmation = null)
         {
@@ -202,6 +208,8 @@ namespace YingXu.Desktop
             if (Program.InitialFiles != null && Program.InitialFiles.Length != 0) pendingFiles.Enqueue(Program.InitialFiles);
             // Create the window handle before receiving requests from other instances.
             IntPtr initializedHandle = Handle;
+            captureHotkey = new CaptureHotkey();
+            capture = new CaptureCoordinator(PostCapture,CaptureNotice);
             inbox = new OpenInbox(Program.InstanceKey,delegate(string[] paths)
             {
                 if (IsDisposed || closing.IsCancellationRequested) throw new IOException("映序正在退出，请重新打开。");
@@ -226,10 +234,60 @@ namespace YingXu.Desktop
                 DwmSetWindowAttribute(Handle, 35, ref caption, sizeof(int));
             }
             catch (DllNotFoundException) { }
+            if (captureHotkey != null) ApplyCaptureHotkey();
+        }
+
+        protected override void OnHandleDestroyed(EventArgs e)
+        {
+            if (captureHotkey != null) captureHotkey.Dispose();
+            base.OnHandleDestroyed(e);
+        }
+        protected override void WndProc(ref Message message)
+        {
+            if (message.Msg == CaptureHotkey.Message && message.WParam.ToInt32() == CaptureHotkey.Id && captureHotkey != null && captureHotkey.Registered)
+            { StartCapture(); return; }
+            base.WndProc(ref message);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) { if (capture != null) capture.Dispose(); if (captureHotkey != null) captureHotkey.Dispose(); }
+            base.Dispose(disposing);
+        }
+        private bool PostCapture(object message)
+        {
+            if (!pageReady || web == null || web.IsDisposed || closing.IsCancellationRequested) return false;
+            Post(message); return pageReady;
+        }
+        private void CaptureNotice(string message,bool error)
+        {
+            if (IsDisposed || closing.IsCancellationRequested) return;
+            status.Text=message;
+            if (Visible) { if(pageReady) Post(new {action="desktop-notice",message=message,error=error}); }
+            else tray.ShowBalloonTip(3500,"映序 · 截图",message,error ? ToolTipIcon.Warning : ToolTipIcon.Info);
+        }
+        private void ApplyCaptureHotkey()
+        {
+            if (!IsHandleCreated || captureHotkey==null) return;
+            string error=captureHotkey.Configure(Handle,captureEnabled,captureShortcut);
+            if(error!=null) CaptureNotice(error,true);
+        }
+        private async void StartCapture()
+        {
+            if (capture==null || capture.Busy || closing.IsCancellationRequested || exitRequest!=null || exitApproved || draggingFile || openingFiles) return;
+            try { await capture.StartAsync(); }
+            finally
+            {
+                if (!IsDisposed && !closing.IsCancellationRequested)
+                {
+                    if (showAfterCapture) { showAfterCapture=false; BringToUser(); }
+                    FlushSettings(); DrainFiles();
+                }
+            }
         }
 
         private void BringToUser()
         {
+            if (capture != null && capture.Busy) { showAfterCapture=true; return; }
             if (WindowState == FormWindowState.Minimized) WindowState = FormWindowState.Normal;
             Show();
             Activate();
@@ -253,18 +311,28 @@ namespace YingXu.Desktop
 
         private async void ReloadSettings()
         {
-            try { closeToTray = await Task.Run(() => DesktopApi.CloseToTray()); }
+            int revision=++settingsRevision;
+            try
+            {
+                var settings=await Task.Run(() => DesktopApi.Request("/api/settings"));
+                if(revision!=settingsRevision || IsDisposed || closing.IsCancellationRequested) return;
+                object value;
+                closeToTray=!settings.TryGetValue("close_to_tray",out value) || !(value is bool) || (bool)value;
+                captureEnabled=!settings.TryGetValue("capture_enabled",out value) || !(value is bool) || (bool)value;
+                captureShortcut=settings.TryGetValue("capture_hotkey",out value) && value is string ? (string)value : CaptureHotkey.Default;
+                ApplyCaptureHotkey();
+            }
             catch (Exception error) { Hub.Log("desktop_settings_error " + error.GetType().Name); }
         }
 
         private void FlushSettings()
         {
-            if (pageReady && settingsPending) { settingsPending = false; Post(new { action = "open-settings" }); }
+            if (pageReady && settingsPending && (capture==null || !capture.Busy)) { settingsPending = false; Post(new { action = "open-settings" }); }
         }
 
         private async void DrainFiles()
         {
-            if (!pageReady || openingFiles || closing.IsCancellationRequested) return;
+            if (!pageReady || openingFiles || closing.IsCancellationRequested || (capture!=null && capture.Busy)) return;
             openingFiles = true;
             try
             {
@@ -296,6 +364,7 @@ namespace YingXu.Desktop
 
         private void RequestExit()
         {
+            if (capture!=null && capture.Busy) { CaptureNotice("截图正在处理，请先完成选区或按 Esc 取消，再退出映序。",true); return; }
             if (exitRequest != null || exitApproved) return;
             BringToUser();
             if (pageFailed || exitUnresponsive)
@@ -325,7 +394,9 @@ namespace YingXu.Desktop
             catch { return false; }
             object value; if (message == null || !message.TryGetValue("action",out value) || !(value is string)) return false;
             string action = (string)value;
-            if (action == "desktop-ready") { pageReady = true; pageFailed = false; exitUnresponsive = false; ReloadSettings(); FlushSettings(); DrainFiles(); return true; }
+            if (action == "desktop-ready") { pageReady = true; pageFailed = false; exitUnresponsive = false; ReloadSettings(); if(capture!=null)capture.Flush(); FlushSettings(); DrainFiles(); return true; }
+            if (action == "capture-request" && message.Count==1) { BeginInvoke((Action)StartCapture); return true; }
+            if (action == "capture-context") { if(capture!=null)capture.Receive(message); return true; }
             if (action == "settings-changed") { ReloadSettings(); return true; }
             if (action == "choose-external-files") { BeginInvoke((Action)ChooseFiles); return true; }
             if (action == "register-open-with" || action == "unregister-open-with")
@@ -578,6 +649,7 @@ namespace YingXu.Desktop
         {
             base.OnFormClosing(e);
             if (e.Cancel) return;
+            if (capture!=null && capture.Busy) { e.Cancel=true; CaptureNotice("截图正在处理，请先完成或取消截图。",true); return; }
             if (!exitApproved)
             {
                 e.Cancel = true;

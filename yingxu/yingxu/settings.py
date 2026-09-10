@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 import threading
 
@@ -15,6 +16,8 @@ DEFAULTS = {
     'default_view': 'grid',
     'default_sort': 'updated',
     'autoplay_media': False,
+    'capture_enabled': True,
+    'capture_hotkey': 'Ctrl+Alt+Shift+S',
 }
 OPTIONS = {'default_view': {'grid','list','board'}, 'default_sort': {'updated','name','order'}}
 
@@ -30,7 +33,14 @@ class Settings:
         if not isinstance(values, dict) or any(key not in DEFAULTS for key in values):
             raise UserError('设置中包含未知字段。')
         for key,value in values.items():
-            if key in OPTIONS:
+            if key == 'capture_hotkey':
+                parts = value.split('+') if isinstance(value, str) else []
+                modifiers = parts[:-1]
+                if (not 2 <= len(modifiers) <= 3 or len(set(modifiers)) != len(modifiers)
+                        or any(part not in ('Ctrl', 'Alt', 'Shift') for part in modifiers)
+                        or not re.fullmatch(r'[A-Z0-9]|F(?:[1-9]|10|11|1[3-9]|2[0-4])', parts[-1])):
+                    raise UserError('截图快捷键需要至少两个 Ctrl/Alt/Shift 修饰键和字母、数字或功能键；不支持 Windows 键和 F12。')
+            elif key in OPTIONS:
                 if not isinstance(value,str) or value not in OPTIONS[key]:
                     raise UserError('设置选项无效：'+key)
             elif type(value) is not bool:

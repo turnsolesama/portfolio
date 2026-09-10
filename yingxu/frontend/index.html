@@ -14,6 +14,11 @@
   <script src="/project-library.js" defer></script>
   <link rel="stylesheet" href="/global-search.css">
   <script src="/global-search.js" defer></script>
+  <link rel="stylesheet" href="/resource-groups.css">
+  <script src="/resource-groups.js" defer></script>
+  <script src="/capture.js" defer></script>
+  <link rel="stylesheet" href="/marquee.css">
+  <script src="/marquee.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -42,6 +47,7 @@
         <div class="topbar-right">
           <div class="search-wrap"><span id="searchIcon"></span><input id="searchInput" type="search" placeholder="搜索素材、剧本、标签…" aria-label="搜索素材、剧本、标签" autocomplete="off"><kbd>Ctrl F</kbd><button id="advancedSearch" class="icon-button" title="高级检索" aria-label="高级检索"></button></div>
           <button id="globalSearchButton" type="button" class="icon-button global-search-trigger" data-action="global-search" title="全局搜索（Ctrl K）" aria-label="全局搜索"></button>
+          <button id="captureButton" type="button" class="icon-button" data-action="capture-screen" title="截图到当前项目" aria-label="截图到项目"></button>
           <button id="importButton" class="button button-secondary"><span id="importIcon"></span><span>导入</span></button>
           <button id="newItemButton" class="button button-primary"><span id="newItemIcon"></span><span>新建</span></button>
           <div class="topbar-utilities" role="group" aria-label="设置与帮助">

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -85,6 +87,43 @@ namespace YingXu.Desktop
                 Application.DoEvents();
                 Check(window.IsDisposed,"approved exit disposes the window");
                 Check(!tray.Visible,"approved exit removes tray icon");
+            }
+            using (var capturing = new StudioWindow(false))
+            {
+                string contextRequest=null; int selections=0,registrations=0,unregisters=0;
+                var fake=new CaptureCoordinator(message => {
+                    var map=new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(new JavaScriptSerializer().Serialize(message));
+                    if((string)map["action"]=="capture-context-request")contextRequest=(string)map["requestId"];
+                    return true;
+                },(text,error)=>{},new CaptureServices {
+                    ScreenBounds=()=>new Rectangle(-100,0,64,32),Select=bounds=>{selections++;return null;},
+                    Copy=image=>{throw new Exception("Synthetic cancellation must never touch clipboard");},
+                    Upload=(image,project)=>{throw new Exception("Synthetic cancellation must never upload");}
+                });
+                ((CaptureCoordinator)Field(capturing,"capture")).Dispose(); Field(capturing,"capture",fake);
+                ((CaptureHotkey)Field(capturing,"captureHotkey")).Dispose();
+                var keys=new CaptureHotkey((h,id,m,k)=>{registrations++;return true;},(h,id)=>unregisters++);
+                Field(capturing,"captureHotkey",keys); Field(capturing,"captureEnabled",true);
+                Call(capturing,"ApplyCaptureHotkey"); Call(capturing,"ApplyCaptureHotkey");
+                Check(registrations==1,"window settings register one event hotkey without polling");
+                Field(capturing,"captureEnabled",false); Call(capturing,"ApplyCaptureHotkey");
+                Check(unregisters==1&&!keys.Registered,"turning background capture off unregisters global hotkey");
+                var json=new JavaScriptSerializer();
+                Check(!(bool)Call(capturing,"ReceiveDesktopRequest","https://example.com",json.Serialize(new{action="capture-request"})),"untrusted page cannot initiate capture");
+                Call(capturing,"ReceiveDesktopRequest",Hub.Url,json.Serialize(new{action="capture-request"})); Application.DoEvents();
+                Check(fake.Busy&&contextRequest!=null,"manual capture works while background hotkey is disabled");
+                capturing.Close(); Application.DoEvents();
+                Check(!capturing.IsDisposed&&fake.Busy,"titlebar close cannot dispose an active capture");
+                Call(capturing,"RequestExit");
+                Check(Field(capturing,"exitRequest")==null&&!capturing.IsDisposed,"exit during capture preserves editor and waits for completion");
+                Call(capturing,"BringToUser");
+                Check(!capturing.Visible&&(bool)Field(capturing,"showAfterCapture"),"explicit activation is deferred until capture completes");
+                string response=json.Serialize(new{action="capture-context",requestId=contextRequest,projectId=(string)null,itemId=(string)null});
+                Call(capturing,"ReceiveDesktopRequest","https://example.com",response);
+                Check(selections==0&&fake.Busy,"untrusted context cannot complete the screenshot handshake");
+                Call(capturing,"ReceiveDesktopRequest",Hub.Url,response); Application.DoEvents();
+                Check(selections==1&&!fake.Busy&&capturing.Visible,"trusted cancellation releases busy state and honors deferred activation");
+                Field(capturing,"exitApproved",true); capturing.Close(); Application.DoEvents();
             }
             bool approved = false;
             using (var failed = new StudioWindow(false,() => approved))

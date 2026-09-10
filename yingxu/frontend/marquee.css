@@ -1,0 +1,3 @@
+.resource-viewport.yx-marquee-active,.resource-viewport.yx-marquee-active *{user-select:none!important;cursor:crosshair!important}
+.yx-marquee-box{position:fixed;z-index:45;pointer-events:none;box-sizing:border-box;border:1px solid #6f9279;background:#87ad9724;border-radius:2px;contain:strict}
+@media(prefers-reduced-motion:reduce){.yx-marquee-box{animation:none;transition:none}}
