@@ -11,7 +11,7 @@ class SkillTrashTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        root = Path(self.temp.name)
+        root = Path(self.temp.name).resolve()
         self.patch = patch('yingxu.skills.Path.home', return_value=root / 'home')
         self.patch.start()
         self.addCleanup(self.patch.stop)

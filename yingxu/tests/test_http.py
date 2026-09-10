@@ -11,7 +11,7 @@ from server import Application,Server
 class HttpTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(prefix='yingxu-http-')
-        self.root=Path(self.tmp.name)
+        self.root=Path(self.tmp.name).resolve()
         # Use empty external skill roots, never inspect real skill contents in tests.
         from unittest.mock import patch
         with patch('yingxu.skills.Path.home',return_value=self.root/'home'):

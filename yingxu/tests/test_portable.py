@@ -12,7 +12,7 @@ from yingxu.paths import default_data_root, default_project_root, instance_id
 class PortablePathsTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='yingxu-portable-')
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.env = patch.dict(os.environ, {
             'YINGXU_DATA_DIR': '', 'YINGXU_PROJECTS_DIR': '',
             'LOCALAPPDATA': str(self.root / 'Local'),

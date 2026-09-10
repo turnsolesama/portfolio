@@ -2,7 +2,7 @@ name: YingXu portable release
 on:
   push:
     branches: [main]
-    paths: [yingxu/tools/runtime-lock.json]
+    paths: [yingxu/tools/runtime-lock.json, .github/workflows/yingxu-portable.yml]
   workflow_dispatch:
 permissions:
   contents: write

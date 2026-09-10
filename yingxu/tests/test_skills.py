@@ -12,7 +12,7 @@ class SkillLibraryTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         self.home = self.root / "home"
         self.home.mkdir()
         self.home_patch = patch("yingxu.skills.Path.home", return_value=self.home)

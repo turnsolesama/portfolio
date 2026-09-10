@@ -12,7 +12,7 @@ SPEC.loader.exec_module(PACKAGER)
 class ReleaseAllowlistTests(unittest.TestCase):
     def test_unknown_data_and_logs_are_not_collected(self):
         with tempfile.TemporaryDirectory(prefix='yingxu-package-test-') as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             for name in ('README.md', 'private.sqlite3', 'server.log', 'settings.json'):
                 (root / name).write_text('synthetic bytes', encoding='utf-8')
             with patch.object(PACKAGER, 'ROOT', root), patch.object(PACKAGER, 'FIXED', ('README.md',)), patch.object(PACKAGER, 'PATTERNS', ()):
@@ -20,7 +20,7 @@ class ReleaseAllowlistTests(unittest.TestCase):
 
     def test_personal_profile_paths_block_publication(self):
         with tempfile.TemporaryDirectory(prefix='yingxu-package-test-') as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             private_path = 'C:' + '/Users/' + 'example-person/Documents/private.txt'
             (root / 'README.md').write_text(private_path, encoding='utf-8')
             with patch.object(PACKAGER, 'ROOT', root), patch.object(PACKAGER, 'FIXED', ('README.md',)), patch.object(PACKAGER, 'PATTERNS', ()):
@@ -29,13 +29,13 @@ class ReleaseAllowlistTests(unittest.TestCase):
 
     def test_missing_required_member_blocks_publication(self):
         with tempfile.TemporaryDirectory(prefix='yingxu-package-test-') as temporary:
-            with patch.object(PACKAGER, 'ROOT', Path(temporary)), patch.object(PACKAGER, 'FIXED', ('YingXu.exe',)), patch.object(PACKAGER, 'PATTERNS', ()):
+            with patch.object(PACKAGER, 'ROOT', Path(temporary).resolve()), patch.object(PACKAGER, 'FIXED', ('YingXu.exe',)), patch.object(PACKAGER, 'PATTERNS', ()):
                 with self.assertRaises(ValueError):
                     list(PACKAGER.files_to_package())
 
     def test_utf16_windows_launcher_is_checked_without_changing_bytes(self):
         with tempfile.TemporaryDirectory(prefix='yingxu-package-test-') as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             path = root / 'start.vbs'
             raw = 'MsgBox "映序"'.encode('utf-16')
             path.write_bytes(raw)

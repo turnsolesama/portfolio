@@ -13,7 +13,7 @@ from yingxu.jobs import Jobs
 class OrganizeTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-        self.base=Path(self.temp.name)
+        self.base=Path(self.temp.name).resolve()
         self.store=Store(self.base/'data',self.base/'projects')
         self.project=self.store.create_project('整理测试')
         self.org=Organize(self.store)

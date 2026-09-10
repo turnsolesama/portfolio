@@ -11,9 +11,23 @@ from yingxu import __version__, runtime
 
 
 class RuntimeTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows short paths')
+    def test_short_path_is_normalized_at_import_boundary(self):
+        import ctypes
+        from yingxu.store import clean_path
+        from yingxu.paths import default_data_root
+        with tempfile.TemporaryDirectory(prefix='yingxu-long-path-fixture-') as temporary:
+            root = Path(temporary).resolve()
+            buffer = ctypes.create_unicode_buffer(32768)
+            length = ctypes.windll.kernel32.GetShortPathNameW(str(root), buffer, len(buffer))
+            self.assertGreater(length, 0)
+            self.assertEqual(clean_path(buffer.value), root)
+            with patch.dict(os.environ, {'YINGXU_DATA_DIR': buffer.value}):
+                self.assertEqual(default_data_root(), root)
+
     def test_bundled_ffmpeg_without_path(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             exe = root / 'runtime/ffmpeg/bin/ffmpeg.exe'
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b'fixture only')
@@ -22,7 +36,7 @@ class RuntimeTests(unittest.TestCase):
 
     def test_source_checkout_can_use_system_tool(self):
         with tempfile.TemporaryDirectory() as temporary:
-            with patch.object(runtime, 'APP_ROOT', Path(temporary)), patch.object(runtime.shutil, 'which', return_value='system-tool'):
+            with patch.object(runtime, 'APP_ROOT', Path(temporary).resolve()), patch.object(runtime.shutil, 'which', return_value='system-tool'):
                 self.assertEqual(runtime.ffmpeg_path(), 'system-tool')
 
     def test_missing_pillow_is_reported(self):

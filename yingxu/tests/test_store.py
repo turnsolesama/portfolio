@@ -14,7 +14,7 @@ from server import parse_range
 class StoreTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(prefix='yingxu-test-')
-        self.root=Path(self.tmp.name)
+        self.root=Path(self.tmp.name).resolve()
         self.store=Store(self.root/'data',self.root/'projects')
         self.project=self.store.create_project('合成测试项目','测试，不是真实创作资产')
         self.pid=self.project['id']

@@ -132,7 +132,7 @@ def main():
     args = parser.parse_args()
     checked = []
     with tempfile.TemporaryDirectory(prefix='yingxu-解压验收 空间-') as temporary:
-        base = Path(temporary)
+        base = Path(temporary).resolve()
         with zipfile.ZipFile(args.archive) as archive:
             assert archive.testzip() is None
             names = archive.namelist()

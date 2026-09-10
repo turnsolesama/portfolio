@@ -39,7 +39,7 @@ class ReviewRegressionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        self.root = Path(self.temp.name).resolve()
         # An ordinary importable directory contains the protected app-data tree.
         self.materials = self.root / "materials"
         self.store = Store(self.materials / "appdata", self.root / "projects")

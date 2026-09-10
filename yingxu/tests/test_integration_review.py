@@ -17,7 +17,7 @@ from yingxu.store import Store,UserError
 class IntegrationReviewTests(unittest.TestCase):
     def setUp(self):
         self.temp=TemporaryDirectory();self.addCleanup(self.temp.cleanup)
-        self.base=Path(self.temp.name)
+        self.base=Path(self.temp.name).resolve()
         self.store=Store(self.base/'data',self.base/'projects')
         self.project=self.store.create_project('上传导入竞态测试')
         self.org=Organize(self.store)

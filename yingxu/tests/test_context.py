@@ -19,7 +19,7 @@ class ContextTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='yingxu-context-test-')
         self.addCleanup(self.temp.cleanup)
-        base = Path(self.temp.name)
+        base = Path(self.temp.name).resolve()
         self.store = Store(base / 'data', base / 'projects')
         self.project = self.store.create_project('合成短片', '测试用本地项目')
         self.pid = self.project['id']

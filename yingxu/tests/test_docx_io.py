@@ -18,7 +18,7 @@ class DocxTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.path = Path(self.temp.name) / "中文剧本.docx"
+        self.path = Path(self.temp.name).resolve() / "中文剧本.docx"
 
     def make(self, body, extra=None, encoding="utf-8"):
         declaration = "UTF-8" if encoding == "utf-8" else "UTF-16"
@@ -39,7 +39,7 @@ class DocxTests(unittest.TestCase):
         return xml
 
     def read_saved(self, data):
-        target = Path(self.temp.name) / "保存.docx"
+        target = Path(self.temp.name).resolve() / "保存.docx"
         target.write_bytes(data)
         return docx_io.read_docx(target)
 
