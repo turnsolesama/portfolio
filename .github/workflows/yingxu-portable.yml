@@ -38,6 +38,7 @@ jobs:
         run: |
           # Synthetic fixtures use canonical paths, including Windows short TEMP paths.
           # Worker coalescing tests synchronize their bursts; runner disk speed must not change their assertions.
+          # Standalone headless DOM fixtures use installed Edge; fixed WebView2 is tested through its native host below.
           & ./runtime/python.exe -B -m unittest discover -s tests -v
           if ($LASTEXITCODE) { throw 'Backend tests failed' }
           node --check frontend/app.js

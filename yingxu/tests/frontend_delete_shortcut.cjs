@@ -94,7 +94,8 @@ test('failed deletion retains selection and unlocks a deliberate retry',async()=
 
 test('real Chromium DOM permits only the resource selection checkbox to route Delete',async t=>{
   const os=require('node:os'),{execFile}=require('node:child_process'),{promisify}=require('node:util'),{pathToFileURL}=require('node:url');
-  const browser=[process.env.YINGXU_TEST_BROWSER,path.resolve(__dirname,'../runtime/webview2/msedgewebview2.exe'),
+  // Standalone DOM fixtures use Edge, not the host-only fixed WebView2 runtime.
+  const browser=[process.env.YINGXU_TEST_BROWSER,
     'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(value=>value&&fs.existsSync(value));
   if(!browser){t.skip('An existing local Chromium browser is required; no download occurs');return;}
   const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'yingxu-delete-dom-'));

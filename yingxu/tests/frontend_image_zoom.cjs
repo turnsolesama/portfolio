@@ -2,7 +2,8 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {test}=require('node:test'),{execFile}=require('node:child_process'),{promisify}=require('node:util'),{pathToFileURL}=require('node:url');
 test('real Chromium reports image size, follows fit resize, and disconnects observers',async t=>{
-  const browser=[process.env.YINGXU_TEST_BROWSER,path.resolve(__dirname,'../runtime/webview2/msedgewebview2.exe'),'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(p=>p&&fs.existsSync(p));
+  // The fixed WebView2 runtime requires an embedding host; it is not an Edge CLI.
+  const browser=[process.env.YINGXU_TEST_BROWSER,'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(p=>p&&fs.existsSync(p));
   if(!browser){t.skip('Requires an existing Chromium browser; does not download');return;}
   const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'yingxu-image-zoom-'));
   t.after(()=>{const resolved=path.resolve(temporary);assert.ok(resolved.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(resolved).startsWith('yingxu-image-zoom-'));fs.rmSync(resolved,{recursive:true,force:true,maxRetries:10,retryDelay:100});});
