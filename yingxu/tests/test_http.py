@@ -41,6 +41,62 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(self.request('POST','/api/projects',{'name':'blocked'},headers={'X-YingXu-Token':''})[0],403)
         self.assertEqual(self.app.store.list_projects(),[])
 
+    def test_settings_routes_validate_and_external_preview_ranges_never_create_project(self):
+        self.assertTrue(json.loads(self.request('GET','/api/settings')[1])['close_to_tray'])
+        self.assertEqual(self.request('PATCH','/api/settings',{'close_to_tray':False},headers={'X-YingXu-Token':''})[0],403)
+        status,raw,_=self.request('PATCH','/api/settings',{'close_to_tray':False,'confirm_delete':False})
+        self.assertEqual(status,200,raw); self.assertFalse(json.loads(raw)['close_to_tray'])
+        self.assertFalse(json.loads(self.request('GET','/api/bootstrap')[1])['settings']['confirm_delete'])
+        self.assertEqual(self.request('PATCH','/api/settings',{'unknown':1})[0],400)
+        path=self.root/'outside.mp4'; path.write_bytes(b'0123456789')
+        self.assertEqual(self.request('POST','/api/external-open',{'paths':[str(path)]},headers={'X-YingXu-Token':''})[0],403)
+        status,raw,_=self.request('POST','/api/external-open',{'paths':[str(path)]})
+        self.assertEqual(status,200,raw); entry=json.loads(raw)['entries'][0]
+        status,raw,headers=self.request('GET',entry['media_url'],headers={'Range':'bytes=2-5'})
+        self.assertEqual((status,raw),(206,b'2345')); self.assertEqual(headers['Content-Range'],'bytes 2-5/10')
+        self.assertEqual(self.request('GET',entry['media_url'],headers={'Range':'bytes=50-'})[0],416)
+        self.assertEqual(self.request('GET',entry['content_url']+'?path='+str(path))[0],400)
+        self.assertFalse(json.loads(self.request('GET',entry['content_url'])[1])['content']['editable'])
+        self.assertEqual(self.request('PUT',entry['content_url'],{'content':'write'})[0],404)
+        self.assertEqual(path.read_bytes(),b'0123456789'); self.assertEqual(self.app.store.list_projects(),[])
+
+    def test_project_library_routes_only_change_logical_organisation(self):
+        project=self.app.store.create_project('归类合成项目'); root=Path(project['root'])
+        before=sorted(str(path.relative_to(root)) for path in root.rglob('*'))
+        self.assertTrue(self.app.bootstrap()['capabilities']['project_library'])
+        self.assertEqual(self.request('POST','/api/project-folders',{'name':'分类'},headers={'X-YingXu-Token':''})[0],403)
+        status,raw,_=self.request('POST','/api/project-folders',{'name':'分类'})
+        self.assertEqual(status,201,raw); folder=json.loads(raw)
+        status,raw,_=self.request('PATCH','/api/project-folders/'+folder['id'],{'name':'新分类'})
+        self.assertEqual(status,200,raw); self.assertEqual(json.loads(raw)['name'],'新分类')
+        self.assertEqual(self.request('PATCH','/api/project-library/'+project['id'],{'folder_id':folder['id']})[0],200)
+        self.assertEqual(self.request('POST','/api/project-library/'+project['id']+'/visit',{})[0],200)
+        snapshot=json.loads(self.request('GET','/api/project-library')[1])
+        self.assertEqual(snapshot['projects'][0]['folder_id'],folder['id']); self.assertEqual(snapshot['recent_ids'],[project['id']])
+        self.assertEqual(self.request('DELETE','/api/project-folders/'+folder['id'],{})[0],409)
+        self.assertEqual(self.request('PATCH','/api/project-library/'+project['id'],{'folder_id':None})[0],200)
+        self.assertEqual(self.request('DELETE','/api/project-folders/'+folder['id'],{})[0],200)
+        self.assertEqual(sorted(str(path.relative_to(root)) for path in root.rglob('*')),before)
+
+    def test_trash_delete_requires_preview_token_and_exposes_recycle_capability(self):
+        from unittest.mock import patch
+        project=self.app.store.create_project('HTTP回收合成项目')
+        item=self.app.store.create_item({'project_id':project['id'],'name':'合成正文','content':'test'})
+        batch=self.app.organize.delete_items([item['id']])
+        self.assertTrue(self.app.bootstrap()['capabilities']['trash_delete'])
+        body={'entries':[{'id':batch['id'],'kind':'items'}]}
+        self.assertEqual(self.request('POST','/api/trash/delete-preview',body,headers={'X-YingXu-Token':''})[0],403)
+        self.assertEqual(self.request('POST','/api/trash/delete',{'token':'invalid'})[0],409)
+        status,raw,_=self.request('POST','/api/trash/delete-preview',body)
+        self.assertEqual(status,200,raw); preview=json.loads(raw)
+        self.assertEqual(preview['paths'],[item['path']])
+        target=self.root/'mock-recycled.md'
+        with patch('yingxu.trash.recycle_path',side_effect=lambda path: Path(path).rename(target)):
+            status,raw,_=self.request('POST','/api/trash/delete',{'token':preview['token']})
+        self.assertEqual(status,200,raw); self.assertEqual(json.loads(raw)['deleted'],1)
+        self.assertTrue(target.exists()); self.assertEqual(json.loads(self.request('GET','/api/trash')[1])['total'],0)
+        self.assertEqual(self.request('POST','/api/trash/'+batch['id']+'/restore',{})[0],409)
+
     def test_upload_range_read_and_rename_keep_file_bytes(self):
         project=json.loads(self.request('POST','/api/projects',{'name':'HTTP项目'})[1]);pid=project['id']
         payload=b'0123456789'*1000

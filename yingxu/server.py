@@ -1,6 +1,7 @@
 """映序 local HTTP application. No external services, package installs or telemetry."""
 from __future__ import annotations
 import argparse
+from contextlib import nullcontext
 import json
 import mimetypes
 import os
@@ -40,12 +41,20 @@ class Application:
         self.context=ContextExporter(self.store,self.skills)
         self.jobs=Jobs(self.store,self.context.request)
         self.thumbnails=Thumbnails(self.store)
+        from yingxu.trash import TrashDeletion
+        self.trash_deletion=TrashDeletion(self.store,self.skills)
+        from yingxu.settings import Settings
+        from yingxu.external import ExternalPreviews
+        from yingxu.project_library import ProjectLibrary
+        self.settings=Settings(self.store.data_root)
+        self.external=ExternalPreviews(self.store.data_root)
+        self.project_library=ProjectLibrary(self.store)
 
     def bootstrap(self):
-        return {'app':'yingxu','version':__version__,'token':self.token,
+        return {'app':'yingxu','version':__version__,'token':self.token,'settings':self.settings.get(),
           'project_root':str(self.store.project_root),'data_root':str(self.store.data_root),
           'categories':[{'key':k,'label':v[0]} for k,v in CATEGORIES.items()], 'statuses':STATUSES,
-          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True}}
+          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True}}
 
     def changed(self,project_id=None):
         with self.store.connection() as db:
@@ -55,13 +64,13 @@ class Application:
 
     def trash(self,project_id='',limit=48,offset=0,q=''):
         limit=max(1,min(200,int(limit)));offset=max(0,min(10_000_000,int(offset)))
-        where='b.restored=0';args=[]
+        where='b.restored=0 AND b.purged=0';args=[]
         if project_id:where+=' AND b.project_id=?';args.append(project_id)
         union='''SELECT b.id,b.id AS batch_id,b.kind,b.target_id,b.project_id,b.name,b.created,
             (SELECT count(*) FROM trash_members m WHERE m.batch_id=b.id) AS count,
             NULL AS source,NULL AS editable,NULL AS path FROM trash_batches b WHERE '''+where+'''
             UNION ALL SELECT id,id,'skill',id,NULL,name,removed_at,1,source,editable,path
-            FROM yx_skills WHERE removed=1'''
+            FROM yx_skills WHERE removed=1 AND purged=0'''
         q=str(q).strip()
         if len(q)>1000:raise UserError('搜索内容过长。')
         filtered=' FROM ('+union+')'
@@ -250,8 +259,8 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if self.command!='HEAD':self.wfile.write(raw)
 
-    def file(self,path,media=False,immutable=False):
-        path=Path(path);length=path.stat().st_size
+    def file(self,path,media=False,immutable=False,opened=None):
+        path=Path(path);length=os.fstat(opened.fileno()).st_size if opened is not None else path.stat().st_size
         try:start,end,partial=parse_range(self.headers.get('Range') if media else None,length)
         except UserError as e:
             self.json({'error':str(e)},416,{'Content-Range':f'bytes */{length}'});return
@@ -267,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
         if mime=='application/octet-stream':self.send_header('Content-Disposition','attachment')
         self.end_headers()
         if self.command=='HEAD':return
-        with path.open('rb') as f:
+        with (nullcontext(opened) if opened is not None else path.open('rb')) as f:
             f.seek(start);remaining=end-start+1
             while remaining>0:
                 chunk=f.read(min(128*1024,remaining))
@@ -282,12 +291,20 @@ class Handler(BaseHTTPRequestHandler):
             if self.command in ('GET','HEAD'):
                 if path=='/api/health':return self.json({'app':'yingxu','ok':True,'version':__version__,'instance_id':instance_id(self.app.store.data_root)})
                 if path=='/api/bootstrap':return self.json(self.app.bootstrap())
+                if path=='/api/settings':return self.json(self.app.settings.get())
+                if path=='/api/project-library':return self.json(self.app.project_library.snapshot())
                 if path=='/api/projects':return self.json({'projects':self.app.store.list_projects()})
                 if path=='/api/items':return self.json(self.app.store.list_items(query.get('project',''),**{k:query[k] for k in ('category','q','status','kind','limit','offset','sort','folder') if k in query}))
                 if path=='/api/folders':return self.json(self.app.organize.folders(query.get('project',''),query.get('category','')))
                 if path=='/api/trash':return self.json(self.app.trash(query.get('project',''),query.get('limit',48),query.get('offset',0),query.get('q','')))
                 if path=='/api/skills':return self.json(self.app.skills.list(query.get('q',''),query.get('project','')))
                 if path=='/api/context':return self.json(self.app.context.get(query.get('project','')))
+                external=re.fullmatch(r'/api/(external|external-media)/([a-f0-9]{32})',path)
+                if external:
+                    if query:raise UserError('外部预览仅接受已登记的文件 ID。')
+                    if external[1]=='external':return self.json(self.app.external.detail(external[2]))
+                    with self.app.external.open_media(external[2]) as opened:
+                        return self.file(opened.name,media=True,opened=opened)
                 native=re.fullmatch(r'/api/native-file/([a-f0-9]{32})',path)
                 if native:return self.json({'path':str(self.app.store.resolve_item_path(self.app.store.get_item(native[1])))})
                 match=re.fullmatch(r'/api/(items|content|media|thumbnail|jobs|skills)/([a-f0-9]{32})',path)
@@ -309,7 +326,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.file(static)
             if self.command=='POST' and path=='/api/upload':return self.json(self.app.receive_upload(self,query),201)
             data=self.body()
+            if self.command=='PATCH' and path=='/api/settings':return self.json(self.app.settings.update(data))
+            library_folder=re.fullmatch(r'/api/project-folders/([a-f0-9]{32})',path)
+            if library_folder:
+                if self.command=='PATCH':return self.json(self.app.project_library.update_folder(library_folder[1],data))
+                if self.command=='DELETE':return self.json(self.app.project_library.delete_folder(library_folder[1]))
+            library_project=re.fullmatch(r'/api/project-library/([a-f0-9]{32})(/visit)?',path)
+            if library_project:
+                if self.command=='POST' and library_project[2]:return self.json(self.app.project_library.visit(library_project[1]))
+                if self.command=='PATCH' and not library_project[2]:return self.json(self.app.project_library.assign_project(library_project[1],data))
             if self.command=='POST':
+                if path=='/api/project-folders':return self.json(self.app.project_library.create_folder(data),201)
+                if path=='/api/external-open':return self.json(self.app.external.open(data))
                 if path=='/api/projects':
                     project=self.app.store.create_project(data.get('name',''),data.get('description',''));self.app.context.request(project['id']);return self.json(project,201)
                 if path=='/api/items':
@@ -335,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
                     result=self.app.skills.bind(data.get('project_id'),data.get('skill_id'),bool(data.get('bound')));self.app.context.request(data.get('project_id'));return self.json(result)
                 if path=='/api/context/refresh':return self.json(self.app.context.export(data.get('project_id')))
                 if path=='/api/backup':return self.json({'path':str(self.app.store.backup_database())})
+                if path=='/api/trash/delete-preview':return self.json(self.app.trash_deletion.preview(data))
+                if path=='/api/trash/delete':
+                    result=self.app.trash_deletion.delete(data);self.app.changed();return self.json(result)
                 if path=='/api/folders':
                     result=self.app.organize.create_folder(data.get('project_id'),data.get('category'),data.get('name',''),data.get('parent_id'))
                     self.app.changed(result['project_id']);return self.json(result,201)

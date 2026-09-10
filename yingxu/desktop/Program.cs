@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -17,8 +18,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.3.0.0")]
-[assembly: AssemblyFileVersion("0.3.0.0")]
+[assembly: AssemblyVersion("0.3.1.0")]
+[assembly: AssemblyFileVersion("0.3.1.0")]
 
 namespace YingXu.Desktop
 {
@@ -26,6 +27,8 @@ namespace YingXu.Desktop
     {
         internal static EventWaitHandle ActivateEvent;
         internal static string LoaderFolder;
+        internal static string InstanceKey;
+        internal static string[] InitialFiles;
 
         [STAThread]
         private static int Main(string[] args)
@@ -34,14 +37,20 @@ namespace YingXu.Desktop
             Application.SetCompatibleTextRenderingDefault(false);
             try
             {
-                if (args.Length != 0 && !(args.Length == 2 && args[0] == "--root"))
-                    throw new ArgumentException("支持的参数：YingXu.exe --root <映序程序目录>");
-                Hub.Root = Hub.NormalizeRoot(args.Length == 2 ? args[1] : AppDomain.CurrentDomain.BaseDirectory);
+                var launch = LaunchOptions.Parse(args, AppDomain.CurrentDomain.BaseDirectory);
+                Hub.Root = Hub.NormalizeRoot(launch.Root);
                 if (!Hub.IsAppRoot(Hub.Root))
                     throw new DirectoryNotFoundException("请把 YingXu.exe 放在映序程序文件夹内，与 server.py、launcher.pyw 和 frontend 同级。桌面请使用快捷方式。");
+                if (launch.Registration != null)
+                {
+                    MessageBox.Show(OpenWithRegistration.Change(launch.Registration == "--register-open-with"), "映序", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return 0;
+                }
+                InitialFiles = launch.Paths;
                 Hub.Port = 8791;
                 Hub.Url = "http://127.0.0.1:" + Hub.Port + "/";
                 string id = Hub.Identity((Hub.Root + "|" + Hub.Data).ToUpperInvariant()).Substring(0, 24);
+                InstanceKey = id;
                 // Keep the desktop profile with this installation. Packaged launchers
                 // can virtualize LocalAppData, producing a different profile from Explorer.
                 Hub.Cache = Path.Combine(Hub.Data, "desktop");
@@ -51,7 +60,12 @@ namespace YingXu.Desktop
                 {
                     bool owner;
                     try { owner = mutex.WaitOne(0); } catch (AbandonedMutexException) { owner = true; }
-                    if (!owner) { ActivateEvent.Set(); Hub.Log("desktop_reused"); return 0; }
+                    if (!owner)
+                    {
+                        ActivateEvent.Set();
+                        if (InitialFiles.Length != 0) OpenInbox.Send(id,InitialFiles);
+                        Hub.Log("desktop_reused"); return 0;
+                    }
                     try
                     {
                         SetCurrentProcessExplicitAppUserModelID("YingXu.Desktop");
@@ -139,9 +153,25 @@ namespace YingXu.Desktop
         private bool nativeDragReleased;
         private string preparedDragKey;
         private Task<string[]> preparedDragPaths;
+        private readonly NotifyIcon tray;
+        private readonly OpenInbox inbox;
+        private readonly Queue<string[]> pendingFiles = new Queue<string[]>();
+        private bool pageReady;
+        private bool closeToTray = true;
+        private bool exitApproved;
+        private bool settingsPending;
+        private string exitRequest;
+        private readonly System.Windows.Forms.Timer exitTimer;
+        private bool openingFiles;
+        private bool pageFailed;
+        private bool exitUnresponsive;
+        private readonly Func<bool> confirmUnavailableExit;
 
-        internal StudioWindow()
+        internal StudioWindow(bool initialize = true, Func<bool> failedExitConfirmation = null)
         {
+            confirmUnavailableExit = failedExitConfirmation ?? (() => MessageBox.Show(this,
+                "工作台页面已失去响应，无法完成页面保存。已落盘的草稿会保留，尚未保存的内容可能丢失。\n\n仍要退出映序吗？",
+                "映序 · 确认退出",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2) == DialogResult.Yes);
             Text = "映序 · 视频创作工作台";
             BackColor = Color.White;
             ForeColor = Color.FromArgb(40, 50, 45);
@@ -152,20 +182,37 @@ namespace YingXu.Desktop
             StartPosition = FormStartPosition.CenterScreen;
             using (var source = Assembly.GetExecutingAssembly().GetManifestResourceStream("brand.ico"))
                 Icon = new Icon(source);
+            var trayMenu = new ContextMenuStrip();
+            trayMenu.Items.Add("打开映序",null,delegate { BringToUser(); });
+            trayMenu.Items.Add("设置",null,delegate { BringToUser(); settingsPending = true; FlushSettings(); });
+            trayMenu.Items.Add(new ToolStripSeparator());
+            trayMenu.Items.Add("退出映序",null,delegate { RequestExit(); });
+            tray = new NotifyIcon { Icon = Icon, Text = "映序 · 本地创作工作台", ContextMenuStrip = trayMenu, Visible = true };
+            tray.DoubleClick += delegate { BringToUser(); };
+            exitTimer = new System.Windows.Forms.Timer { Interval = 120000 };
+            exitTimer.Tick += delegate { exitTimer.Stop(); exitRequest = null; exitUnresponsive = true; Notice("页面没有完成退出确认，窗口已保留。可再次选择退出，核对故障退出提示。",true); };
             loading = new Label { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
                 Text = "映序\n\n正在打开本地工作空间…", Font = new Font("Microsoft YaHei UI", 15F) };
             Controls.Add(loading);
             var bar = new StatusStrip { BackColor = Color.FromArgb(246, 247, 245), ForeColor = Color.FromArgb(104, 115, 108), SizingGrip = true };
-            status = new ToolStripStatusLabel("本地工作台 · 关闭窗口后，后台服务与导入任务继续运行") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
+            status = new ToolStripStatusLabel("本地工作台 · 关闭窗口默认保留在托盘，可从设置调整") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
             bar.Items.Add(status);
             Controls.Add(bar);
             RestoreWindow();
+            if (Program.InitialFiles != null && Program.InitialFiles.Length != 0) pendingFiles.Enqueue(Program.InitialFiles);
+            // Create the window handle before receiving requests from other instances.
+            IntPtr initializedHandle = Handle;
+            inbox = new OpenInbox(Program.InstanceKey,delegate(string[] paths)
+            {
+                if (IsDisposed || closing.IsCancellationRequested) throw new IOException("映序正在退出，请重新打开。");
+                BeginInvoke((Action)(() => { BringToUser(); if (paths.Length != 0) pendingFiles.Enqueue(paths); DrainFiles(); }));
+            });
             activation = ThreadPool.RegisterWaitForSingleObject(Program.ActivateEvent, delegate
             {
                 if (IsDisposed || !IsHandleCreated) return;
                 try { BeginInvoke((Action)BringToUser); } catch (InvalidOperationException) { }
             }, null, Timeout.Infinite, false);
-            Shown += async delegate { await InitializeAsync(); };
+            if (initialize) Shown += async delegate { await InitializeAsync(); };
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -187,6 +234,118 @@ namespace YingXu.Desktop
             Show();
             Activate();
             SetForegroundWindow(Handle);
+        }
+
+        private void Post(object message)
+        {
+            if (!pageReady || web == null || web.IsDisposed || closing.IsCancellationRequested) return;
+            try { web.CoreWebView2.PostWebMessageAsJson(new JavaScriptSerializer().Serialize(message)); }
+            catch (InvalidOperationException) { pageFailed = true; pageReady = false; }
+            catch (COMException) { pageFailed = true; pageReady = false; }
+        }
+
+        private void Notice(string message, bool error = false)
+        {
+            status.Text = message;
+            if (pageReady) Post(new { action = "desktop-notice", message = message, error = error });
+            else MessageBox.Show(this,message,"映序",MessageBoxButtons.OK,error ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
+        }
+
+        private async void ReloadSettings()
+        {
+            try { closeToTray = await Task.Run(() => DesktopApi.CloseToTray()); }
+            catch (Exception error) { Hub.Log("desktop_settings_error " + error.GetType().Name); }
+        }
+
+        private void FlushSettings()
+        {
+            if (pageReady && settingsPending) { settingsPending = false; Post(new { action = "open-settings" }); }
+        }
+
+        private async void DrainFiles()
+        {
+            if (!pageReady || openingFiles || closing.IsCancellationRequested) return;
+            openingFiles = true;
+            try
+            {
+                while (pendingFiles.Count != 0 && !closing.IsCancellationRequested)
+                {
+                    string[] paths = pendingFiles.Dequeue();
+                    try
+                    {
+                        object entries = await Task.Run(() => DesktopApi.OpenFiles(paths));
+                        if (!pageReady) { pendingFiles.Enqueue(paths); break; }
+                        Post(new { action = "external-open", entries = entries });
+                    }
+                    catch (Exception error) { Notice("文件未能打开：" + error.Message,true); }
+                }
+            }
+            finally { openingFiles = false; }
+        }
+
+        private void ChooseFiles()
+        {
+            using (var dialog = new OpenFileDialog { Title = "用映序只读打开文件", Multiselect = true,
+                Filter = "可预览文件|*.md;*.markdown;*.txt;*.json;*.csv;*.srt;*.vtt;*.docx;*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp;*.mp4;*.mov;*.webm;*.mkv;*.avi;*.m4v;*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac|所有文件|*.*" })
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                {
+                    if (dialog.FileNames.Length > 32) { Notice("一次最多打开 32 个文件。",true); return; }
+                    pendingFiles.Enqueue(dialog.FileNames); DrainFiles();
+                }
+        }
+
+        private void RequestExit()
+        {
+            if (exitRequest != null || exitApproved) return;
+            BringToUser();
+            if (pageFailed || exitUnresponsive)
+            {
+                if (!loaded || confirmUnavailableExit()) { exitApproved = true; Close(); }
+                return;
+            }
+            if (!pageReady)
+            {
+                // No loaded editor exists, so there cannot be an unsaved browser draft.
+                if (loaded)
+                {
+                    if (confirmUnavailableExit()) { exitApproved = true; Close(); }
+                    return;
+                }
+                exitApproved = true; Close(); return;
+            }
+            exitRequest = Guid.NewGuid().ToString("N"); exitTimer.Start();
+            Post(new { action = "prepare-exit", requestId = exitRequest });
+        }
+
+        private bool ReceiveDesktopRequest(string source, string json)
+        {
+            if (!Hub.IsLocalPage(source,Hub.Url) || String.IsNullOrEmpty(json) || json.Length > 4096) return false;
+            Dictionary<string,object> message;
+            try { message = new JavaScriptSerializer().Deserialize<Dictionary<string,object>>(json); }
+            catch { return false; }
+            object value; if (message == null || !message.TryGetValue("action",out value) || !(value is string)) return false;
+            string action = (string)value;
+            if (action == "desktop-ready") { pageReady = true; pageFailed = false; exitUnresponsive = false; ReloadSettings(); FlushSettings(); DrainFiles(); return true; }
+            if (action == "settings-changed") { ReloadSettings(); return true; }
+            if (action == "choose-external-files") { BeginInvoke((Action)ChooseFiles); return true; }
+            if (action == "register-open-with" || action == "unregister-open-with")
+            {
+                try { Notice(OpenWithRegistration.Change(action == "register-open-with")); }
+                catch (Exception error) { Notice(error.Message,true); }
+                return true;
+            }
+            if (action == "exit-response")
+            {
+                object request, allow;
+                if (message.TryGetValue("requestId",out request) && (request as string) == exitRequest && exitRequest != null &&
+                    message.TryGetValue("allow",out allow) && allow is bool)
+                {
+                    exitTimer.Stop(); exitRequest = null;
+                    if ((bool)allow) { exitApproved = true; BeginInvoke((Action)Close); }
+                }
+                return true;
+            }
+            return false;
         }
 
         private async Task InitializeAsync()
@@ -237,7 +396,7 @@ namespace YingXu.Desktop
                 await core.AddScriptToExecuteOnDocumentCreatedAsync("window.yingxuDesktopDrag = true;");
                 core.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e)
                 {
-                    if (Hub.IsLocalPage(e.Uri, Hub.Url)) return;
+                    if (Hub.IsLocalPage(e.Uri, Hub.Url)) { pageReady = false; return; }
                     e.Cancel = true;
                     status.Text = "已阻止打开外部地址；映序只显示本地创作工作台。";
                 };
@@ -292,6 +451,8 @@ namespace YingXu.Desktop
 
         private void ShowFailure(string message)
         {
+            pageFailed = true; pageReady = false;
+            exitTimer.Stop(); exitRequest = null;
             if (web != null) web.Visible = false;
             loading.Visible = true;
             loading.Text = "映序\n\n工作台未能打开\n\n请关闭窗口后重试。";
@@ -301,6 +462,7 @@ namespace YingXu.Desktop
 
         private async void ReceiveDragRequest(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            if (ReceiveDesktopRequest(e.Source,e.WebMessageAsJson)) return;
             string[] itemIds;
             if (draggingFile || closing.IsCancellationRequested || web == null ||
                 !Hub.IsLocalPage(web.CoreWebView2.Source, Hub.Url)) return;
@@ -416,8 +578,16 @@ namespace YingXu.Desktop
         {
             base.OnFormClosing(e);
             if (e.Cancel) return;
+            if (!exitApproved)
+            {
+                e.Cancel = true;
+                if (e.CloseReason == CloseReason.UserClosing && closeToTray && !pageFailed && !exitUnresponsive) { Hide(); return; }
+                RequestExit(); return;
+            }
             closing.Cancel();
             activation.Unregister(null);
+            inbox.Dispose(); exitTimer.Stop(); exitTimer.Dispose();
+            tray.Visible = false; tray.ContextMenuStrip.Dispose(); tray.Dispose();
             try
             {
                 Rectangle bounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;

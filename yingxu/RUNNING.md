@@ -1,4 +1,4 @@
-# 映序 0.3.0 · 运行与构建
+# 映序 0.3.1 · 运行与构建
 
 这是一个自带运行环境的 Windows x64 完整包。完整解压后双击 `YingXu.exe`，不需要自行安装 Python、Pillow、FFmpeg 或 WebView2。
 
@@ -35,7 +35,7 @@ Python 查找顺序：`YINGXU_PYTHON`（若设置只使用该项）、`runtime\p
 
 不要同时对同一数据目录运行多个后台。端口 8791 上只有数据目录指纹一致的映序后台且版本一致才会被复用；旧版或不同数据目录服务占用端口时，新版显示提示并保留原服务。更换数据目录不会自动迁移原有内容。
 
-关闭窗口后，后台和导入任务继续运行。需要彻底停止时，先保存编辑、等待导入完成、关闭窗口，再执行：
+关闭窗口后，后台和导入任务继续运行。需要彻底停止时，先保存编辑、等待导入完成，从托盘菜单退出映序窗口，再执行：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\Stop-YingXu.ps1
@@ -68,7 +68,7 @@ node tests/frontend_selection.cjs
 python desktop/build.py --sdk-package 'D:\Downloads\microsoft.web.webview2.1.0.4191.47.nupkg' --output YingXu.exe --test
 python tools/prepare_runtime.py --cache 'D:\YingXuBuildCache' --download
 python tools/package_release.py
-python tools/verify_release.py releases/YingXu-v0.3.0-Windows-x64.zip
+python tools/verify_release.py releases/YingXu-v0.3.1-Windows-x64.zip
 ```
 
 构建使用 Windows 自带 .NET Framework C# 编译器；SDK 必须事先自行下载。固定 WebView2 SDK 为 `1.0.4191.47`，9,259,926 字节，SHA-256 `f492bbf547d0da329553b6727435b677579b1e9f91cc9e4a1ad029366d5f23d0`。构建程序只读本地 SDK，不联网。微软 SDK 许可在 `desktop/WebView2-LICENSE.txt`，其运行组件嵌入 EXE。

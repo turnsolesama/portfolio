@@ -1,0 +1,133 @@
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Web.Script.Serialization;
+using System.Windows.Forms;
+
+namespace YingXu.Desktop
+{
+    internal static class LifecycleTests
+    {
+        private static int count;
+        private static void Check(bool value,string name)
+        {
+            if (!value) throw new Exception("FAILED: " + name);
+            count++; Console.WriteLine("PASS " + name);
+        }
+        private static object Field(object target,string name)
+        {
+            return target.GetType().GetField(name,BindingFlags.Instance|BindingFlags.NonPublic).GetValue(target);
+        }
+        private static void Field(object target,string name,object value)
+        {
+            target.GetType().GetField(name,BindingFlags.Instance|BindingFlags.NonPublic).SetValue(target,value);
+        }
+        private static object Call(object target,string name,params object[] args)
+        {
+            return target.GetType().GetMethod(name,BindingFlags.Instance|BindingFlags.NonPublic).Invoke(target,args);
+        }
+        [STAThread]
+        private static int Main(string[] args)
+        {
+            string directory = Path.Combine(Path.GetTempPath(),"yingxu-lifecycle-"+Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            try
+            {
+                Hub.Root = args[0]; Hub.Data = directory; Hub.Cache = directory;
+                Hub.Port = 1; Hub.Url = "http://127.0.0.1:1/";
+                Program.InitialFiles = new string[0]; Program.InstanceKey = Guid.NewGuid().ToString("N");
+                Program.ActivateEvent = new EventWaitHandle(false,EventResetMode.AutoReset);
+                typeof(Program).GetMethod("PrepareLibraries",BindingFlags.Static|BindingFlags.NonPublic).Invoke(null,null);
+                Application.EnableVisualStyles();
+                Run();
+                Console.WriteLine("Desktop lifecycle tests passed: " + count);
+                return 0;
+            }
+            finally
+            {
+                if (Program.ActivateEvent != null) Program.ActivateEvent.Dispose();
+                string resolved = Path.GetFullPath(directory);
+                if (!resolved.StartsWith(Path.GetFullPath(Path.GetTempPath()),StringComparison.OrdinalIgnoreCase) ||
+                    !Path.GetFileName(resolved).StartsWith("yingxu-lifecycle-",StringComparison.Ordinal) ||
+                    (File.GetAttributes(resolved)&FileAttributes.ReparsePoint)!=0) throw new IOException("Invalid fixture cleanup path");
+                Directory.Delete(resolved,true);
+            }
+        }
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void Run()
+        {
+            using (var window = new StudioWindow(false))
+            {
+                window.Text = "映序桌面生命周期 · 合成测试";
+                var tray = (NotifyIcon)Field(window,"tray");
+                Check(tray.Visible && tray.ContextMenuStrip.Items.Count == 4,"tray icon and open/settings/exit menu exist");
+                Call(window,"BringToUser"); Application.DoEvents();
+                Check(window.Visible,"tray reopen restores visible window");
+                window.Close(); Application.DoEvents();
+                Check(!window.IsDisposed && !window.Visible,"default close hides window without disposing drafts");
+                Call(window,"BringToUser"); Application.DoEvents();
+                Check(window.Visible && !window.IsDisposed,"hidden window reopens with same instance");
+                Field(window,"pageReady",true); Field(window,"loaded",true); Field(window,"closeToTray",false);
+                window.Close(); Application.DoEvents();
+                string request = (string)Field(window,"exitRequest");
+                Check(!String.IsNullOrEmpty(request) && !window.IsDisposed,"close-to-tray off requests unsaved-draft approval before exit");
+                var json = new JavaScriptSerializer();
+                Call(window,"ReceiveDesktopRequest","https://example.com",json.Serialize(new {action="exit-response",requestId=request,allow=true}));
+                Check((string)Field(window,"exitRequest")==request && !window.IsDisposed,"external exit response cannot close the editor");
+                Call(window,"ReceiveDesktopRequest",Hub.Url,json.Serialize(new {action="exit-response",requestId="stale",allow=true}));
+                Check((string)Field(window,"exitRequest")==request,"stale exit response is ignored");
+                Call(window,"ReceiveDesktopRequest",Hub.Url,json.Serialize(new {action="exit-response",requestId=request,allow=false}));
+                Check(Field(window,"exitRequest")==null && !window.IsDisposed,"cancelled draft approval preserves window");
+                Call(window,"RequestExit"); request=(string)Field(window,"exitRequest");
+                Call(window,"ReceiveDesktopRequest",Hub.Url,json.Serialize(new {action="exit-response",requestId=request,allow=true}));
+                Application.DoEvents();
+                Check(window.IsDisposed,"approved exit disposes the window");
+                Check(!tray.Visible,"approved exit removes tray icon");
+            }
+            bool approved = false;
+            using (var failed = new StudioWindow(false,() => approved))
+            {
+                Field(failed,"loaded",true); Field(failed,"pageFailed",true); Field(failed,"pageReady",false);
+                Call(failed,"RequestExit"); Application.DoEvents();
+                Check(!failed.IsDisposed && Field(failed,"exitRequest")==null,"failed page exit cancellation preserves window without waiting on dead WebView");
+                approved = true; Call(failed,"RequestExit"); Application.DoEvents();
+                Check(failed.IsDisposed,"explicit native confirmation exits a failed page while leaving persisted draft files untouched");
+            }
+            approved = false;
+            using (var failedClose = new StudioWindow(false,() => approved))
+            {
+                Field(failedClose,"loaded",true); Field(failedClose,"pageFailed",true);
+                Call(failedClose,"BringToUser"); failedClose.Close(); Application.DoEvents();
+                Check(failedClose.Visible && !failedClose.IsDisposed,"closing failed page asks for confirmation instead of hiding in tray");
+                approved=true; failedClose.Close(); Application.DoEvents();
+                Check(failedClose.IsDisposed,"failed page titlebar close exits after explicit confirmation");
+            }
+            using (var failedStartup = new StudioWindow(false,() => { throw new Exception("No editor draft exists"); }))
+            {
+                Field(failedStartup,"pageFailed",true);
+                failedStartup.Close(); Application.DoEvents();
+                Check(failedStartup.IsDisposed,"failed startup titlebar close exits directly when no editor ever loaded");
+            }
+            approved = false;
+            using (var notReady = new StudioWindow(false,() => approved))
+            {
+                Field(notReady,"loaded",true); Field(notReady,"pageReady",false);
+                Call(notReady,"RequestExit"); Application.DoEvents();
+                Check(!notReady.IsDisposed,"loaded page without ready bridge preserves drafts when native exit is cancelled");
+                approved = true; Call(notReady,"RequestExit"); Application.DoEvents();
+                Check(notReady.IsDisposed,"loaded page without ready bridge can exit after explicit confirmation");
+            }
+            approved = false;
+            using (var unresponsive = new StudioWindow(false,() => approved))
+            {
+                Field(unresponsive,"loaded",true); Field(unresponsive,"exitUnresponsive",true); Field(unresponsive,"pageReady",true);
+                Call(unresponsive,"RequestExit"); Application.DoEvents();
+                Check(!unresponsive.IsDisposed && Field(unresponsive,"exitRequest")==null,"timed-out exit requires native confirmation rather than another dead handshake");
+                approved=true; Call(unresponsive,"RequestExit"); Application.DoEvents();
+                Check(unresponsive.IsDisposed,"explicit native confirmation releases a timed-out page");
+            }
+        }
+    }
+}

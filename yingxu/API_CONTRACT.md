@@ -59,3 +59,18 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 - POST /api/open-folder {project_id,category?,folder_id?} 在 Windows 资源管理器打开已验证的项目根目录、分类目录或子目录；客户端不能传入任意路径。文件通过原有 POST /api/open {id,action:'reveal'} 定位。
 - GET /api/health -> {app:'yingxu',ok:true,version,instance_id}。公开版启动器通过数据目录规范路径的 SHA-256 指纹确认后台；拒绝旧版缺少指纹或指纹不符的服务，避免错误复用其他数据目录。
 - 默认数据路径与环境变量见 RUNNING.md；server.py 的 --data 与 --projects-root 参数优先于有效的环境变量默认值。
+
+## 回收站清理（0.3.1）
+
+- `POST /api/trash/delete-preview {entries:[{id,kind}]}` 预览所选批次；`{all:true}` 预览全部回收条目，不受列表搜索和分页影响。
+- 返回 `{token,total,entries:[{id,kind,name,paths,warnings,error?}],paths,warnings,expires_in}`。存在 `error` 的条目不执行；默认展示实际文件位置与外部引用说明并确认；用户可在设置显式关闭确认。关闭确认不跳过后台预览校验，存在阻挡项仍展示原因。
+- `POST /api/trash/delete {token}` 执行已确认快照，返回 `{deleted,failed:[{id,kind,name,error}],remaining}`。客户端不能自行提交磁盘路径。令牌有期限、仅使用一次；实际实体状态和磁盘内容变化时拒绝旧预览。
+- 只有确认进入 Windows 回收站的文件才算成功，不提供永久删除后备。外部引用和外部 SKILL 保留原文件。失败批次保留回收记录；已清理批次不能通过旧恢复请求、刷新或同步自动复活。
+
+
+## 0.3.1：设置、临时预览与项目库
+
+- `GET /api/settings` 与 `PATCH /api/settings` 读取/更新六项设置：`confirm_delete`、`confirm_trash_delete`、`close_to_tray`、`autoplay_media`（布尔）；`default_view`（grid/list/board）、`default_sort`（updated/name/order）。默认确认删除、关闭到托盘、画廊/最近更新、不自动播放；未知键及类型错误拒绝，原子保存。bootstrap 附带 settings。
+- `POST /api/external-open {paths:[绝对路径]}` 受会话令牌保护，返回 `{entries}`，仅注册会话临时 ID。`GET /api/external/ID` 返回元数据及只读 content；`GET /api/external-media/ID` 通过已验证文件句柄流式读取并支持 Range。仅受支持文件可读，不增加项目或复制文件，不提供写接口。预览 ID 会在后台重启或过期后失效。
+- `GET /api/project-library` 返回 `{folders,projects,recent_ids,total}`；项目带 folder_id 和 last_opened。`POST /api/project-folders {name,parent_id?}` 创建逻辑分类；`PATCH /api/project-folders/ID {name?,parent_id?}` 改名或移动，拒绝循环及同级重名；`DELETE /api/project-folders/ID` 仅删除可见项目与子分类均为空的分类，历史归属置为未分类。
+- `PATCH /api/project-library/PROJECT_ID {folder_id}` 归类（null 为未分类）；`POST /api/project-library/PROJECT_ID/visit {}` 记录最近打开，不改写项目磁盘目录。以上写接口沿用同源及会话令牌验证。

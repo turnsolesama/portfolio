@@ -291,7 +291,7 @@ class Organize:
     def trash(self,project_id='',limit=200,offset=0):
         limit=max(1,min(500,int(limit)));offset=max(0,int(offset))
         with self.store.connection() as db:
-            args=[];where='b.restored=0'
+            args=[];where='b.restored=0 AND b.purged=0'
             if project_id:where+=' AND b.project_id=?';args.append(project_id)
             total=db.execute('SELECT count(*) FROM trash_batches b WHERE '+where,args).fetchone()[0]
             rows=db.execute('''SELECT b.*,(SELECT count(*) FROM trash_members m WHERE m.batch_id=b.id) AS count
@@ -304,6 +304,8 @@ class Organize:
         with self.store.lock,self.store.connection() as db:
             batch=db.execute('SELECT * FROM trash_batches WHERE id=?',(batch_id,)).fetchone()
             if batch is None:raise UserError('回收站记录不存在。',404)
+            if batch['purged']:raise UserError('记录已从映序回收站清理，请在 Windows 回收站找回文件。',409)
+            if batch['recycle_started']:raise UserError('该批次曾提交 Windows 回收操作，不能直接恢复记录。请核对原文件和 Windows 回收站，找回文件后可重新导入；也可继续清理剩余记录。',409)
             if batch['restored']:return {'ok':True,'project_id':batch['project_id'],'kind':batch['kind'],'count':0}
             members=[]
             for member in db.execute('SELECT * FROM trash_members WHERE batch_id=?',(batch_id,)):

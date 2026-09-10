@@ -131,6 +131,10 @@ class SkillLibrary:
                 db.execute('ALTER TABLE yx_skills ADD COLUMN removed INTEGER NOT NULL DEFAULT 0')
             if 'removed_at' not in columns:
                 db.execute("ALTER TABLE yx_skills ADD COLUMN removed_at TEXT NOT NULL DEFAULT ''")
+            if 'purged' not in columns:
+                db.execute('ALTER TABLE yx_skills ADD COLUMN purged INTEGER NOT NULL DEFAULT 0')
+            if 'recycle_started' not in columns:
+                db.execute('ALTER TABLE yx_skills ADD COLUMN recycle_started INTEGER NOT NULL DEFAULT 0')
         self.refresh()
 
     @staticmethod
@@ -413,7 +417,7 @@ class SkillLibrary:
 
     def trash(self):
         with self.store.connection() as db:
-            rows = db.execute('SELECT * FROM yx_skills WHERE removed=1 ORDER BY removed_at DESC,id').fetchall()
+            rows = db.execute('SELECT * FROM yx_skills WHERE removed=1 AND purged=0 ORDER BY removed_at DESC,id').fetchall()
         return {'entries': [{'id': row['id'], 'batch_id': row['id'], 'target_id': row['id'],
                              'kind': 'skill', 'project_id': None, 'name': row['name'],
                              'created': row['removed_at'], 'count': 1, 'source': row['source'],
@@ -422,8 +426,10 @@ class SkillLibrary:
 
     def restore(self, skill_id):
         with self.lock, self.store.lock, self.store.connection() as db:
-            row = db.execute('SELECT * FROM yx_skills WHERE id=? AND removed=1', (skill_id,)).fetchone()
+            row = db.execute('SELECT * FROM yx_skills WHERE id=? AND removed=1 AND purged=0', (skill_id,)).fetchone()
             if row is None:
                 raise UserError('这个技能不在回收站。', 404)
+            if row['recycle_started']:
+                raise UserError('技能曾提交 Windows 回收操作，不能直接恢复记录。请先核对原文件和 Windows 回收站；可继续清理剩余记录。',409)
             db.execute("UPDATE yx_skills SET removed=0,removed_at='' WHERE id=?", (skill_id,))
         return {'ok': True, 'kind': 'skill', 'count': 1, 'available': bool(row['available'])}

@@ -79,3 +79,19 @@ test('search focus does not inherit popup arrow keys and Ctrl K closes the menu'
   s.listeners.get('keydown')({key:'k',ctrlKey:true,preventDefault(){}});
   assert.equal(s.node('#resourceMenu').hidden,true);
 });
+
+test('Ctrl F is the primary search shortcut and Ctrl K remains compatible',()=>{
+  for (const key of ['f','F','k']) {
+    const s=setup();let focused=false,selected=false;s.node('#searchInput').focus=()=>{focused=true;};s.node('#searchInput').select=()=>{selected=true;};
+    const event={key,ctrlKey:true,preventDefault(){this.prevented=true;}};s.listeners.get('keydown')(event);
+    assert.equal(event.prevented,true);assert.equal(focused,true);assert.equal(selected,true);
+  }
+});
+
+test('search shortcut cannot escape a confirmation dialog or focus a disabled search',()=>{
+  for (const mode of ['dialog','disabled']) {
+    const s=setup();let focused=false;s.node('#searchInput').focus=()=>{focused=true;};
+    if(mode==='dialog')s.node('#appDialog').open=true;else s.node('#searchInput').disabled=true;
+    s.listeners.get('keydown')({key:'f',ctrlKey:true,preventDefault(){}});assert.equal(focused,false);
+  }
+});

@@ -7,11 +7,12 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.3.0'
+VERSION = '0.3.1'
 FIXED = (
     'README.md', 'RUNNING.md', 'LICENSE', 'AGENTS.md', 'API_CONTRACT.md', '.gitignore',
     'server.py', 'launcher.pyw', 'start.vbs', 'Stop-YingXu.ps1', 'YingXu.exe',
     'desktop/RuntimeCheck.cs', 'desktop/Core.cs', 'desktop/Program.cs', 'desktop/Tests.cs', 'desktop/build.py',
+    'desktop/Integration.cs', 'desktop/Set-OpenWith.ps1', 'desktop/LifecycleTests.cs',
     'desktop/make_icon.py', 'desktop/brand.svg', 'desktop/brand.ico',
     'desktop/app.manifest', 'desktop/WebView2-LICENSE.txt',
     'tools/benchmark.py', 'tools/package_release.py', 'tools/verify_release.py',
@@ -19,7 +20,7 @@ FIXED = (
     'docs/完整包验收.md', 'docs/功能指南.md', 'docs/安装与运行.md', 'docs/开发说明.md', 'docs/assets/workspace-map.svg',
 )
 PATTERNS = ('yingxu/*.py', 'frontend/*.html', 'frontend/*.css', 'frontend/*.js',
-            'tests/test_*.py', 'tests/frontend_context_menu.cjs', 'tests/frontend_drag_drop.cjs', 'tests/frontend_selection.cjs')
+            'tests/test_*.py', 'tests/frontend_*.cjs')
 TEXT_SUFFIXES = {'.md', '.py', '.pyw', '.js', '.cjs', '.css', '.html', '.cs', '.ps1', '.vbs', '.json', '.txt', '.manifest', '.svg'}
 
 

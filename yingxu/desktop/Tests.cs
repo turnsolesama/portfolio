@@ -70,7 +70,7 @@ namespace YingXu.Desktop
                 "Path('logs/console.txt').write_text(str(ctypes.windll.kernel32.GetConsoleWindow()))\n" +
                 "class Handler(BaseHTTPRequestHandler):\n" +
                 " def do_GET(self):\n" +
-                "  body=json.dumps(dict(app='yingxu',ok=True,version='0.3.0',instance_id=instance_id(default_data_root()))).encode()\n" +
+                "  body=json.dumps(dict(app='yingxu',ok=True,version='0.3.1',instance_id=instance_id(default_data_root()))).encode()\n" +
                 "  self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)\n" +
                 " def log_message(self,*args): pass\n" +
                 "server=HTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),Handler)\n" +
@@ -206,7 +206,8 @@ namespace YingXu.Desktop
                 Directory.CreateDirectory(Path.Combine(folder, "frontend"));
                 File.WriteAllText(Path.Combine(folder, "frontend", "index.html"), "");
                 Check(Hub.IsAppRoot(folder), "complete app folder recognized");
-                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.3.0\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", true);
+                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.3.1\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", true);
+                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.3.0\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.2.1\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"instance_id\":\"other\"}", false);
@@ -215,6 +216,7 @@ namespace YingXu.Desktop
                 HealthResponse("{\"app\":\"yingxu\"}", false);
                 HealthResponse("not-json", false);
                 NativeDrag(folder, args);
+                DesktopIntegration(folder);
                 ColdStart(folder, args[0]);
                 Console.WriteLine("Desktop tests passed: " + passed);
                 return 0;
@@ -228,6 +230,50 @@ namespace YingXu.Desktop
                     throw new IOException("拒绝删除范围不符的测试目录。");
                 Directory.Delete(safe, true);
             }
+        }
+
+        private static void DesktopIntegration(string folder)
+        {
+            string file = Path.Combine(folder,"只读预览 空格.txt"); File.WriteAllText(file,"synthetic");
+            var launch = LaunchOptions.Parse(new[] { "--root",folder,"--open",file },folder);
+            Check(launch.Root == folder && launch.Paths.Length == 1 && launch.Paths[0] == file,"CLI --root and --open preserve Unicode file path");
+            Check(LaunchOptions.Parse(new[] { file },folder).Paths[0] == file,"CLI bare quoted path opens actual file");
+            bool rejected = false;
+            try { LaunchOptions.Parse(new[] { "--open" },folder); } catch (ArgumentException) { rejected = true; }
+            Check(rejected,"CLI rejects missing file argument");
+            Check(OpenInbox.Decode(OpenInbox.Encode(new[] { file }))[0] == file,"IPC Unicode JSON frame round trip");
+            rejected = false;
+            try { OpenInbox.Decode(Encoding.UTF8.GetBytes("[\"relative.txt\"]")); } catch { rejected = true; }
+            Check(rejected,"IPC rejects relative file paths");
+            var arrived = new System.Threading.ManualResetEventSlim(false); string[] received = null;
+            string identity = Guid.NewGuid().ToString("N");
+            using (var inbox = new OpenInbox(identity,paths => { received = paths; arrived.Set(); }))
+            {
+                OpenInbox.Send(identity,new[] { file });
+                Check(arrived.Wait(2000) && received[0] == file,"same-user named pipe delivers actual Unicode open request");
+                OpenInbox.Send(identity,new string[0]);
+                Check(received.Length == 0,"single-instance inbox accepts activation without files");
+            }
+            string testKey = @"Software\YingXu-DesktopTests-" + Guid.NewGuid().ToString("N");
+            try
+            {
+                using (var root = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(testKey))
+                {
+                    using (var ext = root.CreateSubKey(".txt")) ext.SetValue("","Other.Default");
+                    using (var ext = root.CreateSubKey(@".txt\OpenWithProgids")) ext.SetValue("Other.Preview", "keep");
+                    OpenWithRegistration.Change(root,Path.Combine(folder,"YingXu.exe"),true);
+                    using (var ext = root.OpenSubKey(".txt")) Check((string)ext.GetValue("") == "Other.Default","OpenWith preserves existing default application");
+                    using (var ext = root.OpenSubKey(@".txt\OpenWithProgids")) Check(ext.GetValue("YingXu.LocalPreview") != null && (string)ext.GetValue("Other.Preview") == "keep","OpenWith adds its candidate and preserves unrelated candidates");
+                    OpenWithRegistration.Change(root,Path.Combine(folder,"YingXu.exe"),false);
+                    Check(root.OpenSubKey("YingXu.LocalPreview") == null,"OpenWith unregister removes its own ProgID");
+                    using (var ext = root.OpenSubKey(@".txt\OpenWithProgids")) Check(ext.GetValue("YingXu.LocalPreview") == null && (string)ext.GetValue("Other.Preview") == "keep","OpenWith unregister preserves unrelated values");
+                    using (var existing = root.CreateSubKey("YingXu.LocalPreview")) existing.SetValue("","unowned");
+                    rejected = false;
+                    try { OpenWithRegistration.Change(root,Path.Combine(folder,"YingXu.exe"),true); } catch (IOException) { rejected = true; }
+                    Check(rejected,"OpenWith refuses unowned preexisting registration");
+                }
+            }
+            finally { Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(testKey,false); }
         }
 
         [DllImport("shell32.dll", CharSet = CharSet.Unicode)]

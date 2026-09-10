@@ -191,6 +191,10 @@ class Store:
               SELECT id,'item',id FROM items WHERE removed=1 AND removed_batch IS NULL;
             UPDATE items SET removed_batch=id WHERE removed=1 AND removed_batch IS NULL;
             ''')
+            if 'purged' not in {row[1] for row in db.execute('PRAGMA table_info(trash_batches)')}:
+                db.execute('ALTER TABLE trash_batches ADD COLUMN purged INTEGER NOT NULL DEFAULT 0')
+            if 'recycle_started' not in {row[1] for row in db.execute('PRAGMA table_info(trash_batches)')}:
+                db.execute('ALTER TABLE trash_batches ADD COLUMN recycle_started INTEGER NOT NULL DEFAULT 0')
 
     def _project(self, db, pid):
         row = db.execute('SELECT * FROM projects WHERE id=? AND removed=0', (pid,)).fetchone()
@@ -435,7 +439,9 @@ class Store:
                     if locate_folder(actual,folder_by_path)[1]:
                         skipped+=1;continue
                     st=p.stat()
-                    row=db.execute('SELECT id,size,mtime,removed,folder_id FROM items WHERE project_id=? AND path=?',(source['project_id'],str(p))).fetchone()
+                    row=db.execute('SELECT id,size,mtime,removed,folder_id,removed_batch FROM items WHERE project_id=? AND path=?',(source['project_id'],str(p))).fetchone()
+                    if row and row['removed_batch'] and not restore_removed and db.execute('SELECT 1 FROM trash_batches WHERE id=? AND purged=1',(row['removed_batch'],)).fetchone():
+                        skipped+=1;continue
                     if row and row['folder_id'] in removed_folder_ids:
                         skipped+=1;continue
                     eligible_paths.append(str(p))
@@ -455,7 +461,9 @@ class Store:
                 if destination['category']!=target_category:raise UserError('导入目标分类已经改变。',409)
             for p,row,st,kind,content,meta in records:
                 # Another writer may have indexed the newly created path meanwhile.
-                row=db.execute('SELECT id,size,mtime,removed,folder_id FROM items WHERE project_id=? AND path=?',(source['project_id'],str(p))).fetchone()
+                row=db.execute('SELECT id,size,mtime,removed,folder_id,removed_batch FROM items WHERE project_id=? AND path=?',(source['project_id'],str(p))).fetchone()
+                if row and row['removed_batch'] and not restore_removed and db.execute('SELECT 1 FROM trash_batches WHERE id=? AND purged=1',(row['removed_batch'],)).fetchone():
+                    skipped+=1;continue
                 located,removed_ancestor=locate_folder(p,folder_by_path)
                 if removed_ancestor or (row and row['folder_id'] in removed_folder_ids):
                     skipped+=1;continue

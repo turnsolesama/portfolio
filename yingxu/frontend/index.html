@@ -8,6 +8,8 @@
   <title>映序 · 本地视频创作工作台</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%239fbaa8'/%3E%3Cpath d='M16 22v-6h12m8 0h12v12m0 8v12H36m-8 0H16V36' stroke='%23191f1b' stroke-width='4' fill='none'/%3E%3Cpath d='m27 25 12 7-12 7z' fill='%23191f1b'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/project-library.css">
+  <script src="/project-library.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -18,12 +20,15 @@
         <span>映序<small>YINGXU STUDIO</small></span>
         <span class="version-tag">本地版</span>
       </a>
-      <div class="sidebar-section-title"><span>项目空间</span><button id="addProject" class="icon-button" title="创建项目" aria-label="创建项目"></button></div>
+      <button id="projectLibraryButton" class="project-library-entry" data-action="project-library"><span id="projectLibraryIcon"></span><span>项目库</span><span id="projectLibraryCount" class="tiny-count">0</span></button>
+      <div class="sidebar-section-title"><span>当前与最近</span><button id="addProject" class="icon-button" title="创建项目" aria-label="创建项目"></button></div>
       <div id="projectList" class="project-list"><div class="subtle-loading">正在打开工作台…</div></div>
       <div class="nav-divider"></div>
       <div class="sidebar-section-title resource-nav-label"><span>创作资源</span><span id="sidebarTotal" class="tiny-count">0</span></div>
       <nav id="categoryNav" class="category-nav" aria-label="资源分类"></nav>
       <div class="sidebar-bottom">
+        <button id="openLocalButton" class="help-button" data-action="choose-external-files"><span id="openLocalIcon"></span><span>打开本地文件</span></button>
+        <button id="settingsButton" class="help-button" data-action="settings"><span id="settingsIcon"></span><span>设置</span></button>
         <button id="helpButton" class="help-button"><span id="helpIcon"></span><span>使用指南</span><kbd>?</kbd></button>
         <div class="local-state"><span class="status-dot"></span><span id="connectionState">连接本地工作台</span><span class="local-state-end">LOCAL</span></div>
       </div>
@@ -33,7 +38,7 @@
       <header class="topbar">
         <div class="breadcrumb"><span>创作空间</span><span class="breadcrumb-slash">/</span><span id="breadcrumbProject">开始创作</span></div>
         <div class="topbar-right">
-          <div class="search-wrap"><span id="searchIcon"></span><input id="searchInput" type="search" placeholder="搜索素材、剧本、标签…" aria-label="搜索素材、剧本、标签" autocomplete="off"><kbd>Ctrl K</kbd><button id="advancedSearch" class="icon-button" title="高级检索" aria-label="高级检索"></button></div>
+          <div class="search-wrap"><span id="searchIcon"></span><input id="searchInput" type="search" placeholder="搜索素材、剧本、标签…" aria-label="搜索素材、剧本、标签" autocomplete="off"><kbd>Ctrl F</kbd><button id="advancedSearch" class="icon-button" title="高级检索" aria-label="高级检索"></button></div>
           <button id="importButton" class="button button-secondary"><span id="importIcon"></span><span>导入</span></button>
           <button id="newItemButton" class="button button-primary"><span id="newItemIcon"></span><span>新建</span></button>
         </div>

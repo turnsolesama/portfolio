@@ -8,6 +8,7 @@ other ZIP member payloads are preserved. This is not a Word layout editor.
 from __future__ import annotations
 
 import copy
+from contextlib import nullcontext
 import io
 import re
 import stat
@@ -287,10 +288,10 @@ def _open_path(path):
     return path.open("rb")
 
 
-def read_docx(path):
+def read_docx(path, handle=None):
     """Return plain text and conservative editable paragraph descriptors."""
     try:
-        with _open_path(path) as handle:
+        with (nullcontext(handle) if handle is not None else _open_path(path)) as handle:
             package, _data, root, _enc = _validated_package(handle)
             with package:
                 paragraphs = [
