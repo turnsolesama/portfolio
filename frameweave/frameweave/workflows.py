@@ -97,6 +97,8 @@ def catalog(object_info: dict) -> dict:
     def plausible(filename, role):
         parts = filename.replace("\\", "/").lower().split("/")
         folders = set(parts[:-1])
+        if folders & {"embeddings", "embedding", "clip_vision", "controlnet", "upscale_models", "background_removal"}:
+            return False
         found = folders & known_folders
         if found:
             return bool(found & folder_roles[role])

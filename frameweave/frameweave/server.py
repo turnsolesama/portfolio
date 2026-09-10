@@ -19,6 +19,8 @@ from pathlib import Path
 from . import __version__
 from .backend import Backend, BackendError, local_url
 from .diagnostics import diagnose, safe_relative
+from .environment import discover_environment
+from .packages import PackageStore, apply_values, inspect_document
 from .workflows import capabilities, catalog, compile_workflow
 
 MAX_JSON = 28 * 1024 * 1024
@@ -32,7 +34,7 @@ def atomic_json(path, value):
 
 
 class App:
-    def __init__(self, data_dir, web_dir, backend_url=None, roots=None):
+    def __init__(self, data_dir, web_dir, backend_url=None, roots=None, comfy_roots=None):
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.web_dir = Path(web_dir).resolve()
@@ -41,23 +43,30 @@ class App:
         self.lock = threading.RLock()
         self.closed = threading.Event()
         self.last_seen = time.monotonic()
-        self.settings = {"backend_url": "http://127.0.0.1:8188", "model_roots": []}
+        self.settings = {"backend_url": "http://127.0.0.1:8188", "model_roots": [], "comfy_roots": []}
         try:
             saved = json.loads((self.data_dir / "settings.json").read_text(encoding="utf-8"))
             self.settings["backend_url"] = local_url(saved["backend_url"])
             self.settings["model_roots"] = self.validate_roots(saved.get("model_roots", []))
-        except (OSError, ValueError, KeyError, TypeError):
+            self.settings["comfy_roots"] = self.validate_roots(saved.get("comfy_roots", []))
+        except (OSError, ValueError, KeyError, TypeError, RecursionError):
             pass
         if backend_url:
             self.settings["backend_url"] = local_url(backend_url)
         if roots:
             self.settings["model_roots"] = self.validate_roots(roots)
+        if comfy_roots:
+            self.settings["comfy_roots"] = self.validate_roots(comfy_roots)
         self.backend = Backend(self.settings["backend_url"])
         self.info = {}
         self.info_at = 0
         self.jobs = {}
         self.media = {}
         self.uploaded = set()
+        self.packages = PackageStore(self.data_dir / "workflow-packages")
+        self.environment_lock = threading.Lock()
+        self.environment_snapshot = None
+        self.environment_at = 0
         try:
             old = json.loads((self.data_dir / "jobs.json").read_text(encoding="utf-8"))
             for job in old[-200:]:
@@ -67,7 +76,7 @@ class App:
                         job["status"], job["error"] = "failed", "后端地址已变化；请在原后端检查任务"
                     for output in job.get("outputs", []):
                         self.register_media(output["filename"], output.get("subfolder", ""), "output", job.get("backend"))
-        except (OSError, ValueError, KeyError, TypeError):
+        except (OSError, ValueError, KeyError, TypeError, RecursionError):
             self.jobs = {}
 
     @staticmethod
@@ -96,6 +105,8 @@ class App:
     def status(self):
         try:
             stats = self.backend.request("/system_stats", timeout=4)
+            if not isinstance(stats, dict) or not isinstance(stats.get("system"), dict) or not isinstance(stats.get("devices"), list):
+                raise BackendError("此端口未返回有效的 ComfyUI 环境信息")
             info = self.object_info()
             models = catalog(info)
             models["checkpoints"] = models.get("checkpoint", [])
@@ -104,9 +115,38 @@ class App:
         except BackendError as exc:
             return {"online": False, "backend_url": self.backend.url, "devices": [], "capabilities": {}, "models": {}, "error": str(exc)}
 
+    def environment(self):
+        with self.environment_lock:
+            if self.environment_snapshot is None or time.monotonic() - self.environment_at > 10:
+                with self.lock:
+                    settings = copy.deepcopy(self.settings)
+                discovered = discover_environment(settings)
+                with self.lock:
+                    if settings == self.settings:
+                        self.environment_snapshot = discovered
+                        self.environment_at = time.monotonic()
+                    else:
+                        return discovered | {"stale": True, "notes": discovered.get("notes", []) + ["扫描期间设置已变化，请重新检查"]}
+            return copy.deepcopy(self.environment_snapshot)
+
+    def resolve_request(self, data):
+        if not isinstance(data, dict):
+            raise ValueError("生成请求须为对象")
+        if data.get("kind") == "package":
+            package = self.packages.get(data.get("package_id"))
+            return {"kind": "api", "prompt": apply_values(package, data.get("values", {}))}
+        return data
+
+    def diagnostics(self, data):
+        request = self.resolve_request(data)
+        status = self.status()
+        return diagnose(self.settings, self.info if status["online"] else {}, status, request,
+                        status.get("models", {}), environment=self.environment())
+
     def save_settings(self, data):
         settings = {"backend_url": local_url(data.get("backend_url", "")),
-                    "model_roots": self.validate_roots(data.get("model_roots", []))}
+                    "model_roots": self.validate_roots(data.get("model_roots", [])),
+                    "comfy_roots": self.validate_roots(data.get("comfy_roots", self.settings.get("comfy_roots", [])))}
         with self.lock:
             changed = settings["backend_url"] != self.backend.url
             if changed and any(j["status"] not in TERMINAL for j in self.jobs.values()):
@@ -115,6 +155,7 @@ class App:
             self.settings = settings
             self.backend = Backend(settings["backend_url"])
             self.info, self.info_at = {}, 0
+            self.environment_at = 0
             if changed:
                 self.uploaded.clear()
             return {"settings": settings}
@@ -132,6 +173,11 @@ class App:
         return f"/api/media/{key}"
 
     def upload(self, data):
+        # Keep backend identity stable until upload registration finishes.
+        with self.lock:
+            return self._upload(data)
+
+    def _upload(self, data):
         if not isinstance(data.get("data"), str):
             raise ValueError("请上传图片内容")
         try:
@@ -159,9 +205,11 @@ class App:
         return {"name": backend_name, "url": url}
 
     def compile(self, data):
-        if not isinstance(data, dict):
-            raise ValueError("生成请求须为对象")
-        return compile_workflow(data, self.object_info())
+        result = compile_workflow(self.resolve_request(data), self.object_info())
+        if data.get("kind") == "package":
+            package = self.packages.get(data.get("package_id"))
+            result.setdefault("summary", {}).update({"package_id": package["id"], "package_name": package["name"]})
+        return result
 
     def submit(self, data):
         with self.lock:
@@ -356,6 +404,10 @@ def make_server(app, port=0):
                     self.respond(app.status())
                 elif path == "/api/jobs":
                     self.respond(app.job_list())
+                elif path == "/api/packages":
+                    self.respond({"packages": app.packages.list()})
+                elif re.fullmatch(r"/api/packages/p-[0-9a-f]{24}", path):
+                    self.respond({"package": app.packages.get(path.rsplit("/", 1)[-1])})
                 elif path.startswith("/api/media/"):
                     key = path.rsplit("/", 1)[-1]
                     with app.lock:
@@ -433,9 +485,18 @@ def make_server(app, port=0):
                 path = urllib.parse.urlsplit(self.path).path
                 if path == "/api/settings":
                     result = app.save_settings(data)
+                elif path == "/api/environment":
+                    result = app.environment()
                 elif path == "/api/diagnostics":
-                    status = app.status()
-                    result = diagnose(app.settings, app.info if status["online"] else {}, status, data, status.get("models", {}))
+                    result = app.diagnostics(data)
+                elif path == "/api/packages/inspect":
+                    result = inspect_document(data.get("document"), app.info)
+                elif path == "/api/packages":
+                    result = {"package": app.packages.save(data)}
+                elif re.fullmatch(r"/api/packages/p-[0-9a-f]{24}/export", path):
+                    result = {"document": app.packages.export(path.split("/")[3])}
+                elif re.fullmatch(r"/api/packages/p-[0-9a-f]{24}/apply", path):
+                    result = {"prompt": apply_values(app.packages.get(path.split("/")[3]), data.get("values", {}))}
                 elif path == "/api/compile":
                     result = app.compile(data)
                 elif path == "/api/jobs":
@@ -453,8 +514,8 @@ def make_server(app, port=0):
                     self.respond({"error": "接口不存在"}, 404)
                     return
                 self.respond(result)
-            except (ValueError, KeyError, TypeError) as exc:
-                self.respond({"error": str(exc)}, 400)
+            except (ValueError, KeyError, TypeError, RecursionError, OverflowError) as exc:
+                self.respond({"error": "请求的 JSON 嵌套或数字超出限制" if isinstance(exc, (RecursionError, OverflowError)) else str(exc)}, 400)
             except (BackendError, OSError) as exc:
                 self.respond({"error": str(exc)}, 502)
 

@@ -1,7 +1,8 @@
 /** Pure graph operations shared by the canvas and dependency-free tests. */
+import { packageValues, parseJSONWithSafeNumbers } from './packages.mjs';
 export const SCHEMA = 'frameweave.canvas.v1';
 export const NODE_TYPES = ['prompt', 'reference', 'generation', 'result'];
-export const KINDS = ['h3_t2v', 'h3_i2v', 'h3_ref', 'sdxl', 'krea', 'api'];
+export const KINDS = ['h3_t2v', 'h3_i2v', 'h3_ref', 'sdxl', 'krea', 'api', 'package'];
 const copy = value => JSON.parse(JSON.stringify(value));
 const finite = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
@@ -14,7 +15,7 @@ export function createNode(type, x, y, overrides = {}) {
   const defaults = {
     prompt: { title: '提示词', text: '', negative: '' },
     reference: { title: '参考素材', name: '', url: '', mediaType: 'image', role: 'reference' },
-    generation: { title: 'H3 视频生成', kind: 'h3_t2v', positive: '', negative: '', seed: 42, width: 768, height: 448, steps: 20, cfg: 1, seconds: 5, fps: 24, sampler: 'euler', scheduler: 'simple', denoise: 1, models: {}, lora_strength: 1, apiPrompt: null },
+    generation: { title: 'H3 视频生成', kind: 'h3_t2v', positive: '', negative: '', seed: 42, width: 768, height: 448, steps: 20, cfg: 1, seconds: 5, fps: 24, sampler: 'euler', scheduler: 'simple', denoise: 1, models: {}, lora_strength: 1, apiPrompt: null, package_id: '', packageValues: {} },
     result: { title: '生成结果', outputs: [], jobId: '' },
   };
   return { id: makeId(), type, x: finite(x), y: finite(y), data: { ...defaults[type], ...copy(overrides) } };
@@ -25,6 +26,7 @@ export function canConnect(graph, source, target) {
   const from = graph.nodes.find(node => node.id === source);
   const to = graph.nodes.find(node => node.id === target);
   if (!from || !to) return { ok: false, reason: '连接节点不存在' };
+  if (to.type === 'generation' && to.data.kind === 'package') return { ok: false, reason: '工作流包通过右侧表单填写输入，输出端口可连接结果节点' };
   const valid = (['prompt', 'reference'].includes(from.type) && to.type === 'generation') || (from.type === 'generation' && to.type === 'result');
   if (!valid) return { ok: false, reason: '连接顺序：提示词 / 参考素材 → 生成 → 结果' };
   if (graph.edges.some(edge => edge.source === source && edge.target === target)) return { ok: false, reason: '连接已存在' };
@@ -76,6 +78,10 @@ export function duplicateNodes(graph, ids) {
 export function generationPayload(graph, id) {
   const node = graph.nodes.find(item => item.id === id && item.type === 'generation');
   if (!node) throw new Error('请选择生成节点');
+  if (node.data.kind === 'package') {
+    if (typeof node.data.package_id !== 'string' || !node.data.package_id) throw new Error('请先选择或导入对应工作流包');
+    return { kind: 'package', package_id: node.data.package_id, values: packageValues(node.data.packageValues || {}) };
+  }
   if (node.data.kind === 'api') {
     if (!node.data.apiPrompt || typeof node.data.apiPrompt !== 'object' || Array.isArray(node.data.apiPrompt)) throw new Error('请先导入 ComfyUI API 格式工作流');
     return { kind: 'api', prompt: copy(node.data.apiPrompt) };
@@ -87,6 +93,8 @@ export function generationPayload(graph, id) {
   const data = copy(node.data);
   delete data.title;
   delete data.apiPrompt;
+  delete data.package_id;
+  delete data.packageValues;
   return {
     ...data,
     positive: [...prompts.map(item => item.data.text), data.positive].filter(Boolean).join('\n\n'),
@@ -114,7 +122,7 @@ export function serializeGraph(graph, viewport = { x: 60, y: 60, scale: 1 }) {
 }
 
 export function parseGraph(text) {
-  const input = typeof text === 'string' ? JSON.parse(text) : copy(text);
+  const input = parseJSONWithSafeNumbers(typeof text === 'string' ? text : JSON.stringify(text));
   if (input.schema !== SCHEMA || !Array.isArray(input.nodes) || !Array.isArray(input.edges)) throw new Error('不是有效的 FrameWeave 画布文件');
   if (input.nodes.length > 500 || input.edges.length > 2000) throw new Error('画布超过限制：最多 500 个节点 / 2000 条连接');
   const seen = new Set();
@@ -127,7 +135,8 @@ export function parseGraph(text) {
     const data = createNode(node.type, 0, 0).data;
     for (const key of Object.keys(data)) {
       if (!(key in node.data)) continue;
-      if (['models', 'apiPrompt', 'outputs'].includes(key)) data[key] = copy(node.data[key]);
+      if (key === 'packageValues') data[key] = packageValues(node.data[key]);
+      else if (['models', 'apiPrompt', 'outputs'].includes(key)) data[key] = copy(node.data[key]);
       else if (typeof data[key] === 'number') data[key] = finite(node.data[key], data[key]);
       else data[key] = String(node.data[key] ?? '').slice(0, 100000);
     }

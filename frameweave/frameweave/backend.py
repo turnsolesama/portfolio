@@ -65,7 +65,7 @@ class Backend:
             except ValueError:
                 pass
             raise BackendError(f"后端 HTTP {exc.code}: {detail[:5000]}") from None
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError, RecursionError) as exc:
             raise BackendError(f"无法读取推理后端：{exc}") from None
 
     def upload(self, name, content, mime):

@@ -15,12 +15,13 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--backend")
     parser.add_argument("--model-root", action="append")
+    parser.add_argument("--comfy-root", action="append")
     parser.add_argument("--data-dir")
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     data = Path(args.data_dir) if args.data_dir else Path(os.environ.get("LOCALAPPDATA", Path.home() / ".local" / "share")) / "FrameWeave"
-    app = App(data, base / "web", args.backend, args.model_root)
+    app = App(data, base / "web", args.backend, args.model_root, args.comfy_root)
     try:
         server = make_server(app, args.port)
     except OSError:

@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 import urllib.parse
+from unittest.mock import patch
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -228,6 +229,103 @@ class ServiceHTTPTests(unittest.TestCase):
         self.assertEqual(headers["X-Frame-Options"], "DENY")
         self.assertIn("frame-ancestors 'none'", headers["Content-Security-Policy"])
         self.assertNotIn("Access-Control-Allow-Origin", headers)
+
+    def test_package_import_apply_generate_and_video_result_roundtrip(self):
+        status, _, inspection = self.post("/api/packages/inspect", {"document": API_JOB["prompt"]})
+        self.assertEqual(status, 200, inspection)
+        field = inspection["fields"][0]
+        status, _, saved = self.post("/api/packages", {**inspection, "name": "Video package"})
+        self.assertEqual(status, 200, saved)
+        package_id = saved["package"]["id"]
+        status, _, applied = self.post(f"/api/packages/{package_id}/apply", {"values": {field["id"]: "new film shot"}})
+        self.assertEqual(status, 200, applied)
+        self.assertEqual(applied["prompt"]["1"]["inputs"]["text"], "new film shot")
+        self.assertFalse(any(call[:2] == ("POST", "/prompt") for call in self.backend.calls))
+        status, _, job = self.post("/api/jobs", {"kind": "package", "package_id": package_id, "values": {field["id"]: "new film shot"}})
+        self.assertEqual(status, 200, job)
+        prompt_call = next(call for call in self.backend.calls if call[:2] == ("POST", "/prompt"))
+        self.assertEqual(prompt_call[2]["prompt"]["1"]["inputs"]["text"], "new film shot")
+        url = self.complete(job)
+        self.assertEqual(self.request("GET", url, headers={"Range": "bytes=0-15"})[2], self.backend.content[:16])
+        status, _, exported = self.post(f"/api/packages/{package_id}/export")
+        self.assertEqual(status, 200)
+        self.assertNotIn("new film shot", json.dumps(exported))
+        status, _, again = self.post("/api/packages", exported["document"])
+        self.assertEqual(again["package"]["id"], package_id)
+
+    def test_package_import_works_offline_and_never_calls_backend(self):
+        self.app.backend.url = "http://127.0.0.1:1"
+        status, _, inspected = self.post("/api/packages/inspect", {"document": API_JOB["prompt"]})
+        self.assertEqual(status, 200)
+        status, _, saved = self.post("/api/packages", {**inspected, "name": "Offline"})
+        self.assertEqual(status, 200)
+        self.assertFalse(self.backend.calls)
+        status, _, body = self.request("GET", "/api/packages")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["packages"][0]["id"], saved["package"]["id"])
+
+    def test_package_endpoints_reject_invalid_inputs_and_cross_site_writes(self):
+        for path, body in (("/api/packages/inspect", {"document": []}),
+                           ("/api/packages/inspect", {"document": {"nodes": [], "links": []}}),
+                           ("/api/packages", {"name": "broken"}),
+                           ("/api/jobs", {"kind": "package", "package_id": "../../outside"})):
+            self.assertEqual(self.post(path, body)[0], 400, path)
+            self.assertEqual(self.post(path, body, csrf=False)[0], 403)
+        self.assertFalse(any(call[:2] == ("POST", "/prompt") for call in self.backend.calls))
+
+    def test_environment_cache_does_not_mutate_settings_or_repeat_probe(self):
+        snapshot = {"checks": [], "candidates": [{"url": "http://127.0.0.1:8190", "online": True}], "installations": [], "hardware": {}}
+        before = copy.deepcopy(self.app.settings)
+        with patch("frameweave.server.discover_environment", return_value=snapshot) as discovery:
+            self.assertEqual(self.post("/api/environment")[2], snapshot)
+            self.assertEqual(self.post("/api/environment")[2], snapshot)
+            self.assertEqual(discovery.call_count, 1)
+        self.assertEqual(self.app.settings, before)
+        self.assertEqual(self.post("/api/environment", csrf=False)[0], 403)
+
+    def test_deep_json_is_rejected_and_server_remains_available(self):
+        raw = b'{"document":' + b"[" * 2000 + b"0" + b"]" * 2000 + b"}"
+        self.assertEqual(self.request("POST", "/api/packages/inspect", raw=raw)[0], 400)
+        self.assertEqual(self.request("GET", "/api/bootstrap")[0], 200)
+
+    def test_upload_cannot_change_backend_midway(self):
+        entered, release, switched = threading.Event(), threading.Event(), threading.Event()
+        errors = []
+        original = self.app.backend.upload
+        def blocked_upload(*args):
+            entered.set()
+            release.wait(2)
+            return original(*args)
+        def upload():
+            try:
+                self.app.upload({"data": base64.b64encode(PNG).decode()})
+            except Exception as exc:
+                errors.append(exc)
+        def switch():
+            self.app.save_settings({"backend_url": "http://127.0.0.1:8189", "model_roots": []})
+            switched.set()
+        with patch.object(self.app.backend, "upload", side_effect=blocked_upload):
+            uploader = threading.Thread(target=upload)
+            uploader.start()
+            self.assertTrue(entered.wait(1))
+            switcher = threading.Thread(target=switch)
+            switcher.start()
+            self.assertFalse(switched.wait(.05))
+            release.set()
+            uploader.join(2)
+            switcher.join(2)
+        self.assertFalse(errors)
+        self.assertTrue(switched.is_set())
+        self.assertTrue(self.app.media)
+        self.assertTrue(all(backend == self.backend.url for backend, _ in self.app.media.values()))
+
+    def test_comfy_roots_saved_without_erasing_other_settings(self):
+        root = str(self.root.resolve())
+        status, _, saved = self.post("/api/settings", {"backend_url": self.backend.url, "model_roots": [], "comfy_roots": [root]})
+        self.assertEqual(status, 200)
+        self.assertEqual(saved["settings"]["comfy_roots"], [root])
+        status, _, saved = self.post("/api/settings", {"backend_url": self.backend.url, "model_roots": []})
+        self.assertEqual(saved["settings"]["comfy_roots"], [root])
 
     def test_host_origin_and_csrf_reject_cross_site_access(self):
         for headers in ({"Host": "attacker.invalid"}, {"Origin": "https://attacker.invalid"},

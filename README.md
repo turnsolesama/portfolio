@@ -18,7 +18,7 @@
 
 | 你现在想做什么 | 对应项目 | 当前版本 | 下载 Windows 程序包 |
 | --- | --- | --- | --- |
-| 编排提示词与参考图，控制 H3 视频和图片生成，检查本地缺失项 | **[FrameWeave 帧织](frameweave/)** | 0.1.0 | **[下载帧织 · 8.48 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/frameweave/releases/FrameWeave-v0.1.0-Windows-x64.zip)** |
+| 编排提示词与参考图，控制 H3 视频和图片生成，检查本地缺失项 | **[FrameWeave 帧织](frameweave/)** | 0.2.0 | **[下载帧织 · 9.12 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/frameweave/releases/FrameWeave-v0.2.0-Windows-x64.zip)** |
 | 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.3.7 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-Windows-x64.zip)** |
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | 导入 API 示例，管理服务、密钥变量和 Codex 配置切换 | **[Codex Switcher](codex-switcher/)** | 2.4.1 | **[下载切换器 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
@@ -33,13 +33,14 @@
 **把提示词、参考图、视频生成和结果，放进一张可控制的专业画布。**
 
 - 无限画布、框选与连线、撤销重做、JSON 导入导出、提示词一键复制。
-- H3 视频与 Krea 2 / SDXL 图片控制；参数与依赖校验、队列、结果大图和视频预览。
-- 检查本地节点、模型角色和文件结构，复制脱敏的缺失项说明给 AI 补齐。
-- 原创深墨蓝与青绿界面，无广告。Windows 程序约 8.46 MiB，复用系统浏览器及已有本地 ComfyUI，不捆绑模型、CUDA 或 PyTorch。
+- 工作流包：导入 ComfyUI API 图或封装当前生成节点，开放提示词、尺寸、种子和参考图，填表即可生成图片或视频。
+- 自动发现本机后端、安装目录与显卡，按完整工作流识别节点和模型缺失，区分“缺失”与“暂不可检查”，复制脱敏修复说明。
+- H3 视频与 Krea 2 / SDXL 图片控制，支持队列、结果大图和视频预览；原创深墨蓝与青绿界面，无广告。
+- Windows 程序约 9.04 MiB，复用系统浏览器及已有本地 ComfyUI，不捆绑模型、CUDA 或 PyTorch。
 
-初版已验证两次真实 GPU 生成，并通过 46 项 Python、8 项 Node 和 15 项界面检查。生成仍需要用户启动本地 ComfyUI；完整剪辑时间线、独立推理引擎和各参考模式的全面画质验收尚未提供。
+0.2.0 通过 109 项 Python、16 项 Node、源码与 EXE 各 17 项界面检查，以及打包版 5 项真实表单与媒体检查；已实际生成 Krea 图片、H3 文生视频和首帧图生视频。生成仍需要已有本地 ComfyUI，未实现自动安装、独立推理引擎或完整剪辑时间线。
 
-[进入帧织 →](frameweave/) · [模型与参数](frameweave/docs/MODELS.md) · [验证记录](frameweave/docs/VALIDATION.md)
+[进入帧织 →](frameweave/) · [工作流包](frameweave/docs/WORKFLOW_PACKAGES.md) · [环境检查](frameweave/docs/ENVIRONMENT.md) · [模型与参数](frameweave/docs/MODELS.md) · [验证记录](frameweave/docs/VALIDATION.md) · [开发记录](frameweave/docs/DEVELOPMENT_LOG.md)
 
 ## 资产管理系统
 

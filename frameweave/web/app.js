@@ -1,9 +1,10 @@
 import { createNode, createDemo, connect, removeNodes, duplicateNodes, generationPayload, serializeGraph, parseGraph, stableStringify, progressPercent } from './graph.mjs';
+import { PACKAGE_LIMIT, defaultValues, fieldType, coerceFieldValue, validateValues, parseJSONWithSafeNumbers, parsePackageDocument, redactLocalText, publicChecksReport } from './packages.mjs';
 
 const $ = selector => document.querySelector(selector);
 const STORAGE_KEY = 'frameweave.canvas.v1';
 const JOB_MAP_KEY = 'frameweave.jobs.v1';
-const KIND_NAMES = { h3_t2v: 'H3 · 文生视频', h3_i2v: 'H3 · 首尾帧视频', h3_ref: 'H3 · 参考生成视频', sdxl: 'SDXL · 图片生成', krea: 'Krea 2 · 图片生成', api: 'ComfyUI · API 工作流' };
+const KIND_NAMES = { h3_t2v: 'H3 · 文生视频', h3_i2v: 'H3 · 首尾帧视频', h3_ref: 'H3 · 参考生成视频', sdxl: 'SDXL · 图片生成', krea: 'Krea 2 · 图片生成', api: 'ComfyUI · API 工作流', package: '工作流包 · 填写即生成' };
 const STATUS_NAMES = { queued: '排队中', running: '生成中', completed: '已完成', failed: '失败', cancelled: '已取消' };
 const canvas = $('#canvas');
 const world = $('#world');
@@ -16,7 +17,7 @@ let selectedEdge = null;
 let history = [];
 let future = [];
 let csrf = '';
-let settings = { backend_url: 'http://127.0.0.1:8188', model_roots: [] };
+let settings = { backend_url: 'http://127.0.0.1:8188', model_roots: [], comfy_roots: [] };
 let engine = { online: false, capabilities: {}, models: {} };
 let jobs = [];
 let jobNodes = {};
@@ -31,6 +32,16 @@ let pollBusy = false;
 let restored = false;
 let submitting = new Set();
 let projectTitle = '未命名画布';
+let packages = [];
+let packagesLoaded = false;
+let packageDraft = null;
+let environment = null;
+let environmentPending = null;
+let diagnosticChecks = [];
+let workflowChecks = [];
+let workflowRepair = '';
+let diagnosticNodeId = null;
+let diagnosticBusy = false;
 const clone = value => JSON.parse(JSON.stringify(value));
 
 function el(tag, className, text) {
@@ -64,7 +75,7 @@ function mediaURL(value) {
 }
 async function api(path, body) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), path === '/api/diagnostics' ? 90000 : 45000);
+  const timeout = setTimeout(() => controller.abort(), ['/api/diagnostics', '/api/environment'].includes(path) ? 90000 : 45000);
   try {
     const response = await fetch(path, { method: body === undefined ? 'GET' : 'POST', headers: body === undefined ? {} : { 'Content-Type': 'application/json', 'X-FW-Token': csrf }, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal });
     const result = await response.json().catch(() => ({ error: `服务返回无效数据 (${response.status})` }));
@@ -257,19 +268,20 @@ function renderNodes() {
       body.append(text); card.append(body);
       const footer = el('div', 'node-footer'); footer.append(el('span', '', `${node.data.text.length} 字 · 可连接多个生成节点`), button('复制提示词 ↗', 'node-action', () => copyText(node.data.text))); card.append(footer, port(node, 'output'));
     } else if (node.type === 'generation') {
-      const labels = el('div', 'port-label'); labels.append(el('span', '', 'INPUT / 提示词与参考'), el('span', '', 'OUTPUT'));
-      body.append(labels, el('span', 'model-chip', node.data.kind.startsWith('h3') ? 'MiniMax H3 · 本地推理' : node.data.kind === 'api' ? 'API 工作流 · 高级' : `${node.data.kind === 'krea' ? 'Krea 2' : 'SDXL'} · 本地推理`));
+      const pack = node.data.kind === 'package' ? packages.find(item => item.id === node.data.package_id) : null;
+      const labels = el('div', 'port-label'); labels.append(el('span', '', node.data.kind === 'package' ? 'INPUT / 右侧表单' : 'INPUT / 提示词与参考'), el('span', '', 'OUTPUT'));
+      body.append(labels, el('span', 'model-chip', node.data.kind === 'package' ? '可复用工作流包' : node.data.kind.startsWith('h3') ? 'MiniMax H3 · 本地推理' : node.data.kind === 'api' ? 'API 工作流 · 高级' : `${node.data.kind === 'krea' ? 'Krea 2' : 'SDXL'} · 本地推理`));
       const summary = el('div', 'generation-summary');
-      const stats = node.data.kind === 'api' ? [['工作流', '已导入 API'], ['节点', Object.keys(node.data.apiPrompt || {}).length], ['执行', '本地引擎'], ['编辑', '原始 JSON']] : [['尺寸', `${node.data.width} × ${node.data.height}`], ['模式', node.data.kind.startsWith('h3') ? `${node.data.seconds}s · ${node.data.fps}fps` : '静态图像'], ['采样步数', node.data.steps], ['种子', node.data.seed]];
+      const stats = node.data.kind === 'package' ? [['工作流', pack?.name || '待导入对应包'], ['可填输入', pack?.fields?.length ?? '—'], ['执行', '本地引擎'], ['操作', '填写 → 生成']] : node.data.kind === 'api' ? [['工作流', '已导入 API'], ['节点', Object.keys(node.data.apiPrompt || {}).length], ['执行', '本地引擎'], ['编辑', '原始 JSON']] : [['尺寸', `${node.data.width} × ${node.data.height}`], ['模式', node.data.kind.startsWith('h3') ? `${node.data.seconds}s · ${node.data.fps}fps` : '静态图像'], ['采样步数', node.data.steps], ['种子', node.data.seed]];
       stats.forEach(([name, value]) => { const stat = el('div', 'stat'); stat.append(el('span', '', name), el('strong', '', value)); summary.append(stat); });
       body.append(summary);
       let prompt = ''; try { prompt = generationPayload(graph, node.id).positive; } catch { /* API import has no prompt yet. */ }
-      body.append(el('p', 'node-prompt-summary', node.data.kind === 'api' ? '保留原始 ComfyUI API 节点与参数，按完整工作流执行。' : prompt || '连接提示词节点，或在右侧填写画面描述。'));
+      body.append(el('p', 'node-prompt-summary', node.data.kind === 'package' ? pack?.description || (pack ? '选择此节点，在右侧填写输入，然后开始生成。' : '本机包库中还没有对应工作流包，请先导入。') : node.data.kind === 'api' ? '保留原始 ComfyUI API 节点与参数，按完整工作流执行。' : prompt || '连接提示词节点，或在右侧填写画面描述。'));
       const run = button(submitting.has(node.id) ? '正在提交…' : '▷  开始生成', 'button primary run-node', () => runNode(node.id)); run.disabled = submitting.has(node.id); run.dataset.runNode = node.id;
       body.append(run); card.append(body);
       const footer = el('div', 'node-footer');
       const status = el('span', 'node-status', '○ 等待提交'); status.dataset.nodeStatus = node.id;
-      footer.append(status, button('检查环境', 'node-action', () => runDiagnostics(node))); card.append(footer, port(node, 'input'), port(node, 'output'));
+      footer.append(status, button('检查环境', 'node-action', () => runDiagnostics(node))); card.append(footer); if (node.data.kind !== 'package') card.append(port(node, 'input')); card.append(port(node, 'output'));
     } else if (node.type === 'reference') {
       if (node.data.url) body.append(outputMedia({ url: node.data.url, type: node.data.mediaType, filename: node.data.name }, 'reference-media'));
       else { const drop = button('', 'reference-drop', () => chooseReference(node.id)); drop.append(el('span', 'large', '＋'), el('span', '', '选择参考图片'), el('span', 'field-help', 'PNG · JPG · WebP · 最大 20 MiB')); body.append(drop); }
@@ -349,6 +361,130 @@ function modelField(node, label, key) {
   if (current && !values.includes(current)) values.unshift(current);
   return field(label, current, value => mutate(() => { node.data.models = { ...node.data.models, [key]: value }; }, { inspector: false }), { select: [{ value: '', label: key === 'lora' ? '不使用 LoRA' : '自动匹配可用模型' }, ...values.map(value => ({ value, label: key === 'lora' ? `${/turbo|lightning|lcm|hyper|\d[_-]?step/i.test(value) ? '加速' : '风格 / 适配'} · ${value}` : value }))], help: values.length ? `${values.length} 个可选模型` : '连接引擎后读取模型目录' });
 }
+function renderPackageInputs(wrap, node) {
+  const pack = packages.find(item => item.id === node.data.package_id);
+  if (!pack) {
+    wrap.append(el('p', 'model-note', packagesLoaded ? '本机包库中没有对应工作流包。请导入原来的包文件；相同内容会恢复画布关联。' : '正在读取本机工作流包库…'));
+    wrap.append(button('导入对应工作流包', 'button quiet', openPackages));
+    return;
+  }
+  wrap.append(el('p', 'model-note', pack.description || '填写以下输入，整套工作流将在本地推理引擎中执行。'));
+  const actions = el('div', 'inspector-actions'); actions.append(button('打开包库', 'button quiet', openPackages), button('导出此工作流包', 'button quiet', () => exportPackage(pack.id))); wrap.append(actions);
+  section(wrap, '工作流输入', `${pack.fields.length} / INPUTS`);
+  if (!pack.fields.length) wrap.append(el('p', 'form-note', '此包使用固定参数，可以直接检查环境并运行。'));
+  const values = { ...defaultValues(pack.fields), ...(node.data.packageValues || {}) };
+  for (const definition of pack.fields) {
+    const type = fieldType(definition), value = values[definition.id];
+    const label = `${definition.label || definition.input}${definition.required ? ' *' : ''}`;
+    const change = raw => {
+      try {
+        const next = coerceFieldValue(definition, raw);
+        mutate(() => { node.data.packageValues = { ...(node.data.packageValues || {}), [definition.id]: next }; }, { inspector: false });
+      } catch (error) { reportError(error); renderInspector(); }
+    };
+    let control;
+    if (type === 'boolean') {
+      control = el('label', 'field package-boolean');
+      const input = el('input'); input.type = 'checkbox'; input.checked = value === true; input.setAttribute('aria-label', label); input.addEventListener('change', () => change(input.checked));
+      control.append(input, el('span', '', label));
+    } else if (type === 'select') {
+      control = field(label, String((definition.options || []).findIndex(option => Object.is(option, value))), selectedIndex => change(definition.options[Number(selectedIndex)]), { select: (definition.options || []).map((option, index) => ({ value: String(index), label: String(option) })) });
+    } else if (type === 'image') {
+      control = field(label, value, change, { help: '上传 PNG / JPG / WebP，或使用后端已有的相对文件名。' });
+      const input = el('input'); input.type = 'file'; input.accept = 'image/png,image/jpeg,image/webp'; input.hidden = true;
+      const upload = button('选择本地参考图', 'button quiet compact', () => input.click());
+      input.addEventListener('change', () => {
+        const file = input.files?.[0]; input.value = ''; if (!file) return;
+        upload.disabled = true;
+        uploadImage(file).then(uploaded => {
+          if (!getNode(node.id)) return;
+          change(uploaded.name); renderInspector(); toast('参考图已保存到本地推理服务');
+        }).catch(reportError).finally(() => { upload.disabled = false; });
+      });
+      control.append(upload, input);
+    } else {
+      control = field(label, value, change, { multiline: type === 'text', rows: 3, number: ['integer', 'number'].includes(type), min: definition.min, max: type === 'integer' ? Math.min(Number.MAX_SAFE_INTEGER, definition.max ?? Number.MAX_SAFE_INTEGER) : definition.max, step: type === 'integer' ? 1 : 'any' });
+    }
+    control.dataset.packageField = definition.id;
+    const mapping = el('span', 'field-help package-mapping', `节点 ${definition.node_id} · ${definition.input}`); control.append(mapping);
+    wrap.append(control);
+  }
+}
+async function loadPackages() {
+  const result = await api('/api/packages');
+  packages = Array.isArray(result.packages) ? result.packages : [];
+  packagesLoaded = true;
+  renderPackageLibrary(); renderNodes();
+  if (singleSelected()?.data?.kind === 'package') renderInspector();
+}
+function renderPackageLibrary() {
+  const list = $('#package-list'); list.replaceChildren();
+  if (!packages.length) { list.append(el('div', 'package-empty', packagesLoaded ? '包库还是空的。导入一套已调好的 API 工作流，把常用输入变成简单表单。' : '正在读取工作流包…')); return; }
+  for (const pack of packages) {
+    const card = el('article', 'package-card');
+    card.append(el('span', 'eyebrow', 'LOCAL WORKFLOW'), el('h3', '', pack.name), el('p', 'muted', pack.description || '可复用的本地图片 / 视频工作流'));
+    const meta = el('div', 'package-card-meta'); meta.append(el('span', '', `${pack.fields?.length || 0} 个可填输入`), el('span', 'inline-code', String(pack.id).slice(0, 14))); card.append(meta);
+    const actions = el('div', 'inspector-actions'); actions.append(button('添加到画布', 'button primary', () => addPackageNode(pack)), button('导出包', 'button quiet', () => exportPackage(pack.id))); card.append(actions); list.append(card);
+  }
+}
+async function openPackages() {
+  if (!$('#packages-dialog').open) $('#packages-dialog').showModal();
+  renderPackageLibrary();
+  try { await loadPackages(); } catch (error) { $('#package-list').replaceChildren(el('p', 'model-note', error.message)); throw error; }
+}
+function addPackageNode(pack) {
+  const box = bounds(), origin = { x: graph.nodes.length ? box.maxX + 72 : 80, y: singleSelected()?.y ?? 80 };
+  const node = addNode('generation', { title: pack.name, kind: 'package', package_id: pack.id, packageValues: defaultValues(pack.fields || []) }, origin);
+  viewport.x = canvas.clientWidth / 2 - (node.x + 152) * viewport.scale;
+  viewport.y = 150 - node.y * viewport.scale; applyViewport(); save();
+  $('#packages-dialog').close(); $('#package-editor-dialog').close();
+  switchTab('properties'); renderInspector();
+  toast('已添加工作流包，在右侧填写输入后开始生成');
+  return node;
+}
+async function exportPackage(id) {
+  const result = await api(`/api/packages/${encodeURIComponent(id)}/export`, {});
+  if (!result.document) throw new Error('本地服务没有返回工作流包');
+  downloadJSON(result.document, `frameweave-workflow-${id}.json`);
+  toast('已导出工作流与输入定义，不包含模型或素材文件');
+}
+function renderPackageDraft() {
+  const list = $('#package-field-list'); list.replaceChildren();
+  if (!packageDraft) return;
+  $('#package-field-count').textContent = `${packageDraft.fields.filter(item => item.selected).length} / ${packageDraft.fields.length} 个输入`;
+  for (const item of packageDraft.fields) {
+    const row = el('div', `package-field-row${item.selected ? ' included' : ''}`);
+    const select = el('input'); select.type = 'checkbox'; select.checked = item.selected; select.disabled = fieldType(item) === 'image'; select.setAttribute('aria-label', `暴露 ${item.label || item.input}`);
+    if (select.disabled) select.title = '图像输入必须开放，使用者运行时需上传自己的参考图';
+    select.addEventListener('change', () => { item.selected = select.checked; row.classList.toggle('included', item.selected); $('#package-field-count').textContent = `${packageDraft.fields.filter(field => field.selected).length} / ${packageDraft.fields.length} 个输入`; });
+    const body = el('div', 'package-field-body');
+    const input = el('input'); input.type = 'text'; input.maxLength = 100; input.value = item.label; input.setAttribute('aria-label', `输入名称 ${item.node_id}.${item.input}`); input.addEventListener('change', () => { item.label = input.value.trim() || item.input; input.value = item.label; });
+    body.append(input, el('span', 'package-mapping', `节点 ${item.node_id} → ${item.input} · ${fieldType(item)}${item.recommended ? ' · 推荐' : ''}`));
+    const preview = item.type === 'image' ? '运行时选择参考图' : item.default === undefined ? '没有默认值' : String(item.default).slice(0, 120);
+    body.append(el('span', 'field-help package-default', `默认：${preview}`)); row.append(select, body); list.append(row);
+  }
+  if (!packageDraft.fields.length) list.append(el('p', 'model-note', '没有可暴露的基础输入。仍可保存为使用固定参数的工作流包。'));
+}
+async function inspectPackageDocument(document, name = '') {
+  const result = await api('/api/packages/inspect', { document });
+  if (!result.prompt || !Array.isArray(result.fields)) throw new Error('本地服务未返回有效的工作流输入定义');
+  packageDraft = { ...result, fields: result.fields.map(item => ({ ...item, selected: fieldType(item) === 'image' || document.format === 'frameweave-workflow' || item.recommended !== false })) };
+  $('#package-name').value = name || result.name || '新建工作流包'; $('#package-description').value = result.description || '';
+  $('#package-inspection-note').textContent = '保存只建立本地工作流包；每次运行前会按当前后端重新校验节点、参数与模型。';
+  renderPackageDraft(); $('#packages-dialog').close(); $('#package-editor-dialog').showModal();
+}
+async function inspectPackageFile(file) {
+  if (file.size > PACKAGE_LIMIT) throw new Error('工作流包 / API JSON 最大为 2 MiB');
+  const document = parsePackageDocument(await file.text());
+  await inspectPackageDocument(document, document.format === 'frameweave-workflow' ? '' : file.name.replace(/\.json$/i, ''));
+}
+async function packageCurrentNode() {
+  const node = selectedGeneration();
+  if (!node) throw new Error('请先在画布选择一个图片 / 视频生成节点');
+  if (node.data.kind === 'package') throw new Error('当前节点已经是工作流包，可以直接导出此包');
+  const result = await api('/api/compile', generationPayload(graph, node.id));
+  await inspectPackageDocument({ prompt: result.prompt }, node.data.title);
+}
 function renderInspector() {
   const content = $('#inspector-content'); content.replaceChildren();
   if (selectedEdge) {
@@ -369,16 +505,21 @@ function renderInspector() {
   wrap.append(field('节点名称', node.data.title, value => editNode(node.id, 'title', value || '未命名节点')));
   if (node.type === 'generation') {
     section(wrap, '生成模式', '01 / MODEL');
-    wrap.append(field('模型与任务', node.data.kind, kind => mutate(() => {
+    wrap.append(field('模型与任务', node.data.kind, kind => {
+      if (kind === 'package' && node.data.kind !== 'package') { renderInspector(); openPackages().catch(reportError); return; }
+      mutate(() => {
       node.data.kind = kind; node.data.title = KIND_NAMES[kind]; node.data.models = {};
       if (kind === 'krea') { node.data.steps = 8; node.data.cfg = 1; node.data.width = 1024; node.data.height = 1024; }
       else if (kind === 'sdxl') { node.data.steps = 25; node.data.cfg = 7; node.data.width = 1024; node.data.height = 1024; }
       else if (kind.startsWith('h3')) { node.data.steps = 20; node.data.cfg = 1; node.data.width = 768; node.data.height = 448; }
-    }), { select: Object.entries(KIND_NAMES).map(([value, label]) => ({ value, label })) }));
-    if (node.data.kind === 'api') {
+      });
+    }, { select: Object.entries(KIND_NAMES).map(([value, label]) => ({ value, label })) }));
+    if (node.data.kind === 'package') {
+      renderPackageInputs(wrap, node);
+    } else if (node.data.kind === 'api') {
       wrap.append(el('p', 'model-note', '导入 ComfyUI「Save (API Format)」JSON。工作流完整保留，模型与路径仍需在你的推理引擎中可用。'));
       wrap.append(button(node.data.apiPrompt ? '重新导入 API 工作流' : '导入 API 工作流', 'button quiet', () => { workflowTarget = node.id; $('#workflow-input').click(); }));
-      if (node.data.apiPrompt) wrap.append(field('API 工作流 JSON', stableStringify(node.data.apiPrompt), value => { try { const parsed = JSON.parse(value); if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(); editNode(node.id, 'apiPrompt', parsed); } catch { toast('API 工作流必须是有效 JSON 对象', true); } }, { multiline: true, rows: 10 }));
+      if (node.data.apiPrompt) wrap.append(field('API 工作流 JSON', stableStringify(node.data.apiPrompt), value => { try { const parsed = parseJSONWithSafeNumbers(value); if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error(); editNode(node.id, 'apiPrompt', parsed); } catch (error) { toast(error.message || 'API 工作流必须是有效 JSON 对象', true); } }, { multiline: true, rows: 10 }));
     } else {
       if (node.data.kind.startsWith('h3')) wrap.append(el('p', 'model-note', 'MiniMax H3 需要兼容扩展与模型。默认 20 步；低步数加速须配合对应 Turbo LoRA。实际帧数与时长由引擎校正。'));
       if (node.data.kind === 'h3_i2v') wrap.append(el('p', 'form-note', '连接首帧参考素材，可再连接一张尾帧。素材属性中选择「首帧」与「尾帧」角色。'));
@@ -429,9 +570,9 @@ function renderInspector() {
   content.append(wrap);
 }
 function renderAll() { renderNodes(); renderInspector(); updateHistory(); applyViewport(); }
-function addNode(type, data = {}) {
+function addNode(type, data = {}, position = null) {
   const point = viewPoint(canvas.getBoundingClientRect().left + canvas.clientWidth / 2, canvas.getBoundingClientRect().top + canvas.clientHeight / 2);
-  const node = createNode(type, point.x - 145, point.y - 115, data);
+  const node = createNode(type, position?.x ?? point.x - 145, position?.y ?? point.y - 115, data);
   mutate(() => { graph.nodes.push(node); selected = new Set([node.id]); selectedEdge = null; });
   return node;
 }
@@ -461,31 +602,128 @@ async function refreshEngine(showToast = false) {
     $('#engine-label').textContent = engine.online ? '本地引擎已连接' : '本地引擎未连接';
     $('#engine-status').title = engine.online ? `${engine.backend_url || settings.backend_url} · ${engine.devices?.map(item => typeof item === 'string' ? item : item.name).filter(Boolean).join(' / ') || '点击检查环境'}` : '点击查看缺失项与修复提示词';
     if (showToast) toast(engine.online ? '已连接本地推理引擎' : '引擎尚未就绪，可复制环境检查中的修复提示词', !engine.online);
+    if (environment) renderEnvironment();
   } catch (error) {
     engine.online = false; $('#engine-status').classList.remove('online'); $('#engine-status').classList.add('offline'); $('#engine-label').textContent = '本地服务不可用';
     if (showToast) throw error;
   }
 }
-async function runDiagnostics(node = selectedGeneration()) {
+function knownLocalPaths() {
+  return [...(settings.model_roots || []), ...(settings.comfy_roots || []), ...(environment?.installations || []).flatMap(item => [item.root, typeof item.python === 'string' ? item.python : item.python?.path, ...(item.model_roots || [])])].filter(value => typeof value === 'string');
+}
+function renderDiagnosticChecks() {
+  const categoryNames = { hardware: '硬件与驱动', gpu: '硬件与驱动', runtime: '运行环境', python: 'Python 环境', packages: 'Python 依赖', backend: '推理服务', nodes: '工作流节点', custom_nodes: '自定义节点', models: '模型文件', model: '模型文件', inputs: '工作流输入', workflow: '当前工作流', environment: '本地环境' };
+  diagnosticChecks = [...(environment?.checks || []).map(check => ({ category: 'environment', ...check })), ...workflowChecks.map(check => ({ category: 'workflow', ...check }))];
+  const counts = { ok: 0, missing: 0, error: 0, warning: 0, unknown: 0 };
+  const groups = new Map();
+  for (const check of diagnosticChecks) {
+    const status = Object.hasOwn(counts, check.status) ? check.status : 'unknown'; counts[status]++;
+    const name = categoryNames[check.category] || check.category || '其他检查';
+    if (!groups.has(name)) groups.set(name, []);
+    groups.get(name).push({ ...check, status });
+  }
+  const countArea = $('#diagnostic-counts'); countArea.replaceChildren();
+  for (const [status, name] of Object.entries({ ok: '就绪', missing: '缺失', error: '错误', warning: '提醒', unknown: '待确认' })) countArea.append(el('span', `diagnostic-count ${status}`, `${counts[status]} ${name}`));
+  const list = $('#diagnostic-list'); list.replaceChildren();
+  for (const [name, checks] of groups) {
+    const group = el('section', 'check-group'); group.append(el('h3', '', name));
+    checks.forEach(check => {
+      const row = el('div', `check-row ${check.status}`); row.append(el('span', 'check-symbol', { ok: '✓', warning: '!', missing: '×', error: '×', unknown: '?' }[check.status]));
+      const body = el('div'); body.append(el('div', 'check-name', check.name), el('div', 'check-detail', check.detail)); row.append(body); group.append(row);
+    }); list.append(group);
+  }
+  const prompt = workflowRepair || '请协助我补齐 FrameWeave 本地图片 / 视频工作流环境。先解释缺失项与操作影响，再给出可核查的安装、配置与验证步骤。保留现有模型和数据；不要把“待确认”当成已安装或已损坏。';
+  $('#repair-prompt').value = redactLocalText(prompt, knownLocalPaths());
+  $('#copy-repair').disabled = !diagnosticChecks.length; $('#export-diagnostics').disabled = !diagnosticChecks.length;
+}
+function hasActiveJobs() { return submitting.size > 0 || jobs.some(job => ['queued', 'running'].includes(job.status)); }
+async function useBackend(url) {
+  await pollJobs();
+  if (hasActiveJobs()) throw new Error('仍有排队或运行中的任务。请等待任务完成或取消后，再切换推理服务。');
+  const result = await api('/api/settings', { ...settings, backend_url: url });
+  settings = result.settings || { ...settings, backend_url: url };
+  await refreshEngine(true); renderInspector(); renderEnvironment();
+  if ($('#diagnostics-dialog').open) await runDiagnostics(getNode(diagnosticNodeId) || selectedGeneration());
+}
+function openSettings(modelRoots = null) {
+  $('#backend-url').value = settings.backend_url;
+  $('#model-roots').value = [...new Set(modelRoots ? [...(settings.model_roots || []), ...modelRoots] : settings.model_roots || [])].join('\n');
+  $('#comfy-roots').value = (settings.comfy_roots || []).join('\n');
+  $('#settings-dialog').showModal();
+}
+function renderEnvironment() {
+  const target = $('#environment-discoveries'); target.replaceChildren();
+  if (!environment) return;
+  const online = (environment.candidates || []).filter(item => item.online);
+  const alternatives = online.filter(item => item.url !== settings.backend_url);
+  $('#environment-status').textContent = `发现 ${online.length} 个可用服务 · ${(environment.installations || []).length} 个安装目录 · ${Math.round(Number(environment.elapsed_ms) || 0)} ms${environment.scanned_at ? ` · ${String(environment.scanned_at).replace('T', ' ').slice(0, 19)}` : ''}`;
+  $('#discovery-banner').hidden = engine.online || !alternatives.length;
+  if (!engine.online && alternatives.length) $('#discovery-message').textContent = `自动发现 ${alternatives.length} 个可用本地引擎，当前地址尚未连接`;
+  for (const candidate of environment.candidates || []) {
+    const row = el('div', `environment-card${candidate.online ? ' available' : ''}`);
+    const body = el('div', 'environment-card-body'); body.append(el('strong', '', candidate.online ? '可用推理服务' : '暂未连接'), el('span', 'inline-code', candidate.url), el('span', 'field-help', [candidate.source, candidate.version ? `ComfyUI ${candidate.version}` : ''].filter(Boolean).join(' · ')));
+    const active = candidate.url === settings.backend_url;
+    const action = button(active ? '当前地址' : '使用此后端', 'button quiet compact', () => useBackend(candidate.url)); action.disabled = active || !candidate.online || hasActiveJobs();
+    if (hasActiveJobs() && !active) action.title = '有活动任务，完成或取消后可切换'; row.append(body, action); target.append(row);
+  }
+  for (const installation of environment.installations || []) {
+    const row = el('div', 'environment-card');
+    const body = el('div', 'environment-card-body'); body.append(el('strong', '', installation.source || '本地安装'), el('span', 'inline-code path-text', installation.root));
+    if (installation.python) body.append(el('span', 'field-help path-text', `Python：${typeof installation.python === 'string' ? installation.python : installation.python.path || installation.python.detail || '尚未确认'}`));
+    const roots = (installation.model_roots || []).filter(value => typeof value === 'string');
+    body.append(el('span', 'field-help', roots.length ? `${roots.length} 个模型目录可填入设置` : '未找到可确认的模型目录')); row.append(body);
+    if (roots.length) row.append(button('填入模型目录', 'button quiet compact', () => openSettings(roots)));
+    target.append(row);
+  }
+  if (environment.hardware) {
+    const hardware = el('div', 'environment-hardware');
+    const gpus = (environment.hardware.gpus || []).map(gpu => typeof gpu === 'string' ? gpu : gpu.name || gpu.model || '').filter(Boolean);
+    hardware.append(el('strong', '', gpus.join(' / ') || '硬件信息待确认'), el('p', 'field-help', environment.hardware.detail || '硬件可见性与当前推理进程的可用性分别检查。')); target.append(hardware);
+  }
+  if (environment.notes?.length) target.append(el('p', 'form-note', environment.notes.join(' ')));
+  renderDiagnosticChecks();
+}
+async function scanEnvironment() {
+  if (environmentPending) return environmentPending;
+  $('#environment-status').textContent = '正在自动识别本地服务与安装环境…';
+  environmentPending = (async () => {
+    try { environment = await api('/api/environment', {}); renderEnvironment(); return environment; }
+    catch (error) { $('#environment-status').textContent = `自动发现未完成：${error.message}`; throw error; }
+    finally { environmentPending = null; }
+  })();
+  return environmentPending;
+}
+async function runDiagnostics(node = selectedGeneration(), scan = false) {
   const dialog = $('#diagnostics-dialog'); if (!dialog.open) dialog.showModal();
-  $('#diagnostic-summary').textContent = '正在读取本地节点能力、模型与环境…'; $('#diagnostic-list').replaceChildren(); $('#repair-prompt').value = ''; $('#diagnostic-refresh').disabled = true; $('#copy-repair').disabled = true;
+  if (diagnosticBusy) return;
+  diagnosticNodeId = node?.id || null; diagnosticBusy = true;
+  $('#diagnostic-summary').textContent = `正在检查${node ? `「${node.data.title}」的` : ''}节点、模型与输入…`;
+  $('#diagnostic-refresh').disabled = true; workflowChecks = []; workflowRepair = ''; renderDiagnosticChecks();
   try {
-    const result = await api('/api/diagnostics', { kind: node?.data.kind || 'h3_t2v', models: node?.data.models || {} });
-    $('#diagnostic-summary').textContent = typeof result.summary === 'string' ? result.summary : '环境检查完成。以下结果来自本地服务。';
-    const checks = Array.isArray(result.checks) ? result.checks : [];
-    checks.forEach(check => { const row = el('div', `check-row ${['ok', 'missing', 'warning', 'error'].includes(check.status) ? check.status : 'warning'}`); row.append(el('span', 'check-symbol', check.status === 'ok' ? '✓' : check.status === 'warning' ? '!' : '×')); const text = el('div'); text.append(el('div', 'check-name', check.name), el('div', 'check-detail', check.detail)); row.append(text); $('#diagnostic-list').append(row); });
-    $('#repair-prompt').value = result.repair_prompt || '未返回修复提示词。请重新检查本地服务。';
-    $('#copy-repair').disabled = !result.repair_prompt;
-    await refreshEngine();
+    const payload = node ? generationPayload(graph, node.id) : { kind: 'h3_t2v' };
+    const discovery = scan || !environment ? scanEnvironment() : Promise.resolve(environment);
+    const [inspection, discoveryResult] = await Promise.allSettled([api('/api/diagnostics', payload), discovery]);
+    if (inspection.status === 'rejected') throw inspection.reason;
+    const result = inspection.value;
+    workflowChecks = Array.isArray(result.checks) ? result.checks : []; workflowRepair = result.repair_prompt || '';
+    $('#diagnostic-summary').textContent = typeof result.summary === 'string' ? result.summary : `已检查${node ? `「${node.data.title}」` : '当前工作流'}，未知项仍需人工确认。`;
+    if (discoveryResult.status === 'rejected') $('#environment-status').textContent = `自动发现未完成：${discoveryResult.reason.message}`;
+    renderDiagnosticChecks(); await refreshEngine(); renderEnvironment();
     if (!$('#properties-panel').contains(document.activeElement)) renderInspector();
-  } catch (error) { $('#diagnostic-summary').textContent = error.message; throw error; }
-  finally { $('#diagnostic-refresh').disabled = false; }
+  } catch (error) {
+    workflowChecks = [{ category: 'workflow', status: 'unknown', name: '当前工作流检查未完成', detail: error.message }];
+    $('#diagnostic-summary').textContent = error.message; renderDiagnosticChecks();
+  } finally { diagnosticBusy = false; $('#diagnostic-refresh').disabled = false; }
 }
 async function runNode(id) {
   if (submitting.has(id)) return;
   const node = getNode(id); if (!node) return;
   const payload = generationPayload(graph, id);
-  if (payload.kind !== 'api' && !payload.positive.trim()) throw new Error('先连接提示词节点或填写正向提示词。');
+  if (payload.kind === 'package') {
+    const pack = packages.find(item => item.id === payload.package_id);
+    if (!pack) throw new Error('本机包库中没有对应工作流包，请先导入原来的包文件。');
+    payload.values = validateValues(pack.fields, payload.values);
+  } else if (payload.kind !== 'api' && !payload.positive.trim()) throw new Error('先连接提示词节点或填写正向提示词。');
   submitting.add(id); document.querySelectorAll('[data-run-node]').forEach(element => { if (element.dataset.runNode === id) { element.disabled = true; element.textContent = '正在提交…'; } });
   try {
     const job = await api('/api/jobs', payload);
@@ -554,13 +792,17 @@ function switchTab(tab) {
   $('#properties-panel').hidden = !properties; $('#jobs-panel').hidden = properties;
 }
 function chooseReference(id = null) { uploadTarget = id; $('#reference-input').click(); }
-async function uploadFile(file, target) {
+async function uploadImage(file) {
   if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error('参考素材支持 PNG、JPG、WebP 图片。视频输出可在生成后预览。');
   if (file.size > 20 * 1024 * 1024) throw new Error('初版单张参考图上限为 20 MiB，请先缩小图片。');
   toast(`正在导入 ${file.name}…`);
   const data = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1]); reader.onerror = () => reject(new Error('无法读取素材')); reader.readAsDataURL(file); });
   const uploaded = await api('/api/upload', { name: file.name, data });
   if (!uploaded.name || !uploaded.url) throw new Error('上传服务没有返回有效素材引用');
+  return uploaded;
+}
+async function uploadFile(file, target) {
+  const uploaded = await uploadImage(file);
   if (target && getNode(target)) mutate(() => { const node = getNode(target); node.data = { ...node.data, name: uploaded.name, url: uploaded.url, mediaType: file.type.startsWith('video/') ? 'video' : 'image' }; });
   else addNode('reference', { title: file.name.replace(/\.[^.]+$/, '').slice(0, 50), name: uploaded.name, url: uploaded.url, mediaType: file.type.startsWith('video/') ? 'video' : 'image' });
   toast('素材已保存到本地');
@@ -659,14 +901,39 @@ bind('#load-demo', () => { mutate(() => { graph = createDemo(); selected = new S
 bind('#undo', undo); bind('#redo', redo); bind('#zoom-in', () => zoom(1.15)); bind('#zoom-out', () => zoom(1 / 1.15)); bind('#zoom-reset', () => zoom(1 / viewport.scale)); bind('#fit-view', fitView); bind('#minimap-button', fitView);
 bind('#save-project', exportProject); bind('#open-project', () => $('#project-input').click()); bind('#help-button', () => $('#help-dialog').showModal());
 bind('#tab-properties', () => switchTab('properties')); bind('#tab-jobs', () => switchTab('jobs'));
-bind('#engine-status', () => runDiagnostics()); bind('#diagnostics-button', () => runDiagnostics()); bind('#diagnostic-refresh', () => runDiagnostics()); bind('#copy-repair', () => copyText($('#repair-prompt').value, '已复制修复提示词，可交给 AI 助手'));
-bind('#settings-button', () => { $('#backend-url').value = settings.backend_url; $('#model-roots').value = (settings.model_roots || []).join('\n'); $('#settings-dialog').showModal(); });
+bind('#engine-status', () => runDiagnostics()); bind('#diagnostics-button', () => runDiagnostics()); bind('#diagnostic-refresh', () => runDiagnostics(getNode(diagnosticNodeId) || selectedGeneration(), true)); bind('#copy-repair', () => copyText($('#repair-prompt').value, '已复制脱敏修复提示词，可交给 AI 助手'));
+bind('#discovery-open', () => runDiagnostics());
+bind('#export-diagnostics', () => { downloadJSON(publicChecksReport(diagnosticChecks, knownLocalPaths(), { mode: getNode(diagnosticNodeId)?.data.kind, repair_prompt: workflowRepair }), `frameweave-environment-${new Date().toISOString().slice(0, 10)}.json`); toast('已导出脱敏状态摘要，不包含本机路径或原始检查明细'); });
+bind('#settings-button', () => openSettings());
+bind('#packages-button', openPackages); bind('#import-package', () => $('#package-input').click()); bind('#refresh-packages', loadPackages);
+bind('#package-current-node', packageCurrentNode);
+bind('#package-select-recommended', () => { if (packageDraft) { packageDraft.fields.forEach(item => { item.selected = fieldType(item) === 'image' || item.recommended !== false; }); renderPackageDraft(); } });
+bind('#package-select-all', () => { if (packageDraft) { packageDraft.fields.forEach(item => { item.selected = true; }); renderPackageDraft(); } });
+$('#package-input').addEventListener('change', event => {
+  const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
+  $('#import-package').disabled = true; inspectPackageFile(file).catch(reportError).finally(() => { $('#import-package').disabled = false; });
+});
+$('#package-editor-form').addEventListener('submit', event => {
+  event.preventDefault(); if (!packageDraft) return;
+  (async () => {
+    const fields = packageDraft.fields.filter(item => item.selected).map(({ selected: _selected, recommended: _recommended, ...definition }) => definition);
+    $('#save-package').disabled = true;
+    try {
+      const result = await api('/api/packages', { name: $('#package-name').value.trim(), description: $('#package-description').value.trim(), prompt: packageDraft.prompt, fields });
+      if (!result.package?.id) throw new Error('本地服务没有返回有效的工作流包');
+      await loadPackages(); addPackageNode(result.package); packageDraft = null;
+    } finally { $('#save-package').disabled = false; }
+  })().catch(reportError);
+});
 $('#settings-form').addEventListener('submit', event => {
   event.preventDefault();
   (async () => {
-    const result = await api('/api/settings', { backend_url: $('#backend-url').value.trim(), model_roots: $('#model-roots').value.split('\n').map(line => line.trim()).filter(Boolean) });
-    settings = result.settings || { backend_url: $('#backend-url').value.trim(), model_roots: $('#model-roots').value.split('\n').map(line => line.trim()).filter(Boolean) };
+    const next = { backend_url: $('#backend-url').value.trim(), model_roots: $('#model-roots').value.split('\n').map(line => line.trim()).filter(Boolean), comfy_roots: $('#comfy-roots').value.split('\n').map(line => line.trim()).filter(Boolean) };
+    await pollJobs(); if (next.backend_url !== settings.backend_url && hasActiveJobs()) throw new Error('有活动任务，完成或取消后才能切换推理服务。');
+    const result = await api('/api/settings', next);
+    settings = result.settings || next;
     $('#settings-dialog').close(); await refreshEngine(true); renderInspector();
+    await scanEnvironment();
   })().catch(reportError);
 });
 $('#project-input').addEventListener('change', event => {
@@ -686,7 +953,7 @@ $('#workflow-input').addEventListener('change', event => {
   const file = event.target.files?.[0]; const target = workflowTarget; event.target.value = ''; if (!file) return;
   (async () => {
     if (file.size > 8 * 1024 * 1024) throw new Error('API 工作流最大为 8 MiB。');
-    const parsed = JSON.parse(await file.text());
+    const parsed = parseJSONWithSafeNumbers(await file.text());
     const prompt = parsed.prompt && !parsed.class_type ? parsed.prompt : parsed;
     if (!prompt || typeof prompt !== 'object' || Array.isArray(prompt) || prompt.nodes || !Object.values(prompt).length || !Object.values(prompt).every(node => node && typeof node.class_type === 'string' && node.inputs && typeof node.inputs === 'object')) throw new Error('请导入 ComfyUI 的 API 格式 JSON，普通画布 JSON 不包含可执行节点。');
     if (getNode(target)) editNode(target, 'apiPrompt', prompt, true);
@@ -706,6 +973,8 @@ async function initialize() {
     const bootstrap = await api('/api/bootstrap'); csrf = bootstrap.csrf; settings = { ...settings, ...bootstrap.settings };
     if (bootstrap.version) $('.alpha').textContent = bootstrap.version;
     await refreshEngine(); renderInspector(); await pollJobs();
+    loadPackages().catch(reportError);
+    scanEnvironment().catch(error => toast(`自动环境发现未完成：${error.message}`, true));
   } catch (error) { $('#engine-label').textContent = '本地服务不可用'; $('#engine-status').classList.add('offline'); reportError(new Error(`无法连接 FrameWeave 本地服务：${error.message}`)); }
   setInterval(() => { if (!document.hidden) pollJobs(); }, 1800);
   setInterval(() => { if (!document.hidden) refreshEngine(); }, 15000);

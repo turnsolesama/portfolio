@@ -58,6 +58,13 @@ def nodes(result, class_type):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_shared_model_root_excludes_non_generation_model_roles(self):
+        info = {"CheckpointLoaderSimple": {"input": {"required": {"ckpt_name": [[
+            "Library/SDXL/Checkpoints/base.safetensors", "Library/Embeddings/SDXL/negative.safetensors",
+            "Library/ControlNet/model.safetensors", "Library/clip_vision/model.safetensors"
+        ]]}}}}
+        self.assertEqual(catalog(info)["checkpoint"], ["Library/SDXL/Checkpoints/base.safetensors"])
+
     def setUp(self):
         self.info = fixture()
 

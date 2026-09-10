@@ -8,3 +8,5 @@
 - Bind only to loopback. Validate Host, Origin and CSRF token on writes. Backend connections are loopback-only in v0.1.
 - Publish only source, documentation, a clean release archive and manifests. Never publish local model paths, user media, tokens, cache, or private inspection evidence.
 - Do not claim generation quality/speed from protocol or mock tests. Report real GPU generation separately.
+- Keep docs/DEVELOPMENT_LOG.md current with each change's scope, decisions, issues, validation evidence and outstanding limits. Record private paths, prompts and temporary runtime details only outside the public project tree.
+- Workflow packages are data-only JSON with explicit scalar/image bindings; importing must never submit a job. Preserve stable package identity and old canvas compatibility, and validate live node schemas before generation.
