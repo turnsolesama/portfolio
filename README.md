@@ -4,13 +4,13 @@
 
 项目按本地化 AI 系统、资产管理系统、工具类组织。每个软件保留独立的功能说明与下载包，可按需要单独使用。分类用于导航，现有源码目录、历史版本和下载地址继续保留。
 
-**[映序：视频项目](yingxu/)** · **[AI Hub：模型资产](ai-hub/)** · **[Codex Switcher：服务配置](codex-switcher/)** · **[FlowSwitch：网络线路](proxy-switch/)**
+**[帧织：AI 生成画布](frameweave/)** · **[映序：视频项目](yingxu/)** · **[AI Hub：模型资产](ai-hub/)** · **[Codex Switcher：服务配置](codex-switcher/)** · **[FlowSwitch：网络线路](proxy-switch/)**
 
 ## 项目分类
 
 | 分类 | 项目 | 主要用途 |
 | --- | --- | --- |
-| **本地化 AI 系统** | **FrameWeave 帧织**（独立仓库准备中） | 专业画布、H3 视频与图片生成控制、本地环境缺失检查 |
+| **本地化 AI 系统** | **[FrameWeave 帧织](frameweave/)** | 专业画布、H3 视频与图片生成控制、本地环境缺失检查 |
 | **资产管理系统** | **[映序 YingXu](yingxu/)**、**[AI Hub](ai-hub/)** | 作品项目、文档、素材、分镜与本地模型资产管理 |
 | **工具类** | **[Codex Switcher](codex-switcher/)**、**[流向 FlowSwitch](proxy-switch/)** | Codex 服务配置、代理入口与程序网络分流 |
 
@@ -18,12 +18,28 @@
 
 | 你现在想做什么 | 对应项目 | 当前版本 | 下载 Windows 程序包 |
 | --- | --- | --- | --- |
+| 编排提示词与参考图，控制 H3 视频和图片生成，检查本地缺失项 | **[FrameWeave 帧织](frameweave/)** | 0.1.0 | **[下载帧织 · 8.48 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/frameweave/releases/FrameWeave-v0.1.0-Windows-x64.zip)** |
 | 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.3.7 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-Windows-x64.zip)** |
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | 导入 API 示例，管理服务、密钥变量和 Codex 配置切换 | **[Codex Switcher](codex-switcher/)** | 2.4.1 | **[下载切换器 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
 | 管理已有代理、统一出口，给程序设置专用线路 | **[流向 FlowSwitch](proxy-switch/)** | 3.6.0 | **[下载 FlowSwitch · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.6.0-Windows-x64.zip)** |
 
 每个 ZIP 只包含对应软件。下载链接直接取得压缩包；完整解压后再运行，保留包内文件夹。各项目页面提供源码说明、校验值和版本记录；映序的程序包已包含源码。
+
+## 本地化 AI 系统
+
+### FrameWeave 帧织
+
+**把提示词、参考图、视频生成和结果，放进一张可控制的专业画布。**
+
+- 无限画布、框选与连线、撤销重做、JSON 导入导出、提示词一键复制。
+- H3 视频与 Krea 2 / SDXL 图片控制；参数与依赖校验、队列、结果大图和视频预览。
+- 检查本地节点、模型角色和文件结构，复制脱敏的缺失项说明给 AI 补齐。
+- 原创深墨蓝与青绿界面，无广告。Windows 程序约 8.46 MiB，复用系统浏览器及已有本地 ComfyUI，不捆绑模型、CUDA 或 PyTorch。
+
+初版已验证两次真实 GPU 生成，并通过 46 项 Python、8 项 Node 和 15 项界面检查。生成仍需要用户启动本地 ComfyUI；完整剪辑时间线、独立推理引擎和各参考模式的全面画质验收尚未提供。
+
+[进入帧织 →](frameweave/) · [模型与参数](frameweave/docs/MODELS.md) · [验证记录](frameweave/docs/VALIDATION.md)
 
 ## 资产管理系统
 

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.spec
+*.log
+.env*
+node_modules/
+data/
+settings.json
+jobs.json
+last-url.txt
+runs/
+.DS_Store

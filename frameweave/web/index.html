@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="FrameWeave 帧织，轻量、私有、无广告的本地 AI 视频与图像画布。">
+  <title>FrameWeave 帧织 · 影像工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230c1928'/%3E%3Cpath d='M8 8h16v5H13v4h9v5h-9v3H8z' fill='%2371e7c0'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="FrameWeave 帧织 首页"><span class="brand-mark" aria-hidden="true">F<span>W</span></span><span>FrameWeave<small>帧织 · 影像工作台</small></span><span class="alpha">0.1</span></a>
+    <div class="project-name"><span class="project-indicator"></span><span id="project-title">未命名画布</span><span class="save-state" id="save-state">本地自动保存</span></div>
+    <div class="top-actions">
+      <button class="engine-status" id="engine-status" title="查看本地推理环境"><span class="status-dot"></span><span id="engine-label">连接本地引擎…</span></button>
+      <button class="button quiet compact" id="open-project">导入</button>
+      <button class="button quiet compact" id="save-project">导出画布</button>
+      <button class="button icon-only" id="settings-button" aria-label="设置本地引擎" title="本地引擎设置">⚙</button>
+    </div>
+  </header>
+  <main class="workbench">
+    <nav class="toolrail" aria-label="画布工具">
+      <div class="rail-group">
+        <button class="rail-button active" id="tool-select" title="选择 · 空白拖拽平移，Shift 框选" aria-label="选择工具" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="m5 3 14 10-7 1-3 7z"/></svg></button>
+        <button class="rail-button" id="tool-hand" title="抓手 · Space / 鼠标中键" aria-label="平移工具" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M8 12V6a2 2 0 0 1 4 0v6-8a2 2 0 0 1 4 0v8-5a2 2 0 0 1 4 0v7c0 5-2 8-7 8-3 0-5-2-7-5l-3-4a2 2 0 0 1 3-2l2 1"/></svg></button>
+      </div>
+      <div class="rail-group">
+        <button class="rail-button" id="add-prompt" title="添加提示词" aria-label="添加提示词节点"><svg viewBox="0 0 24 24"><path d="M4 5h16M12 5v15M8 20h8"/></svg><span>文本</span></button>
+        <button class="rail-button" id="add-reference" title="导入图片参考" aria-label="添加参考素材"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><path d="m3 17 5-5 4 4 4-6 5 7"/></svg><span>素材</span></button>
+        <button class="rail-button teal" id="add-video" title="添加 H3 视频生成" aria-label="添加 H3 视频生成节点"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="13" height="14" rx="3"/><path d="m16 10 5-3v10l-5-3"/></svg><span>视频</span></button>
+        <button class="rail-button" id="add-image" title="添加图片生成" aria-label="添加图片生成节点"><svg viewBox="0 0 24 24"><path d="m12 3 3 6 6 3-6 3-3 6-3-6-6-3 6-3z"/></svg><span>图像</span></button>
+        <button class="rail-button" id="add-result" title="添加结果预览" aria-label="添加结果节点"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="3"/><path d="M8 21h8m-4-4v4"/></svg><span>预览</span></button>
+      </div>
+      <div class="rail-bottom"><button class="rail-button" id="help-button" title="操作帮助" aria-label="操作帮助">?</button></div>
+    </nav>
+    <section class="canvas-shell" aria-label="无限画布">
+      <div class="canvas-topline"><div><span class="eyebrow">CREATIVE CANVAS</span><h1>让灵感，逐帧发生<span class="canvas-subtitle">用节点连接你的影像工作流</span></h1></div><button class="button quiet compact" id="diagnostics-button"><span class="tiny-diamond">◇</span> 环境检查</button></div>
+      <div id="canvas" class="canvas" tabindex="0" aria-label="创作画布。滚轮缩放，空白拖动平移，Shift 拖动框选">
+        <div class="world" id="world"><svg class="connections" id="connections" aria-label="节点连接"></svg><div id="nodes"></div></div>
+        <div id="selection-box" class="selection-box" hidden></div>
+        <div class="canvas-empty" id="canvas-empty" hidden><div class="empty-symbol">◇</div><h2>一张空白画布，无限种可能</h2><p>从左侧添加提示词、素材和生成节点。</p><button class="button primary" id="load-demo">载入示例工作流</button></div>
+      </div>
+      <div class="canvas-footer"><div class="history-controls"><button id="undo" class="footer-button" title="撤销 Ctrl+Z" aria-label="撤销">↶</button><button id="redo" class="footer-button" title="重做 Ctrl+Shift+Z" aria-label="重做">↷</button><span class="footer-separator"></span><span id="node-count">3 个节点</span></div><div class="canvas-hint" id="canvas-hint">滚轮缩放 · 空白拖动 · Shift 框选</div><div class="zoom-controls"><button class="footer-button" id="zoom-out" aria-label="缩小">−</button><button class="zoom-value" id="zoom-reset" title="恢复 100%">100%</button><button class="footer-button" id="zoom-in" aria-label="放大">+</button><button class="footer-button fit-icon" id="fit-view" aria-label="适配全部节点" title="适配画布 F">⛶</button></div></div>
+      <button class="minimap" id="minimap-button" title="点击缩略图适配画布" aria-label="缩略图，点击适配画布"><canvas id="minimap" width="300" height="170"></canvas><span>OVERVIEW</span></button>
+    </section>
+    <aside class="inspector" aria-label="节点属性与任务">
+      <div class="inspector-tabs" role="tablist" aria-label="属性和任务"><button class="tab active" id="tab-properties" role="tab" aria-selected="true">节点属性</button><button class="tab" id="tab-jobs" role="tab" aria-selected="false">生成队列 <span id="job-count">0</span></button></div>
+      <div class="inspector-scroll" id="properties-panel" role="tabpanel"><div id="inspector-content"></div></div>
+      <div class="inspector-scroll" id="jobs-panel" role="tabpanel" hidden><div class="panel-intro"><span class="eyebrow">RENDER QUEUE</span><h2>每一次生成，都有记录</h2><p>实际进度与输出来自本地推理引擎。</p></div><div id="jobs-list"></div></div>
+      <div class="inspector-foot"><span class="status-dot"></span>本地优先 · 数据留在你的设备</div>
+    </aside>
+  </main>
+  <dialog id="settings-dialog" class="modal"><form id="settings-form"><div class="modal-heading"><div><span class="eyebrow">LOCAL ENGINE</span><h2>连接你的创作引擎</h2></div><button type="button" class="close-button" data-close aria-label="关闭">×</button></div><p class="muted">FrameWeave 是轻量控制台。模型与推理环境由本地兼容 ComfyUI 服务提供。</p><label class="field">推理服务地址<input id="backend-url" type="url" required placeholder="http://127.0.0.1:8188"></label><label class="field">模型目录<span class="field-help">每行一个本地目录，用于检查缺失文件，不搬移模型。</span><textarea id="model-roots" rows="4" placeholder="填写你已有的模型目录"></textarea></label><p class="form-note">仅支持本机回环地址。客户端不附带模型；所有实际运行能力以环境检查为准。</p><div class="modal-actions"><button type="button" class="button quiet" data-close>取消</button><button class="button primary" type="submit">保存并检查连接</button></div></form></dialog>
+  <dialog id="diagnostics-dialog" class="modal diagnostic-modal"><div class="modal-heading"><div><span class="eyebrow">WORKFLOW READINESS</span><h2>本地环境与缺失项检查</h2></div><button class="close-button" data-close aria-label="关闭">×</button></div><p class="muted" id="diagnostic-summary">正在检查…</p><div id="diagnostic-list" class="diagnostic-list"></div><label class="field">给 AI 的修复提示词<span class="field-help">复制后交给 AI 助手，按实际缺失项补齐环境。</span><textarea id="repair-prompt" rows="7" readonly></textarea></label><div class="modal-actions"><button class="button quiet" id="diagnostic-refresh">重新检查</button><button class="button primary" id="copy-repair">复制修复提示词</button></div></dialog>
+  <dialog id="preview-dialog" class="modal preview-modal"><div class="modal-heading"><h2 id="preview-title">生成预览</h2><button class="close-button" data-close aria-label="关闭">×</button></div><div id="preview-content"></div><div class="modal-actions"><a class="button primary" id="preview-download" download>保存媒体</a></div></dialog>
+  <dialog id="help-dialog" class="modal"><div class="modal-heading"><div><span class="eyebrow">QUICK GUIDE</span><h2>把创作留在画布上</h2></div><button class="close-button" data-close aria-label="关闭">×</button></div><div class="help-grid"><span>拖动画布空白 / 空格拖动</span><kbd>平移</kbd><span>滚轮 / 触控板</span><kbd>锚点缩放</kbd><span>Shift + 拖动空白</span><kbd>框选</kbd><span>Shift + 点击节点</span><kbd>多选</kbd><span>拖动节点标题</span><kbd>移动节点</kbd><span>点击输出端口，再点输入端口</span><kbd>连接节点</kbd><span>点击连接线</span><kbd>选中连接</kbd><span>Delete / Backspace</span><kbd>删除选择</kbd><span>Ctrl + D</span><kbd>复制节点</kbd><span>Ctrl + Z / Ctrl + Shift + Z</span><kbd>撤销 / 重做</kbd><span>F / Ctrl + S</span><kbd>适配 / 导出</kbd></div><p class="form-note">节点顺序：提示词、参考素材 → 视频 / 图片生成 → 结果。导出画布不会包含模型或原始媒体文件。H3 模式需要兼容的本地扩展和模型；先点击「环境检查」查看是否就绪。</p></dialog>
+  <input id="project-input" type="file" accept=".json,application/json" hidden>
+  <input id="reference-input" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+  <input id="workflow-input" type="file" accept=".json,application/json" hidden>
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
+</body>
+</html>
