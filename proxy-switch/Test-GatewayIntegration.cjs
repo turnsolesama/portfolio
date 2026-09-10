@@ -4,27 +4,43 @@
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),net=require('node:net'),http=require('node:http');
 const {spawn,spawnSync}=require('node:child_process');
 const assert=require('node:assert/strict');
-const core=process.argv[2];
-if(!core||!path.isAbsolute(core)||!fs.existsSync(core))throw new Error('Pass the absolute path of an already installed mihomo executable. No download is performed.');
+const sourceCore=process.argv[2];
+if(!sourceCore||!path.isAbsolute(sourceCore)||!fs.existsSync(sourceCore))throw new Error('Pass the absolute path of an already installed mihomo executable. No download is performed.');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'ProxySwitch-Gateway-'));
+const core=path.join(root,'FlowSwitch-TestEngine.exe');fs.copyFileSync(sourceCore,core);
 const pipe='\\\\.\\pipe\\ProxySwitch-Test-'+path.basename(root);
+const corePipe=pipe+'-Core';
 process.env.PROXY_SWITCH_DATA_DIR=path.join(root,'data');process.env.PROXY_SWITCH_TEST_ENGINE_DIR=root;process.env.PROXY_SWITCH_TEST_PIPE=pipe;
 fs.mkdirSync(path.join(root,'profiles'));fs.mkdirSync(process.env.PROXY_SWITCH_DATA_DIR);
 const r=require('./AppRouter.cjs'),yaml=require('./vendor/js-yaml');
 const children=[],servers=[],sockets=new Set();let checks=0;
+const faults={badRulesAfterReload:false,rulesFailures:0,deleteFailures:0,externalEditAfterReload:false};
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function until(fn,label,timeout=12000){const start=Date.now();while(Date.now()-start<timeout){try{if(await fn()){checks++;return;}}catch{}await delay(100);}throw new Error('Timed out: '+label);}
 async function listen(server){servers.push(server);server.on('connection',s=>{sockets.add(s);s.on('close',()=>sockets.delete(s));s.on('error',()=>{});});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));return server.address().port;}
 async function upstream(marker){const server=http.createServer();server.on('connect',(req,s)=>{s.write('HTTP/1.1 200 Connection Established\r\n\r\n');setTimeout(()=>{if(!s.destroyed)s.write(marker+'\n');},100);});return listen(server);}
 async function socksUpstream(){return listen(net.createServer(s=>{let stage=0,buffer=Buffer.alloc(0);s.on('data',chunk=>{buffer=Buffer.concat([buffer,chunk]);if(stage===0&&buffer.length>=2&&buffer.length>=2+buffer[1]){buffer=buffer.subarray(2+buffer[1]);stage=1;s.write(Buffer.from([5,0]));}if(stage===1&&buffer.length>=10){stage=2;s.write(Buffer.from([5,0,0,1,127,0,0,1,0,0]));setTimeout(()=>{if(!s.destroyed)s.write('SOCKS\n');},100);}});}));}
 async function main(){
+ const controller=http.createServer((req,res)=>{
+  if(req.method==='GET'&&req.url==='/rules'&&faults.rulesFailures>0){faults.rulesFailures--;res.writeHead(503);res.end('{}');return;}
+  if(req.method==='DELETE'&&faults.deleteFailures>0){faults.deleteFailures--;res.writeHead(503);res.end('{}');return;}
+  const forwarded=http.request({socketPath:corePipe,path:req.url,method:req.method,headers:req.headers},response=>{
+   if(req.method==='PUT'&&req.url.startsWith('/configs')&&response.statusCode>=200&&response.statusCode<300){
+    if(faults.badRulesAfterReload){faults.badRulesAfterReload=false;faults.rulesFailures=1;}
+    if(faults.externalEditAfterReload){faults.externalEditAfterReload=false;fs.appendFileSync(path.join(root,'clash-verge.yaml'),'\n# another application changed this configuration\n');faults.rulesFailures=1;}
+   }
+   res.writeHead(response.statusCode,response.headers);response.pipe(res);
+  });
+  forwarded.on('error',()=>{res.writeHead(503);res.end('{}');});req.pipe(forwarded);
+ });
+ servers.push(controller);await new Promise((resolve,reject)=>{controller.once('error',reject);controller.listen(pipe,resolve);});
  const portA=await upstream('A'),portB=await upstream('B'),portSocks=await socksUpstream();
  const directPort=await listen(net.createServer(s=>s.write('DIRECT\n')));
  const reservation=net.createServer();await new Promise(resolve=>reservation.listen(0,'127.0.0.1',resolve));const gatewayPort=reservation.address().port;await new Promise(resolve=>reservation.close(resolve));
  const options={Version:3,Profiles:[{Id:'engine',Name:'Fixture engine',Protocol:'http',Host:'127.0.0.1',Port:gatewayPort,CorePath:core},{Id:'a',Name:'A',Protocol:'http',Host:'127.0.0.1',Port:portA},{Id:'b',Name:'B',Protocol:'http',Host:'127.0.0.1',Port:portB}],Routing:{Adapter:'clash-verge',ProfileId:'engine',UnifiedMode:'gateway'}};
  process.env.PROXY_SWITCH_PROFILES=JSON.stringify(options);
  options.Profiles.push({Id:'socks',Name:'SOCKS',Protocol:'socks5',Host:'127.0.0.1',Port:portSocks});process.env.PROXY_SWITCH_PROFILES=JSON.stringify(options);
- fs.writeFileSync(path.join(root,'clash-verge.yaml'),yaml.dump({'mixed-port':gatewayPort,'external-controller-pipe':pipe,'allow-lan':false,'bind-address':'127.0.0.1',mode:'rule',ipv6:false,'log-level':'silent',dns:{enable:false},tun:{enable:false},proxies:[{name:'origin',type:'http',server:'127.0.0.1',port:portA}],'proxy-groups':[{name:'primary',type:'select',proxies:['origin']}],rules:['MATCH,primary']}));
+ fs.writeFileSync(path.join(root,'clash-verge.yaml'),yaml.dump({'mixed-port':gatewayPort,'external-controller-pipe':corePipe,'allow-lan':false,'bind-address':'127.0.0.1',mode:'rule',ipv6:false,'log-level':'silent',dns:{enable:false},tun:{enable:false},proxies:[{name:'origin',type:'http',server:'127.0.0.1',port:portA},{name:'backup',type:'http',server:'127.0.0.1',port:portB}],'proxy-groups':[{name:'primary',type:'select',proxies:['origin','backup']}],rules:['MATCH,primary']}));
  fs.writeFileSync(path.join(root,'profiles','Script.js'),'function main(c){return c;}\n');
  const cs=`using System;using System.IO;using System.Net.Sockets;using System.Threading;
  public class Client{public static void Main(string[] a){while(true){try{using(var tcp=new TcpClient("127.0.0.1",int.Parse(a[0]))){var stream=tcp.GetStream();var bytes=System.Text.Encoding.ASCII.GetBytes("CONNECT 127.0.0.1:"+a[1]+" HTTP/1.1\\r\\nHost: 127.0.0.1:"+a[1]+"\\r\\n\\r\\nprobe");stream.Write(bytes,0,bytes.Length);var reader=new StreamReader(stream);string line;while((line=reader.ReadLine())!=null&&line.Length>0){}line=reader.ReadLine();if(line!=null)File.AppendAllText(a[2],line+"\\n");while(reader.Read()!=-1){}}}catch{}Thread.Sleep(150);}}}`;
@@ -33,6 +49,8 @@ async function main(){
  const compile=spawnSync(csc,['/nologo','/target:winexe','/out:'+exe1,csPath],{windowsHide:true,encoding:'utf8'});assert.equal(compile.status,0,compile.stdout+compile.stderr);fs.copyFileSync(exe1,exe2);
  const kernel=spawn(core,['-d',root,'-f',path.join(root,'clash-verge.yaml')],{windowsHide:true,stdio:'ignore'});children.push(kernel);
  await until(async()=>{await r.api('GET','/version');return true;},'isolated controller');
+ await r.api('PUT','/proxies/primary',{name:'backup'});await r.transaction([],'engine');
+ assert.equal((await r.api('GET','/proxies/primary')).now,'backup');checks++;
  await r.transaction([],'a');
  const file1=path.join(root,'first.txt'),file2=path.join(root,'second.txt');
  const values=p=>fs.existsSync(p)?fs.readFileSync(p,'utf8').trim().split(/\r?\n/):[];
@@ -59,8 +77,28 @@ async function main(){
  await assert.rejects(async()=>r.reconnect({...await r.reconnectPlan(exe1),createdAt:Date.now()-61000}),/失效/);checks++;
  const badOptions=structuredClone(options);badOptions.Profiles[0].Port=directPort;process.env.PROXY_SWITCH_PROFILES=JSON.stringify(badOptions);
  assert.equal((await r.status()).available,false);checks++;process.env.PROXY_SWITCH_PROFILES=JSON.stringify(options);
+ // Reload acknowledgement alone is not enough: verify the active rule order and ownership.
+ const beforeFiles=['clash-verge.yaml','profiles/Script.js','data/app-rules.json'].map(p=>fs.readFileSync(path.join(root,p),'utf8'));
+ faults.badRulesAfterReload=true;
+ await assert.rejects(()=>r.transaction([{path:exe1,route:'b'}],'Direct'),/已恢复修改前配置/);checks++;
+ assert.deepEqual(['clash-verge.yaml','profiles/Script.js','data/app-rules.json'].map(p=>fs.readFileSync(path.join(root,p),'utf8')),beforeFiles);checks++;
+ assert.equal((await r.status()).defaultLoaded,true);checks++;
+ await r.transaction([{path:exe1,route:'b',identity:{Version:1,Kind:'File',FileId:'fixture-identity',Exists:true}}],'Direct');
+ assert.equal((await r.status()).entries[0].identity.FileId,'fixture-identity');checks++;
+ const shadowed=yaml.load(fs.readFileSync(path.join(root,'clash-verge.yaml'),'utf8'));shadowed.rules.unshift('MATCH,DIRECT');
+ const shadowFile=path.join(root,'shadowed.yaml');fs.writeFileSync(shadowFile,yaml.dump(shadowed));await r.api('PUT','/configs?force=true',{path:shadowFile});
+ assert.equal((await r.status()).entries[0].loaded,false);await assert.rejects(()=>r.reconnectPlan(exe1),/尚未载入/);checks++;
+ await r.api('PUT','/configs?force=true',{path:path.join(root,'clash-verge.yaml')});
+ await assert.rejects(()=>r.reconnectPlan(core),/不能重连代理/);checks++;
+ const failedPlan=await r.reconnectPlan(exe1);assert.equal(failedPlan.connections.length,1);faults.deleteFailures=1;
+ const failedDelete=await r.reconnect(failedPlan);assert.equal(failedDelete.ok,false);assert.equal(failedDelete.closed,0);assert.equal(failedDelete.failed,1);checks++;
+ assert.equal((await r.reconnectPlan(exe1)).connections[0].id,failedPlan.connections[0].id);checks++;
+ await r.reconnect(await r.reconnectPlan(exe1));await until(()=>values(file1).at(-1)==='B','confirmed retry changes only selected client after a failed DELETE');
+ faults.externalEditAfterReload=true;
+ await assert.rejects(()=>r.transaction([],'a'),/保留外部更改/);checks++;
+ assert.ok(fs.readFileSync(path.join(root,'clash-verge.yaml'),'utf8').includes('# another application changed this configuration'));checks++;
  fs.writeFileSync(path.join(root,'result.json'),JSON.stringify({checks,elapsedMilliseconds:Date.now()-started,first:values(file1),second:values(file2),samePIDs:true,gatewayPortUnchanged:true,tunEnabled:false},null,2));
- console.log('PASS: '+checks+' real gateway checks; same running clients A -> B -> DIRECT, other app preserved, old snapshot rejected. Evidence: '+root);
+ console.log('PASS: '+checks+' real gateway checks; same clients, per-app reconnect, active rule order, verified rollback, external edits preserved. Evidence: '+root);
 }
 main().catch(e=>{console.error(e.stack);process.exitCode=1;}).finally(async()=>{
  for(const child of children.reverse()){if(child.exitCode===null)child.kill();}

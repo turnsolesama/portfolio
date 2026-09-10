@@ -34,6 +34,8 @@ $valid=$true
 foreach($item in $manifest){$file=Join-Path $relocated $item.path;if((Get-FileHash -LiteralPath $file).Hash.ToLowerInvariant() -ne $item.sha256 -or (Get-Item -LiteralPath $file).Length -ne $item.bytes){$valid=$false}}
 Check $valid 'Program package manifest mismatch.'
 Check ((Get-ChildItem -LiteralPath $relocated -Recurse -File).Count -eq ($manifest.Count+1)) 'Unexpected file in program package.'
+$productVersion=[regex]::Match([IO.File]::ReadAllText((Join-Path $relocated 'app\Preferences.ps1')),"ProductVersion='([0-9.]+)'").Groups[1].Value
+Check ([Diagnostics.FileVersionInfo]::GetVersionInfo($exe).FileVersion -ceq ($productVersion+'.0')) 'EXE and interface must report the same product version.'
 $verified=Invoke-Fixture '--verify'
 Check ($verified.Code -eq 0 -and $verified.Out -match 'PASS') ('EXE verification failed: '+$verified.Error)
 # Include a trailing separator so both launcher and PowerShell argument parsing are exercised.

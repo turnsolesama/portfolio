@@ -1,6 +1,7 @@
 ﻿$ErrorActionPreference='Stop'
 $env:PROXY_SWITCH_DATA_DIR=Join-Path $env:TEMP ('FlowSwitch-Recovery-'+[Guid]::NewGuid().ToString('N'))
 . (Join-Path $PSScriptRoot 'ProxyBackend.ps1')
+function Use-ChangeLock([scriptblock]$Action){& $Action} # All writes in this fixture are in-memory stubs.
 $script:checks=0
 function Check($value,$message){if(-not $value){throw $message};$script:checks++}
 $script:Ready=@('127.0.0.1:19001','http://127.0.0.1:19001')
@@ -14,6 +15,12 @@ $session=[pscustomobject]@{BeforeSystem=$prior;BeforeEnv=$oldEnv;TargetSystem=$t
 $p=New-ExitRecoveryPlan $session $target $targetEnv
 Check (Test-SameSnapshot $p.System $prior) 'Normal exit restores a live original proxy'
 Check (Test-SameEnv $p.Environment $oldEnv) 'Normal exit restores original user variables'
+$inherited=[pscustomobject]@{BeforeSystem=$target;BeforeEnv=$targetEnv;TargetSystem=$target;TargetEnv=$targetEnv}
+$script:Ready+=@('127.0.0.1:18790','http://127.0.0.1:18790')
+$p=New-ExitRecoveryPlan $inherited $target $targetEnv
+Check (($p.System.Flags -band 2) -eq 0 -and -not $p.Environment.HTTP_PROXY -and -not $p.Environment.HTTPS_PROXY -and -not $p.Environment.ALL_PROXY) 'A stale preexisting self-reference is never restored to a core that is about to stop'
+$inherited.BeforeSystem=[pscustomobject]@{Flags=3;Server='localhost:18790';Bypass='localhost'};$p=New-ExitRecoveryPlan $inherited $target $targetEnv
+Check (($p.System.Flags -band 2) -eq 0) 'Loopback aliases cannot disguise the retiring FlowSwitch entry as an original upstream'
 $script:Ready=@();$p=New-ExitRecoveryPlan $session $target $targetEnv
 Check (Test-SameSnapshot $p.System $direct) 'Exited original upstream restores direct instead of a dead port'
 Check (-not $p.Environment.HTTP_PROXY -and -not $p.Environment.HTTPS_PROXY -and -not $p.Environment.ALL_PROXY) 'Dead original environment ports removed'
@@ -41,4 +48,16 @@ try{Restore-IndependentSession}catch{}
 Check ((Test-Path -LiteralPath (Get-IndependentSessionPath)) -and -not (Test-Path -LiteralPath (Join-Path $script:DataRoot 'gateway\stop'))) 'Failed restoration retains journal and live core'
 Check (Test-SessionProcess $PID (Get-ProcessStartTicks $PID)) 'Real current owner identity verified'
 Check (-not (Test-SessionProcess $PID '1')) 'PID reuse cannot impersonate owner'
+$script:Fail=$false;$script:Sys=$target;$script:Env=$targetEnv
+function Set-SystemSnapshot($value){$script:Sys=$value;$script:Env=$envOutside}
+Write-LocalJson (Get-IndependentSessionPath) $session
+Restore-IndependentSession
+Check ($script:Env.HTTP_PROXY -eq $envOutside.HTTP_PROXY -and $script:Env.NO_PROXY -eq 'changed') 'External variables changed during system restoration are preserved'
+Check (-not $script:Env.HTTPS_PROXY -and -not $script:Env.ALL_PROXY) 'Still-owned variables are restored after concurrent external changes'
+$script:Sys=$target;$script:Env=$targetEnv
+$newSession=$session|ConvertTo-Json|ConvertFrom-Json;$newSession|Add-Member NoteProperty Started 'new-session'
+function Use-ChangeLock([scriptblock]$Action){Write-LocalJson (Get-IndependentSessionPath) $newSession;& $Action}
+[IO.File]::Delete((Join-Path $script:DataRoot 'gateway\stop'))
+Restore-IndependentSession -ExpectedSession 'old-session'
+Check ((Test-Path (Get-IndependentSessionPath)) -and (Test-SameSnapshot $script:Sys $target) -and -not (Test-Path (Join-Path $script:DataRoot 'gateway\stop'))) 'A delayed old watchdog cannot restore or stop a newer session'
 Write-Output ('PASS: '+$script:checks+' exit recovery assertions; no Windows proxy settings written.')

@@ -75,3 +75,9 @@
 - 退出先实读验证仍归属本会话的 Windows 设置恢复，再请求 supervisor 停止当前 child。Supervisor 崩溃后的 child 必须同时核对 PID、父 PID、启动时间与 EXE 路径，不得只按文件名杀进程。生命周期日志只接受固定事件/原因码及数字，不记录原始 stdout/stderr、URL、程序路径或凭据；限制大小。
 - Google 登录诊断仅对固定 oauth2.googleapis.com/token 发出无凭据 HEAD 请求。区分本地入口、代理握手和 HTTPS 响应，任何 HTTP 响应不能等同登录成功。托管启动等待独立入口及已加载出口；普通启动只能诊断与提示，不声称刷新了应用环境或缓存。
 - 新验证：Test-LifecycleProtection.ps1（已纳入 Test-All）、node Test-Lifecycle.cjs <现有内核EXE>、Test-TrayLifecycle.ps1 -CorePath <现有内核EXE>、Test-SupervisorRecovery.ps1 -CorePath <现有内核EXE>。后三者使用真实隔离内核；Windows 设置使用桩。UI 旧回归通过 ui-settings.json 关闭驻留以正常清理测试窗口；托盘测试单独覆盖默认行为。
+
+- 3.7 ProgramIdentity.ps1 使用注册包身份 / 包内相对 EXE 或真实文件身份关联；不按相同文件名猜测迁移，不提权。注册包元数据可跨 runspace 缓存，进程和文件证据不跨轮缓存。ProgramIdentity 与 ApplicationObservation 供只读刷新使用；RuleMaintenance 的修复必须由用户明确触发。
+- 区分进程读取、TCP 采集、规则、连接及 selector API 的可用性；失败用 unknown / null，不等同空列表或未监听。程序表是 TCP 快照，不能代表 UDP / QUIC 全量网络或认证结果。引擎托管规则需核验完整顺序，不能只因列表中存在就认为有效。
+- RuleMaintenance 计划必须在应用前复核身份、记录快照和快捷方式归属；引擎 replace 的 expectedStateHash 在内部锁中比较 UTF8 无 BOM 文件文本 SHA256，缺失使用 <missing>；成功返回自己写入的 stateHash。身份元数据不参与线路指纹，不能使备用出口回跳。
+- 生命周期停止 / 重启使用绝对就绪期限；旧 supervisor 停止中不复用旧 child。孤儿内核清理核对精确 OS 创建 ticks 并持有进程句柄。watchdog 用 ExpectedSession 在锁内校验会话，恢复环境变量前重新实读归属。
+- 新单元测试：Test-ProgramIdentity.ps1、Test-ApplicationObservation.ps1、Test-RuleMaintenance.ps1，均纳入 Test-All；真实控件测试：powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-ObservationUI.ps1。完整功能范围见 ACCEPTANCE.md，已执行验证见 TEST_REPORT.md。

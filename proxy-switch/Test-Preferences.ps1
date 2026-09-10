@@ -28,6 +28,9 @@ $state=[pscustomobject]@{Key='custom';Aligned=$true;EndpointReady=$true;Environm
 $report=New-SupportReport $state ([pscustomobject]@{Rows=$rows;Available=$true});$json=$report|ConvertTo-Json -Depth 8
 Check ($json -notmatch 'custom|Company|secret|private|Browser|编辑器|C:\\') 'Report anonymizes custom ids, names, addresses and paths'
 Check ($report.SystemRoute -eq 'Proxy3' -and $report.Rules[0].Count -eq 1) 'Report preserves useful aggregates'
+$state.EndpointReady=$null;$state.Listeners[0].Ready=$null
+$unknown=New-SupportReport $state ([pscustomobject]@{Rows=$rows;Available=$true;TcpAvailable=$false;ProcessesAvailable=$false;RulesAvailable=$false;ConnectionsAvailable=$false})
+Check ($null -eq $unknown.EndpointReady -and $null -eq $unknown.Listeners[0].Ready -and -not $unknown.TcpAvailable -and -not $unknown.ProcessesAvailable -and -not $unknown.RulesAvailable -and -not $unknown.ConnectionsAvailable) 'Anonymous diagnostics preserve unknown state instead of reporting an outage'
 $testDir=Join-Path $env:TEMP ('ProxySwitch-model-test-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($testDir)
 try{
     $file=Join-Path $testDir 'settings.json';Write-LocalJson $file $clean;Write-LocalJson $file $clean

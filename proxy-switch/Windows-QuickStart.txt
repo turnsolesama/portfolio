@@ -1,4 +1,4 @@
-流向 FlowSwitch 3.6.0
+﻿流向 FlowSwitch 3.7.0
 
 完整解压并保留 app，双击 FlowSwitch.exe。运行组件已经随包提供。
 
@@ -13,3 +13,5 @@
 更新前通过托盘停止旧版。保留 %USERPROFILE%\.proxyswitch 数据；不要删除正在运行的程序目录。本版本不是 Windows 系统服务，不自动设置开机启动。
 
 日志在本机数据目录 gateway/lifecycle-core.jsonl 与 lifecycle-session.jsonl，限制大小并使用固定事件码，不记录原始内核输出或凭据。遇到恢复失败请保留 gateway-session.json 与日志供排查。
+
+连接表显示的是当前 TCP 观察结果，空闲不代表断网，读取失败显示为未知。应用升级后识别到唯一新路径时，可右键「修复程序路径记录」，核对旧、新路径；刷新不会自动改变规则或桌面入口。

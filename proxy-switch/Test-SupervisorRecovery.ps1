@@ -5,6 +5,7 @@ $qa=Join-Path $env:TEMP ('FlowSwitch-Supervisor-'+[Guid]::NewGuid().ToString('N'
 $env:PROXY_SWITCH_DATA_DIR=$qa
 $core=Join-Path $qa 'FlowSwitch-TestEngine.exe';Copy-Item -LiteralPath $CorePath -Destination $core
 . (Join-Path $PSScriptRoot 'ProxyBackend.ps1')
+function Use-ChangeLock([scriptblock]$Action){& $Action} # Isolated file-backed settings only.
 $listener=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0);$listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
 $script:Profiles=ConvertTo-ValidProfileSettings ([pscustomobject]@{Version=3;Profiles=@([pscustomobject]@{Id='gateway';Name='fixture';Protocol='http';Host='127.0.0.1';Port=$port;CorePath=$core;AppPath='';AutoPort=$false});Routing=[pscustomobject]@{Adapter='standalone';ProfileId='gateway';UnifiedMode='gateway'}})
 Write-LocalJson $script:ConfigPath $script:Profiles
@@ -21,6 +22,7 @@ try{
     Write-LocalJson (Join-Path $qa 'fake-system.json') $target;Write-LocalJson (Join-Path $qa 'fake-env.json') $targetEnv
     $body=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'GatewayWatchdog.ps1'));$body=$body.Substring($body.IndexOf('$path=Get-IndependentSessionPath'))
     $mock=@'
+function Use-ChangeLock([scriptblock]$Action){& $Action}
 function Get-SystemSnapshot {Get-Content (Join-Path $script:DataRoot 'fake-system.json') -Raw|ConvertFrom-Json}
 function Get-UserProxyEnv {Get-Content (Join-Path $script:DataRoot 'fake-env.json') -Raw|ConvertFrom-Json}
 function Set-SystemSnapshot($v){Write-LocalJson (Join-Path $script:DataRoot 'fake-system.json') $v}
@@ -45,10 +47,32 @@ function Remove-ItemProperty {throw 'Real registry is forbidden'}
     Check (Test-SameSnapshot $sys $direct) 'watchdog restores settings after supervisor crash'
     Check (-not (Get-Process -Id $replacement -ErrorAction SilentlyContinue)) 'orphan replacement core is stopped after identity verification'
     Check (-not (Test-Path (Get-IndependentSessionPath))) 'recovery session archived after orphan cleanup'
+    # A real core with no redirected parent pipe remains alive for an exact
+    # identity-refusal test; a pipe-backed child may exit itself with its parent.
+    $identityFixture=Start-Process -FilePath $core -ArgumentList ('-d "'+(Join-Path $qa 'gateway')+'" -f "'+(Join-Path $qa 'gateway\runtime.yaml')+'"') -WindowStyle Hidden -PassThru
+    $exact=Get-ProcessStartTicks $identityFixture.Id
+    $trackedCore=[pscustomobject]@{supervisor=$PID;supervisorStartTicks=(Get-ProcessStartTicks $PID);core=$identityFixture.Id;coreStartTicks=$exact;started=[DateTimeOffset]::UtcNow.ToString('o')}
+    $session=[pscustomobject]@{OwnerPID=$PID;OwnerStart=(Get-ProcessStartTicks $PID);CorePID=$trackedCore.core;CoreStart=$exact;SupervisorPID=$PID;SupervisorStart=$trackedCore.supervisorStartTicks;BeforeSystem=$direct;TargetSystem=$target;BeforeEnv=$beforeEnv;TargetEnv=$targetEnv;Started=[DateTimeOffset]::UtcNow.ToString('o')}
+    Write-LocalJson (Get-IndependentSessionPath) $session
+    Write-LocalJson (Join-Path $qa 'fake-system.json') $target;Write-LocalJson (Join-Path $qa 'fake-env.json') $targetEnv
+    Invoke-Expression $mock
+    Check (Test-SessionProcess $trackedCore.core $exact) 'pipe-independent test core is alive before exact-identity refusal'
+    # Only the supervisor liveness branch is stubbed; actual child PID, parent,
+    # executable, creation ticks, OS handle and termination remain real.
+    function Test-SessionProcess($ProcessId,$Ticks){if([int]$ProcessId -eq $PID){return $false};try{return (Get-ProcessStartTicks $ProcessId) -ceq [string]$Ticks}catch{return $false}}
+    $trackedCore.coreStartTicks=([long]$exact+1).ToString()
+    Write-LocalJson (Join-Path $qa 'gateway\process.json') $trackedCore
+    $rejected=$false;try{Restore-IndependentSession}catch{$rejected=$_.Exception.Message -match '身份';if(-not $rejected){throw}}
+    Check ($rejected -and (Test-SessionProcess $trackedCore.core $exact)) 'even a one-tick creation mismatch never terminates an unverified orphan'
+    Check (Test-Path (Get-IndependentSessionPath)) 'unverified orphan retains recovery journal for manual retry'
+    $trackedCore.coreStartTicks=$exact;Write-LocalJson (Join-Path $qa 'gateway\process.json') $trackedCore
+    Restore-IndependentSession
+    Check (-not (Test-SessionProcess $trackedCore.core $exact) -and -not (Test-Path (Get-IndependentSessionPath))) 'exactly verified orphan stops and completes the retained session'
     Write-Output ('PASS: '+$checks+' real supervisor/watchdog recovery checks; Windows settings are file-backed stubs.')
 }finally{
     [IO.File]::WriteAllText((Join-Path $qa 'gateway\stop'),'stop')
     if($watch){if(-not $watch.HasExited){$watch.Kill()};$watch.Dispose()}
+    if($identityFixture){if(-not $identityFixture.HasExited){$identityFixture.Kill()};$identityFixture.Dispose()}
     # These PIDs were explicitly created in this isolated fixture.
     foreach($id in @($owned.core,$owned.supervisor,$replacement)){if($id){Stop-Process -Id $id -ErrorAction SilentlyContinue}}
 }

@@ -6,6 +6,7 @@ const data=fs.mkdtempSync(path.join(os.tmpdir(),'FlowSwitch-Independent-'));proc
 // An isolated image name keeps a running production UI from discovering test ports.
 const core=path.join(data,'FlowSwitch-TestEngine.exe');fs.copyFileSync(sourceCore,core);
 const r=require('./IndependentRouter.cjs');let checks=0;const children=[],servers=[],sockets=[];
+const yaml=require('./vendor/js-yaml');
 const delay=ms=>new Promise(x=>setTimeout(x,ms));
 async function until(fn,label,ms=30000){const end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){checks++;console.log('PASS: '+label);return;}}catch{}await delay(150);}throw Error('Timed out: '+label);}
 async function upstream(marker,port=0){const record={broken:false,tunnelBroken:false,delay:0,server:null,port:0,sockets:new Set()};const server=http.createServer((req,res)=>{res.writeHead(record.broken?502:200);res.end(marker)});record.server=server;
@@ -37,9 +38,19 @@ async function main(){
  const csPath=path.join(data,'client.cs'),exe=path.join(data,'First.exe'),exe2=path.join(data,'Second.exe');fs.writeFileSync(csPath,cs);
  const compiled=spawnSync(path.join(process.env.SystemRoot,'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),['/nologo','/target:winexe','/out:'+exe,csPath],{windowsHide:true,encoding:'utf8'});assert.equal(compiled.status,0,compiled.stdout+compiled.stderr);fs.copyFileSync(exe,exe2);
  const one=path.join(data,'one.txt'),two=path.join(data,'two.txt'),last=p=>fs.existsSync(p)?fs.readFileSync(p,'utf8').trim().split('\n').at(-1):'';
- await r.replace([{path:exe,route:'b'}],'Direct');for(const [e,f] of [[exe,one],[exe2,two]])children.push(spawn(e,[String(port),url,f],{windowsHide:true,stdio:'ignore'}));
+ await r.replace([{path:exe,route:'b',identity:{Version:1,Kind:'File',FileId:'isolated-fixture',Exists:true}}],'Direct');for(const [e,f] of [[exe,one],[exe2,two]])children.push(spawn(e,[String(port),url,f],{windowsHide:true,stdio:'ignore'}));
  await until(()=>last(one)==='B'&&last(two)==='D','per-program B while other direct');
  const freshA=await upstream('A',a.port);b.broken=true;await until(()=>last(one)==='A'&&last(two)==='D','per-program fallback preserves other direct');
+ assert.equal((await r.status()).entries[0].identity.FileId,'isolated-fixture');checks++;
+ // A live core is not evidence that a saved application rule still takes effect.
+ const shadowed=yaml.load(fs.readFileSync(r.CONFIG,'utf8'));shadowed.rules.unshift('MATCH,DIRECT');
+ const shadowFile=path.join(r.ROOT,'shadowed.yaml');fs.writeFileSync(shadowFile,yaml.dump(shadowed));await r.api('PUT','/configs?force=true',{path:shadowFile});
+ const shadowStatus=await r.status();assert.equal(shadowStatus.available,true);assert.equal(shadowStatus.rulesAvailable,true);assert.equal(shadowStatus.entries[0].loaded,false);checks++;
+ await assert.rejects(()=>r.main({action:'reconnect-plan',path:exe}),/未验证/);checks++;
+ await r.api('PUT','/configs?force=true',{path:r.CONFIG});
+ await assert.rejects(()=>r.main({action:'reconnect-plan',path:core}),/代理/);checks++;
+ await r.api('PATCH','/configs',{mode:'global'});const globalStatus=await r.status();assert.equal(globalStatus.available,false);assert.equal(globalStatus.entries[0].loaded,null);checks++;
+ await r.api('PATCH','/configs',{mode:'rule'});await until(async()=>{const s=await r.status();return s.entries[0].effectiveRoute==='a'&&s.failover.policies?.b?.current==='a'&&last(one)==='A'&&last(two)==='D';},'restored rule mode verifies and records the usable backup');
  assert.equal(JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core,original);checks++;
  const c=await r.api('GET','/configs');assert.equal(c['mixed-port'],port);assert.equal(c.tun.enable,false);checks++;
  const events=JSON.parse(fs.readFileSync(path.join(r.ROOT,'failover-events.json')));assert.ok(events.some(e=>e.from==='a'&&e.to==='b'&&e.reason==='listener-closed'));assert.ok(events.every(e=>!JSON.stringify(e).includes(url)));checks++;

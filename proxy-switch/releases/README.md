@@ -1,4 +1,19 @@
-# 流向 FlowSwitch 3.6.0 · 下载与校验
+# 流向 FlowSwitch 3.7.0 · 下载与校验
+
+改进程序升级识别、旧记录修复与连接证据，修复生命周期和配置竞争；保留托盘、独立入口及备用接替。
+
+| 文件 | 大小 | SHA-256 |
+| --- | --- | --- |
+| [FlowSwitch-v3.7.0-Windows-Source.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.0-Windows-Source.zip) | 1,818,861 字节 | `4daef8fe8e6a42ed9dbe4d32f4a4a17cf28c1bdc77ccbccac663f0cdfa2e2218` |
+| [FlowSwitch-v3.7.0-Windows-x64.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.0-Windows-x64.zip) | 71,471,971 字节 | `8d56bf4a96ca01264cb7f788dde98d7493e6de9f5e06de1c35d6c026fc1ae332` |
+
+Windows 包 38 个文件、源码包 82 个文件，分别含 37 / 81 项逐文件 SHA-256 清单；均为单应用根目录，已核验 ZIP CRC 与私有文件排除。
+
+[使用与升级说明](../README.md) · [验收记录](../TEST_REPORT.md) · [功能验收约定](../ACCEPTANCE.md) · [SHA256SUMS.txt](SHA256SUMS.txt)
+
+以下保留历史版本说明，仅适用于相应版本。
+
+## 流向 FlowSwitch 3.6.0 · 下载与校验
 
 关闭窗口默认驻留右下角系统托盘，保持固定入口；内核异常退出有限恢复。使用托盘菜单「停止代理服务并退出」完全退出。
 

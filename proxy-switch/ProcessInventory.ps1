@@ -14,6 +14,10 @@ namespace LocalProxySwitch {
         public int ParentId;
         public string ProcessName;
         public string Path = "";
+        public string PathStatus = "Unavailable";
+        public int QueryError;
+        public string PackageFamilyName = "";
+        public string PackageFullName = "";
         public DateTime StartTime = DateTime.MinValue;
         public IntPtr MainWindowHandle;
     }
@@ -37,6 +41,8 @@ namespace LocalProxySwitch {
         [DllImport("kernel32.dll", SetLastError=true)] static extern bool CloseHandle(IntPtr handle);
         [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool QueryFullProcessImageNameW(IntPtr handle, uint flags, StringBuilder text, ref uint size);
         [DllImport("kernel32.dll", SetLastError=true)] static extern bool GetProcessTimes(IntPtr handle, out Time created, out Time exited, out Time kernel, out Time user);
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern int GetPackageFamilyName(IntPtr process, ref uint length, StringBuilder value);
+        [DllImport("kernel32.dll", CharSet=CharSet.Unicode)] static extern int GetPackageFullName(IntPtr process, ref uint length, StringBuilder value);
         delegate bool WindowCallback(IntPtr window, IntPtr parameter);
         [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
@@ -61,14 +67,23 @@ namespace LocalProxySwitch {
             foreach(var row in entries.Values) {
                 if(row.Id<=4) continue;
                 string identity=row.Id+"|"+row.ParentId+"|"+row.ProcessName;
-                lock(Gate) {DateTime until;if(Denied.TryGetValue(identity,out until)&&until>DateTime.UtcNow) continue;}
+                lock(Gate) {DateTime until;if(Denied.TryGetValue(identity,out until)&&until>DateTime.UtcNow) {row.PathStatus="AccessDenied";row.QueryError=5;continue;}}
                 IntPtr handle=OpenProcess(QueryAccess,false,(uint)row.Id);
-                if(handle==IntPtr.Zero) {lock(Gate){if(Denied.Count>4096)Denied.Clear();Denied[identity]=DateTime.UtcNow.AddMinutes(1);}continue;}
+                if(handle==IntPtr.Zero) {row.QueryError=Marshal.GetLastWin32Error();row.PathStatus=row.QueryError==5?"AccessDenied":"Unavailable";if(row.QueryError==5){lock(Gate){if(Denied.Count>4096)Denied.Clear();Denied[identity]=DateTime.UtcNow.AddMinutes(1);}}continue;}
                 try {
                     uint length=32768;var text=new StringBuilder((int)length);
-                    if(QueryFullProcessImageNameW(handle,0,text,ref length)) row.Path=text.ToString();
+                    if(QueryFullProcessImageNameW(handle,0,text,ref length)) {row.Path=text.ToString();row.PathStatus="Available";}
+                    else {row.QueryError=Marshal.GetLastWin32Error();row.PathStatus=row.QueryError==5?"AccessDenied":"Unavailable";}
                     Time created,exited,kernel,user;
                     if(GetProcessTimes(handle,out created,out exited,out kernel,out user))row.StartTime=DateTime.FromFileTimeUtc(((long)created.High<<32)|created.Low);
+                    // Package identity comes from Windows on the same limited-query handle.
+                    // A blank value means unpackaged/unavailable, never a filename guess.
+                    try {
+                        uint familyLength=256;var family=new StringBuilder((int)familyLength);
+                        if(GetPackageFamilyName(handle,ref familyLength,family)==0)row.PackageFamilyName=family.ToString();
+                        uint fullLength=1024;var full=new StringBuilder((int)fullLength);
+                        if(GetPackageFullName(handle,ref fullLength,full)==0)row.PackageFullName=full.ToString();
+                    } catch(EntryPointNotFoundException) {} // Older Windows: preserve PID/path observation.
                 } finally {CloseHandle(handle);}
             }
             WindowCallback callback=delegate(IntPtr window,IntPtr parameter){

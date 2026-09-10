@@ -4,6 +4,8 @@ $script:Root = $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Preferences.ps1') -DataDirectory $DataDirectory
 . (Join-Path $PSScriptRoot 'RuntimeSupport.ps1')
 . (Join-Path $PSScriptRoot 'ProcessInventory.ps1')
+. (Join-Path $PSScriptRoot 'ProgramIdentity.ps1')
+. (Join-Path $PSScriptRoot 'ApplicationObservation.ps1')
 . (Join-Path $PSScriptRoot 'ProgramLaunch.ps1')
 . (Join-Path $PSScriptRoot 'ProxyDiscovery.ps1')
 . (Join-Path $PSScriptRoot 'IndependentGateway.ps1')
@@ -259,7 +261,8 @@ function Get-LiveConnections($TcpRows=$null) {
     foreach($group in ($items | Group-Object PID,Route)){$c=$group.Group[0];[pscustomobject]@{Process=$processes[$c.PID];PID=$c.PID;Route=$c.Route;Count=$group.Count}}
 }
 
-function Get-ProxyStatus($RoutingStatus=$null,$TcpRows=$null) {
+function Get-ProxyStatus($RoutingStatus=$null,$TcpRows=$null,[bool]$TcpAvailable=$true) {
+    if($null -eq $TcpRows){$observation=Get-TcpObservationSnapshot;$TcpRows=$observation.Rows;$TcpAvailable=$observation.Available}
     $snapshot=Get-SystemSnapshot;$key=Get-SystemKey $snapshot;$envValues=Get-UserProxyEnv;$selection=Get-Selection
     $aligned=($key -ne 'Other');$envConflict=($key -eq 'Other');$environment=@()
     foreach($name in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY')){
@@ -269,18 +272,18 @@ function Get-ProxyStatus($RoutingStatus=$null,$TcpRows=$null) {
         if($route -ne 'Unset' -and $route -ne $key){$envConflict=$true}
     }
     $listeners=@();foreach($id in (Get-ProfileKeys)){
-        $p=Get-Profile $id;$remote=$p.Host -notin @('localhost','127.0.0.1','::1');$l=Get-Listener $p -TcpRows $TcpRows
-        $listeners+=[pscustomobject]@{Key=$id;Name=$p.Name;Protocol=$p.Protocol;Port=$p.Port;Remote=$remote;Ready=$(if($remote){$null}else{$null -ne $l})}
+        $p=Get-Profile $id;$remote=$p.Host -notin @('localhost','127.0.0.1','::1');$l=$null;if($TcpAvailable){$l=Get-Listener $p -TcpRows $TcpRows}
+        $listeners+=[pscustomobject]@{Key=$id;Name=$p.Name;Protocol=$p.Protocol;Port=$p.Port;Remote=$remote;Ready=$(if($remote -or -not $TcpAvailable){$null}else{$null -ne $l})}
     }
     $ready=$key -eq 'Direct'
     if($key -ne 'Direct'){$entry=$listeners | Where-Object {$_.Key -eq $key} | Select-Object -First 1;$ready=$(if($entry){$entry.Ready}else{$null})}
-    $live=@(Get-LiveConnections -TcpRows $TcpRows);$warnings=@(Get-ClientWarnings)+@(Get-OverrideWarnings $key)+@(Get-EntryLifecycleWarnings $snapshot $envValues $listeners)
+    $live=@(Get-LiveConnections -TcpRows $TcpRows);$warnings=@(Get-ClientWarnings)+@(Get-OverrideWarnings $key);if($TcpAvailable){$warnings+=@(Get-EntryLifecycleWarnings $snapshot $envValues $listeners)}else{$warnings+='Windows 连接列表读取失败，入口监听和连接状态未知；这不代表网络已断开。'}
     $drift=($null -ne $selection -and $selection.Key -and $selection.Key -ne $key)
     $oldConnections=@($live | Where-Object {$_.Route -ne $key})
     # Historical intent is not evidence of the engine's live route.
     $network=$key
     if($key -eq (Get-GatewayKey) -and $RoutingStatus.Available -and $RoutingStatus.DefaultLoaded -and $RoutingStatus.DefaultRoute){$network=$RoutingStatus.DefaultRoute;if($RoutingStatus.EffectiveDefaultRoute){$network=$RoutingStatus.EffectiveDefaultRoute}}
-    [pscustomobject]@{Key=$key;Current=(Get-RouteName $key);NetworkKey=$network;NetworkName=(Get-RouteName $network);Server=(Protect-Endpoint $snapshot.Server);Flags=$snapshot.Flags;Environment=$environment;Aligned=$aligned;EnvConflict=$envConflict;EndpointReady=$ready;Listeners=$listeners;Selected=$selection;Drift=[bool]$drift;Connections=$live;OldConnections=$oldConnections;Warnings=$warnings;GatewayKey=(Get-GatewayKey);CheckedAt=(Get-Date).ToString('HH:mm:ss')}
+    [pscustomobject]@{Key=$key;Current=(Get-RouteName $key);NetworkKey=$network;NetworkName=(Get-RouteName $network);Server=(Protect-Endpoint $snapshot.Server);Flags=$snapshot.Flags;Environment=$environment;Aligned=$aligned;EnvConflict=$envConflict;EndpointReady=$ready;Listeners=$listeners;Selected=$selection;Drift=[bool]$drift;Connections=$live;OldConnections=$oldConnections;Warnings=$warnings;TcpAvailable=$TcpAvailable;GatewayKey=(Get-GatewayKey);CheckedAt=(Get-Date).ToString('HH:mm:ss')}
 }
 
 function Start-HttpEndpointProbe($Profile,[string]$Url,[bool]$Fast=$false) {
@@ -361,18 +364,50 @@ function Save-Backup($Snapshot) {
     $Snapshot | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $path -Encoding UTF8
     return $path
 }
+function ConvertTo-RoutingComparableValue($Value) {
+    if($null -eq $Value){return $null}
+    if($Value -is [Collections.IDictionary]){$copy=[ordered]@{};foreach($key in @($Value.Keys|Sort-Object)){$copy[$key]=ConvertTo-RoutingComparableValue $Value[$key]};return [pscustomobject]$copy}
+    if($Value -is [Management.Automation.PSCustomObject]){$copy=[ordered]@{};foreach($key in @($Value.PSObject.Properties.Name|Sort-Object)){$copy[$key]=ConvertTo-RoutingComparableValue $Value.$key};return [pscustomobject]$copy}
+    if($Value -is [Collections.IEnumerable] -and $Value -isnot [string]){return ,@($Value|ForEach-Object {ConvertTo-RoutingComparableValue $_})}
+    return $Value
+}
 function Test-SameRouting($A,$B) {
-    $aText=@{entries=@($A.entries | ForEach-Object {@{path=$_.path;route=$_.route}});defaultRoute=$A.defaultRoute;launchEntries=@($A.launchEntries|Where-Object {$_})}|ConvertTo-Json -Depth 6 -Compress
-    $bText=@{entries=@($B.entries | ForEach-Object {@{path=$_.path;route=$_.route}});defaultRoute=$B.defaultRoute;launchEntries=@($B.launchEntries|Where-Object {$_})}|ConvertTo-Json -Depth 6 -Compress
+    $aText=[ordered]@{entries=@($A.entries | ForEach-Object {[ordered]@{path=$_.path;route=$_.route;identity=(ConvertTo-RoutingComparableValue $_.identity)}});defaultRoute=$A.defaultRoute;launchEntries=@($A.launchEntries|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_})}|ConvertTo-Json -Depth 16 -Compress
+    $bText=[ordered]@{entries=@($B.entries | ForEach-Object {[ordered]@{path=$_.path;route=$_.route;identity=(ConvertTo-RoutingComparableValue $_.identity)}});defaultRoute=$B.defaultRoute;launchEntries=@($B.launchEntries|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_})}|ConvertTo-Json -Depth 16 -Compress
     return $aText -ceq $bText
 }
-function Set-RoutingSnapshot($Snapshot) {
-    $current=Get-RoutingSnapshot
+function Set-RoutingSnapshot($Snapshot,$ExpectedBefore=$null) {
+    # The semantic snapshot and CAS hashes must come from the SAME bytes, not a later re-read.
+    $writeContext=Get-RuleMaintenanceSnapshot ''
+    $current=[pscustomobject]@{entries=@($writeContext.Engine.entries);defaultRoute=$writeContext.Engine.defaultRoute;installed=[bool]$writeContext.Engine.installed;launchEntries=@($writeContext.Launch.entries)}
+    if($null -ne $ExpectedBefore -and -not (Test-SameRouting $current $ExpectedBefore)){throw '程序规则已经被其他窗口改动，保留最新记录；请刷新后重试。'}
+    if(-not $current.installed -and (@($current.entries).Count -or $current.defaultRoute)){throw '程序规则状态不一致，未更改任何设置。'}
     $hasLaunch=$null -ne $Snapshot.PSObject.Properties['launchEntries']
-    if($hasLaunch){Set-ProgramLaunchEntries @($Snapshot.launchEntries)}
+    $needsEngine=$current.installed -or @($current.entries).Count -or $current.defaultRoute -or @($Snapshot.entries).Count -or $Snapshot.defaultRoute
+    if($needsEngine){
+        $boundProfiles=Get-RuleMaintenanceProfiles $writeContext
+        $boundText=ConvertTo-RoutingComparableValue $boundProfiles|ConvertTo-Json -Depth 16 -Compress
+        $expectedText=ConvertTo-RoutingComparableValue (ConvertTo-ValidProfileSettings $script:Profiles)|ConvertTo-Json -Depth 16 -Compress
+        if($boundText -cne $expectedText){throw '代理配置已改变，保留当前入口与规则；请刷新后重新选择。'}
+    }
+    $launchWritten=$false
     try{
-        if($current.installed -or @($current.entries).Count -or $current.defaultRoute -or @($Snapshot.entries).Count -or $Snapshot.defaultRoute){Invoke-AppRouter @{action='replace';entries=@($Snapshot.entries);defaultRoute=$Snapshot.defaultRoute} | Out-Null}
-    }catch{if($hasLaunch){Set-ProgramLaunchEntries @($current.launchEntries)};throw}
+        if($hasLaunch){
+            if((Read-RuleMaintenanceFile $writeContext.Files['program-proxies.json'].Path).Hash -cne $writeContext.Files['program-proxies.json'].Hash){throw '启动代理记录已改变，请刷新后重试。'}
+            Set-ProgramLaunchEntries @($Snapshot.launchEntries);$launchWritten=$true
+        }
+        if($needsEngine){
+            $script:Profiles=$boundProfiles
+            Invoke-AppRouter @{action='replace';entries=@($Snapshot.entries);defaultRoute=$Snapshot.defaultRoute;expectedStateHash=$writeContext.Files['app-rules.json'].TextHash;expectedSettingsHash=$writeContext.Files['config.json'].TextHash} | Out-Null
+        }
+    }catch{
+        if($launchWritten){
+            $actual=[pscustomobject]@{entries=@();defaultRoute=$null;launchEntries=@(Get-ProgramLaunchEntries)}
+            $owned=[pscustomobject]@{entries=@();defaultRoute=$null;launchEntries=@($Snapshot.launchEntries)}
+            if(Test-SameRouting $actual $owned){Set-ProgramLaunchEntries @($current.launchEntries)}
+        }
+        throw
+    }
 }
 function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSystem,$BeforeEnv,$TargetRouting=$null,$BeforeRouting=$null,[scriptblock]$VerifyAction=$null) {
     if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $BeforeEnv (Get-UserProxyEnv))){throw '检测期间其他程序改动了代理，请稍后重试。未写入设置。'}
@@ -381,7 +416,7 @@ function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSyst
     $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=$BeforeSystem;Environment=$BeforeEnv;Selection=$beforeSelection;Routing=$BeforeRouting})
     $routesWritten=$false;$nativeStarted=$false;$systemStarted=$false
     try{
-        if($null -ne $TargetRouting){Write-OperationProgress '正在更新程序规则并核对引擎…';Set-RoutingSnapshot $TargetRouting;$routesWritten=$true}
+        if($null -ne $TargetRouting){Write-OperationProgress '正在更新程序规则并核对引擎…';Set-RoutingSnapshot $TargetRouting $BeforeRouting;$routesWritten=$true}
         if($VerifyAction){& $VerifyAction | Out-Null}
         # A controller reload can take seconds; recheck before touching Windows settings.
         if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $BeforeEnv (Get-UserProxyEnv))){throw '重载期间系统入口发生变化，请重试。'}
@@ -396,7 +431,7 @@ function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSyst
     }catch{
         $errorText=$_.Exception.Message;$rollbackErrors=@();$preserved=@()
         if($routesWritten -and $null -ne $BeforeRouting){
-            try{if(Test-SameRouting (Get-RoutingSnapshot) $TargetRouting){Set-RoutingSnapshot $BeforeRouting}else{$preserved+='程序规则'}}catch{$rollbackErrors+='程序规则'}
+            try{if(Test-SameRouting (Get-RoutingSnapshot) $TargetRouting){Set-RoutingSnapshot $BeforeRouting $TargetRouting}else{$preserved+='程序规则'}}catch{$rollbackErrors+='程序规则'}
         }
         if($nativeStarted){
             # Restore only values still owned by this transaction; preserve outside choices.
@@ -504,3 +539,5 @@ function Assert-RestorableEnvironment($Values) {
 
 . (Join-Path $PSScriptRoot 'AppRouting.ps1')
 
+
+. (Join-Path $PSScriptRoot 'RuleMaintenance.ps1')

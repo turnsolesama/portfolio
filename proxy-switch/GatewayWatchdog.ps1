@@ -4,7 +4,11 @@ $ErrorActionPreference='Stop'
 $path=Get-IndependentSessionPath
 if(-not (Test-Path -LiteralPath $path)){return}
 $session=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
-if($RecoverOnly){Restore-IndependentSession;return}
+if($RecoverOnly){
+    # A delayed next-logon recovery must not terminate a fresh, live UI session.
+    if(Test-SessionProcess $session.OwnerPID $session.OwnerStart){Write-LifecycleEvent 'recovery-skipped' 'owner-still-running';return}
+    Restore-IndependentSession -ExpectedSession $session.Started;return
+}
 Write-LocalJson (Join-Path $script:DataRoot 'gateway\watchdog-ready.json') ([pscustomobject]@{PID=$PID;StartTicks=(Get-ProcessStartTicks $PID);Session=$session.Started})
 $misses=0;$restoreAttempts=0;$missingSince=$null
 while(Test-Path -LiteralPath $path){
@@ -18,7 +22,7 @@ while(Test-Path -LiteralPath $path){
     if($missingSince -and ([DateTime]::UtcNow-$missingSince).TotalSeconds -ge 45){$grace=$false}
     if(-not $alive -or ($misses -ge 2 -and -not $grace)){
         Write-LifecycleEvent 'watchdog-recovery' $(if(-not $alive){'owner-exited'}else{'entry-unavailable'})
-        try{Restore-IndependentSession;return}catch{
+        try{Restore-IndependentSession -ExpectedSession $session.Started;return}catch{
             $restoreAttempts++;Write-LifecycleEvent 'watchdog-restore-failed' 'restore-retry' $restoreAttempts
             if($restoreAttempts -ge 3){Write-LifecycleEvent 'watchdog-recovery-exhausted' 'manual-action-required';return}
             Start-Sleep -Seconds ([Math]::Pow(2,$restoreAttempts-1));continue

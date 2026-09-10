@@ -1,12 +1,12 @@
 ![流向 FlowSwitch](../docs/assets/flowswitch.svg)
 
-# 流向 FlowSwitch 3.6.0
+# 流向 FlowSwitch 3.7.0
 
 管理已有 HTTP / SOCKS5 代理，让程序通过固定入口选择出口。独立模式自带运行组件，代理失效后按备用顺序接替。关闭窗口默认驻留系统托盘，内核异常退出后有限重启；停止服务时先恢复仍归属本会话的网络设置。
 
-[返回工具集](../) · [功能与设计](DESIGN.md) · [更新记录](CHANGELOG.md)
+[返回工具集](../) · [功能与设计](DESIGN.md) · [更新记录](CHANGELOG.md) · [功能验收约定](ACCEPTANCE.md)
 
-**[下载 Windows x64 程序包 · 3.6.0 · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.6.0-Windows-x64.zip)** · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.6.0-Windows-Source.zip) · [下载与校验](releases/README.md)
+**[下载 Windows x64 程序包 · 3.7.0 · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.0-Windows-x64.zip)** · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.0-Windows-Source.zip) · [下载与校验](releases/README.md)
 
 ## 快速开始
 
@@ -23,6 +23,12 @@
 Windows 10 1809+ / Windows 11 x64，保留系统自带的 Windows PowerShell 5.1、.NET Framework 4.x 和 curl.exe。完整程序包自带 Node.js 24.19.0、mihomo 1.19.29 的标准及兼容构建、许可证和内核源码，无需另装 Node.js、npm 或 Clash，无需配置 PATH。首次运行不下载组件，不要求管理员权限。
 
 不提供 VPN 服务、订阅、节点或账户，仍需自己的可用代理。32 位 Windows、Windows 7/8 和原生 ARM64 包不在本次交付范围。源码开发可使用已安装的组件。
+
+## 程序正常使用，为什么没有连接？
+
+3.7 将“未运行”“程序路径已失效”“运行中但未观察到 TCP”“正在建立”“已观察到线路”“读取失败”分别显示。列表是当前 TCP 快照，短时请求、UDP / QUIC 和独立隧道可能不在观察范围。读取失败不会清空成“暂无连接”。规则是否载入、实际连接是否经过目标线路、是否登录成功是不同证据。
+
+商店应用更新后，FlowSwitch 会按 Windows 注册包身份和包内 EXE 路径关联唯一候选，将当前进程与旧记录放在一起，并明确标为“路径变更 · 规则待修复”。右键「修复程序路径记录」核对旧、新路径后保存，保留线路选择和仍归本工具管理的快捷方式；刷新不会自动改规则。有多个候选或记录在操作期间变化时拒绝覆盖。普通 EXE 移动无法确认身份时，可移除旧记录并重新添加。旧启动代理记录的移除不要求引擎在线。
 
 ## 关闭窗口与停止服务
 
@@ -57,11 +63,11 @@ Windows 10 1809+ / Windows 11 x64，保留系统自带的 Windows PowerShell 5.1
 
 从托盘选择「停止代理服务并退出」后，先恢复仍归属本会话的系统代理和用户代理变量，再关闭自有内核；备份中的本地代理已失效时恢复直连。内核异常退出先有限恢复，耗尽后由守护进程恢复设置；界面崩溃与断电残留继续走安全恢复。其他程序后来的网络设置会保留。
 
-恢复直连不能使本来需要代理的网站变为可直连；已缓存旧代理地址的应用可能需要重开。更新前停止并正常退出 FlowSwitch（3.6.0 使用托盘菜单，旧版无托盘时正常关闭主界面），再解压新包；本机数据保存在 `%USERPROFILE%\.proxyswitch`，不随安装包覆盖。新电脑应配置自己的入口，不复制其他电脑的个人配置、内核路径、订阅或账户。
+恢复直连不能使本来需要代理的网站变为可直连；已缓存旧代理地址的应用可能需要重开。更新前停止并正常退出 FlowSwitch（3.7.0 使用托盘菜单，旧版无托盘时正常关闭主界面），再解压新包；本机数据保存在 `%USERPROFILE%\.proxyswitch`，不随安装包覆盖。新电脑应配置自己的入口，不复制其他电脑的个人配置、内核路径、订阅或账户。
 
 ## 验证与构建
 
-本版通过 297 项静态与单元断言、28 项真实内核生命周期检查、12 项托盘检查、7 项 supervisor 恢复检查、21 项独立分流回归、12 项 Windows 包检查、17 项运行组件检查及 5 项窗口单实例检查。切换交互、自动发现、被动生命周期和视觉回归均通过。故障注入使用隔离配置及 Windows 设置桩。另一台电脑上的真实 Google 账号登录尚未验收；网络诊断成功不能代替登录验收。
+本版对身份匹配、连接证据、规则修复、配置并发保护和入口停止 / 重启竞争补充回归，并复验原有代理切换、自动接替与托盘功能。各项实际执行结果见 [验收记录](TEST_REPORT.md)。故障注入使用隔离配置及 Windows 设置桩；另一台电脑上的真实 Google 账号登录仍需单独验收。
 
 [完整验收范围与复测步骤](TEST_REPORT.md)
 

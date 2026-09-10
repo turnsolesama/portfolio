@@ -21,14 +21,21 @@ function Set-ProgramLaunchEntries($Entries) {
     try{foreach($entry in $before){if(-not @($Entries|Where-Object {$_.path -ieq $entry.path}).Count){Restore-ProgramProxyShortcuts $entry.path}}}
     catch{Write-LocalJson (Join-Path $script:DataRoot 'program-proxies.json') ([pscustomobject]@{version=1;entries=$before});throw}
 }
-function Get-ProgramFamily([string]$Executable,$Processes) {
+function Get-ProgramFamily([string]$Executable,$Processes,$IdentityContext=$null) {
     $found=@{};$directory=[IO.Path]::GetDirectoryName($Executable)+'\'
-    foreach($p in $Processes){if($p.Path -and $p.Path -ieq $Executable){$found[[int]$p.Id]=$p}}
+    if($null -eq $IdentityContext){$IdentityContext=New-ProgramIdentityContext -Processes $Processes}
+    $rootIdentity=Get-ProgramIdentityDescriptor $Executable $IdentityContext
+    $canonicalDirectory='';if($rootIdentity.CanonicalPath){$canonicalDirectory=[IO.Path]::GetDirectoryName($rootIdentity.CanonicalPath)+'\'}
+    foreach($p in $Processes){if($p.Path -and (Test-ProgramPathEquivalent $p.Path $Executable $IdentityContext)){$found[[int]$p.Id]=$p}}
     do{
         $count=$found.Count
         foreach($p in $Processes){
-            if($found.ContainsKey([int]$p.Id) -or -not $found.ContainsKey([int]$p.ParentId)){continue}
-            if(-not $p.Path -or $p.Path.StartsWith($directory,[StringComparison]::OrdinalIgnoreCase)){$found[[int]$p.Id]=$p}
+            if($found.ContainsKey([int]$p.Id) -or -not $p.ParentId -or -not $found.ContainsKey([int]$p.ParentId)){continue}
+            $parent=$found[[int]$p.ParentId]
+            if($p.StartTime -and $parent.StartTime -and $p.StartTime -ne [DateTime]::MinValue -and $parent.StartTime -ne [DateTime]::MinValue -and $p.StartTime -lt $parent.StartTime){continue}
+            $inside=-not $p.Path -or $p.Path.StartsWith($directory,[StringComparison]::OrdinalIgnoreCase)
+            if(-not $inside -and $canonicalDirectory){$member=Get-ProgramIdentityDescriptor $p.Path $IdentityContext;$inside=$member.CanonicalPath -and $member.CanonicalPath.StartsWith($canonicalDirectory,[StringComparison]::OrdinalIgnoreCase)}
+            if($inside){$found[[int]$p.Id]=$p}
         }
     }while($found.Count -gt $count)
     @($found.Values)
@@ -136,7 +143,7 @@ function Install-ProgramProxyShortcut([string]$Executable,[string]$DesktopDirect
 function Set-ProgramLaunchRoute([string]$Executable,[string]$Route) {
     Use-ChangeLock {
         $plan=Get-ProgramLaunchPlan $Executable $Route
-        $before=@(Get-ProgramLaunchEntries);$next=@($before|Where-Object {$_.path -ine $Executable})+@([pscustomobject]@{path=$Executable;route=$Route;adapter='chromium'})
+        $before=@(Get-ProgramLaunchEntries);$next=@($before|Where-Object {$_.path -ine $Executable})+@([pscustomobject]@{path=$Executable;route=$Route;adapter='chromium';identity=(Get-ProgramIdentityDescriptor -Path $Executable -Context (New-ProgramIdentityContext))})
         $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=(Get-SystemSnapshot);Environment=(Get-UserProxyEnv);Selection=(Get-Selection);Routing=(Get-RoutingSnapshot)})
         try{Set-ProgramLaunchEntries $next;$shortcuts=@(Install-ProgramProxyShortcut $Executable)}catch{Set-ProgramLaunchEntries $before;throw}
         [pscustomobject]@{Backup=$backup;Message=('已保存「'+[IO.Path]::GetFileNameWithoutExtension($Executable)+'」的目标「'+(Get-RouteName $Route)+'」，尚未验证生效。请保存任务并完整退出，再使用以下代理入口，或右键选择「按指定线路打开」：'+"`r`n"+($shortcuts -join "`r`n")+"`r`n"+'其他入口（开始菜单、任务栏、Listary 等）未接入此启动设置，重复从那些入口重开不会应用这里保存的代理。');Shortcuts=$shortcuts}

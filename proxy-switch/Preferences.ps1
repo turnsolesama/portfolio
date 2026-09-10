@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.6.0'
+$script:ProductVersion='3.7.0'
 . (Join-Path $PSScriptRoot 'Storage.ps1')
 $script:LegacyDataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 $script:DataRoot=Resolve-ProxyDataDirectory $DataDirectory $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA
@@ -125,7 +125,7 @@ function New-SupportReport($State,$Apps) {
     $labels=@{Direct='Direct';Follow='Follow';Other='Other';Unset='Unset'};$index=0
     foreach($p in $script:Profiles.Profiles){$index++;$labels[$p.Id]='Proxy'+$index}
     $envRows=@($State.Environment | ForEach-Object {if($_.Name -in @('HTTP_PROXY','HTTPS_PROXY','ALL_PROXY')){[pscustomobject]@{Name=$_.Name;Route=$(if($labels.ContainsKey([string]$_.Route)){$labels[$_.Route]}else{'Other'})}}})
-    $listeners=@($State.Listeners | ForEach-Object {if($labels.ContainsKey([string]$_.Key)){[pscustomobject]@{Id=$labels[$_.Key];Port=[int]$_.Port;Ready=[bool]$_.Ready}}})
+    $listeners=@($State.Listeners | ForEach-Object {if($labels.ContainsKey([string]$_.Key)){[pscustomobject]@{Id=$labels[$_.Key];Port=[int]$_.Port;Ready=$_.Ready}}})
     $rules=@($Apps.Rows | Where-Object {$_.Policy -ne 'Follow'} | Group-Object Policy | ForEach-Object {[pscustomobject]@{Route=$(if($labels.ContainsKey($_.Name)){$labels[$_.Name]}else{'Other'});Count=$_.Count;Loaded=@($_.Group | Where-Object Loaded).Count}})
-    [pscustomobject]@{Product='ProxySwitch';Version=$script:ProductVersion;GeneratedAt=(Get-Date).ToString('o');SystemRoute=$(if($labels.ContainsKey([string]$State.Key)){$labels[$State.Key]}else{'Other'});Aligned=[bool]$State.Aligned;EndpointReady=[bool]$State.EndpointReady;Drift=[bool]$State.Drift;Environment=$envRows;Listeners=$listeners;ApplicationCount=@($Apps.Rows).Count;RuleEngineAvailable=[bool]$Apps.Available;Rules=$rules;Privacy='不含代理名称、地址、账号、程序名称、路径或完整环境变量。'}
+    [pscustomobject]@{Product='ProxySwitch';Version=$script:ProductVersion;GeneratedAt=(Get-Date).ToString('o');SystemRoute=$(if($labels.ContainsKey([string]$State.Key)){$labels[$State.Key]}else{'Other'});Aligned=[bool]$State.Aligned;EndpointReady=$State.EndpointReady;Drift=[bool]$State.Drift;Environment=$envRows;Listeners=$listeners;ApplicationCount=@($Apps.Rows).Count;RuleEngineAvailable=[bool]$Apps.Available;Rules=$rules;TcpAvailable=(Test-ObservationFlag $Apps 'TcpAvailable');ProcessesAvailable=(Test-ObservationFlag $Apps 'ProcessesAvailable');RulesAvailable=(Test-ObservationFlag $Apps 'RulesAvailable' ([bool]$Apps.Available));ConnectionsAvailable=(Test-ObservationFlag $Apps 'ConnectionsAvailable' ([bool]$Apps.Available));ObservationStates=@($Apps.Rows|Group-Object ObservationState|ForEach-Object {[pscustomobject]@{State=$_.Name;Count=$_.Count}});RepairCount=[int]$Apps.RepairCount;Privacy='不含代理名称、地址、账号、程序名称、路径或完整环境变量。'}
 }

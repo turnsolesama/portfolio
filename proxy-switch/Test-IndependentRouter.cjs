@@ -34,4 +34,10 @@ check(r.resumeSelections(o,resumeState,recent,210000)['PSW-App-route-a']==='FS-U
 check(!Object.keys(r.resumeSelections(o,resumeState,recent,400000)).length,'Stale health does not control startup');
 check(!Object.keys(r.resumeSelections(o,{...resumeState,changedAt:new Date(205000).toISOString()},recent,210000)).length,'Changed rules invalidate previous runtime selection');
 check(!Object.keys(r.resumeSelections(strict,resumeState,recent,210000)).length,'Disabled failover does not resume an old backup');
+const oldPathRule={entries:[{path:'C:\\Apps\\old\\A.exe',route:'a'}],defaultRoute:'a'};
+const migratedPathRule={entries:[{path:'C:\\Apps\\new\\A.exe',route:'a'}],defaultRoute:'a'};
+const migratedSelection=r.retainedSelections(o,oldPathRule,migratedPathRule,{'PSW-App-route-a':{now:'FS-Up-b'}});
+check(migratedSelection['PSW-App-route-a']==='FS-Up-b','Repairing a program path preserves its shared route group current backup');
+const addedSelection=r.retainedSelections(o,before,{entries:[{path:'C:\\Apps\\Added.exe',route:'a'}],defaultRoute:'a'},{'PSW-App-route-a':{now:'FS-Up-b'}});
+check(addedSelection['PSW-App-route-a']==='FS-Up-b','Adding another program to an existing policy does not reset other programs or the default route');
 console.log('PASS: '+checks+' independent gateway unit assertions');

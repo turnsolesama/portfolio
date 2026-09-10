@@ -13,32 +13,47 @@ function Test-RecoveryEndpoint([string]$Endpoint) {
         try{$connect=$tcp.ConnectAsync($uri.Host.Trim('[',']'),$uri.Port);return ($connect.Wait(500) -and $tcp.Connected)}finally{$tcp.Dispose()}
     }catch{return $false}
 }
+function Test-SameRecoveryEndpoint([string]$First,[string]$Second) {
+    if(-not $First -or -not $Second){return $false}
+    try{
+        $a=$First;$b=$Second;if($a -notmatch '^[a-z]+://'){$a='http://'+$a};if($b -notmatch '^[a-z]+://'){$b='http://'+$b}
+        $a=[uri]$a;$b=[uri]$b;$firstHost=$a.Host.Trim('[',']').ToLowerInvariant();$secondHost=$b.Host.Trim('[',']').ToLowerInvariant()
+        if($firstHost -in @('localhost','127.0.0.1','::1')){$firstHost='loopback'};if($secondHost -in @('localhost','127.0.0.1','::1')){$secondHost='loopback'}
+        return ($firstHost -ceq $secondHost -and $a.Port -eq $b.Port)
+    }catch{return $false}
+}
 function New-ExitRecoveryPlan($Session,$CurrentSystem,$CurrentEnv) {
     $system=$CurrentSystem
     if(Test-SameSnapshot $CurrentSystem $Session.TargetSystem){
         $system=$Session.BeforeSystem
-        if(($system.Flags -band 2) -and -not (Test-RecoveryEndpoint $system.Server)){$system=[pscustomobject]@{Flags=1;Server='';Bypass=$system.Bypass}}
+        if(($system.Flags -band 2) -and ((Test-SameRecoveryEndpoint $system.Server $Session.TargetSystem.Server) -or -not (Test-RecoveryEndpoint $system.Server))){$system=[pscustomobject]@{Flags=1;Server='';Bypass=$system.Bypass}}
     }
     $values=[ordered]@{}
     foreach($name in $script:ProxyNames){
         $values[$name]=$CurrentEnv.$name
         if([string]$CurrentEnv.$name -ceq [string]$Session.TargetEnv.$name){
             $values[$name]=$Session.BeforeEnv.$name
-            if($name -ne 'NO_PROXY' -and $values[$name] -and -not (Test-RecoveryEndpoint $values[$name])){$values[$name]=$null}
+            if($name -ne 'NO_PROXY' -and $values[$name] -and ((Test-SameRecoveryEndpoint $values[$name] $Session.TargetSystem.Server) -or -not (Test-RecoveryEndpoint $values[$name]))){$values[$name]=$null}
         }
     }
     [pscustomobject]@{System=$system;Environment=[pscustomobject]$values}
 }
-function Restore-IndependentSession {
+function Restore-IndependentSession([string]$ExpectedSession='') {
     Write-LifecycleEvent 'restore-request' 'stop-or-failure'
+    $outcome=[pscustomobject]@{Restored=$false}
     try { Use-ChangeLock {
         $path=Get-IndependentSessionPath
         if(-not (Test-Path -LiteralPath $path)){return}
         $session=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if($ExpectedSession -and [string]$session.Started -cne $ExpectedSession){return}
         $before=Get-SystemSnapshot;$envBefore=Get-UserProxyEnv;$plan=New-ExitRecoveryPlan $session $before $envBefore
         if(-not (Test-SameSnapshot $before (Get-SystemSnapshot)) -or -not (Test-SameEnv $envBefore (Get-UserProxyEnv))){throw '恢复期间网络设置发生变化，稍后重试。'}
         # Restore Windows first. Never stop a core while Windows still points at it.
         if(-not (Test-SameSnapshot $before $plan.System)){Set-SystemSnapshot $plan.System}
+        # A system setter can yield to another proxy client. Re-read environment
+        # ownership at the point of writing instead of replaying the old snapshot.
+        $envBefore=Get-UserProxyEnv
+        $plan.Environment=(New-ExitRecoveryPlan $session $plan.System $envBefore).Environment
         if(-not (Test-SameEnv $envBefore $plan.Environment)){Set-UserProxyEnv $plan.Environment}
         if(-not (Test-SameSnapshot (Get-SystemSnapshot) $plan.System) -or -not (Test-SameEnv (Get-UserProxyEnv) $plan.Environment)){throw '退出恢复尚未通过实读校验，内核继续运行。'}
         $archive=Join-Path $script:DataRoot ('backups\gateway-exit-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')+'.json')
@@ -61,18 +76,29 @@ function Restore-IndependentSession {
                     $running=Get-CimInstance Win32_Process -Filter ('ProcessId = '+[int]$tracked.core) -ErrorAction SilentlyContinue
                     if($running){
                         $coreProfile=Get-Profile (Get-GatewayKey)
-                        $started=[DateTimeOffset]::Parse($tracked.started).UtcDateTime
-                        $actual=[DateTime]::new([long](Get-ProcessStartTicks $tracked.core),[DateTimeKind]::Utc)
-                        if($running.ParentProcessId -ne $session.SupervisorPID -or $running.ExecutablePath -ine $coreProfile.CorePath -or [Math]::Abs(($actual-$started).TotalSeconds) -gt 5){throw '内核身份已变化，未结束未知进程；请检查会话记录。'}
-                        Stop-Process -Id $tracked.core -ErrorAction Stop
-                        Write-LifecycleEvent 'orphan-core-stop' 'verified-session-child'
+                        $ownedProcess=[Diagnostics.Process]::GetProcessById([int]$tracked.core)
+                        try{
+                            # Retain the process handle through validation and kill, so a
+                            # rapidly reused PID cannot redirect termination to another process.
+                            [void]$ownedProcess.Handle
+                            $ticks=$ownedProcess.StartTime.ToUniversalTime().Ticks.ToString()
+                            $expectedTicks=$tracked.coreStartTicks
+                            if(-not $expectedTicks -and $tracked.core -eq $session.CorePID){$expectedTicks=$session.CoreStart}
+                            if(-not $expectedTicks -or $ticks -cne [string]$expectedTicks -or $running.ParentProcessId -ne $session.SupervisorPID -or $running.ExecutablePath -ine $coreProfile.CorePath -or ($tracked.supervisorStartTicks -and [string]$tracked.supervisorStartTicks -cne [string]$session.SupervisorStart)){throw '内核身份已变化或缺少精确启动记录，未结束未知进程；请检查会话记录。'}
+                            $ownedProcess.Kill()
+                            if(-not $ownedProcess.WaitForExit(3000)){throw '内核停止尚未确认；会话记录保留。'}
+                            Write-LifecycleEvent 'orphan-core-stop' 'verified-session-child'
+                        }finally{$ownedProcess.Dispose()}
                     }
                 }
             }
         }
         foreach($kind in @('Core')){
             $pidKey=$kind+'PID';$ticksKey=$kind+'Start'
-            if($session.$pidKey -and (Test-SessionProcess $session.$pidKey $session.$ticksKey)){Stop-Process -Id $session.$pidKey -ErrorAction SilentlyContinue}
+            if($session.$pidKey -and (Test-SessionProcess $session.$pidKey $session.$ticksKey)){
+                $ownedProcess=[Diagnostics.Process]::GetProcessById([int]$session.$pidKey)
+                try{[void]$ownedProcess.Handle;if($ownedProcess.StartTime.ToUniversalTime().Ticks.ToString() -ceq [string]$session.$ticksKey){$ownedProcess.Kill();if(-not $ownedProcess.WaitForExit(3000)){throw '内核停止尚未确认；会话记录保留。'}}}finally{$ownedProcess.Dispose()}
+            }
         }
         [IO.File]::Delete($path)
         # A completed recovery no longer needs the next-logon safety net.
@@ -80,7 +106,9 @@ function Restore-IndependentSession {
         $savedCommand=$null
         try{$savedCommand=Get-ItemPropertyValue -LiteralPath $key -Name 'FlowSwitchRecovery' -ErrorAction Stop}catch{}
         if($session.RecoveryCommand -and $savedCommand -ceq $session.RecoveryCommand){Remove-ItemProperty -LiteralPath $key -Name 'FlowSwitchRecovery' -ErrorAction SilentlyContinue}
+        $outcome.Restored=$true
     }
+    if(-not $outcome.Restored){return}
     Write-LifecycleEvent 'restore-complete' 'settings-verified'
     Write-LocalJson (Join-Path $script:DataRoot 'gateway\recovery-status.json') ([pscustomobject]@{phase='restored';at=[DateTimeOffset]::UtcNow.ToString('o')})
     }catch{

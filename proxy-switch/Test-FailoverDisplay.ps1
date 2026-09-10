@@ -1,5 +1,6 @@
 ﻿$ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms
+. (Join-Path $PSScriptRoot 'ApplicationObservation.ps1')
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot 'ProxyWindow.ps1'),[ref]$tokens,[ref]$errors)
 if($errors){throw 'UI parse failed'}
@@ -9,6 +10,7 @@ $script:Profiles=[pscustomobject]@{Routing=[pscustomobject]@{Adapter='standalone
 $script:LastState=[pscustomobject]@{Key='gateway'};$script:MenuOpen=$false;$script:Log=@()
 function Get-RouteName($Key){[string]$Key}
 function Get-GatewayKey {'gateway'}
+function Get-ProfileKeys {@('a','b','gateway')}
 function Select-ApplicationRows {param($Rows,$Search,$Saved);@()}
 function Write-Activity($Message){$script:Log+=@($Message)}
 $liveList=New-Object Windows.Forms.ListView;$searchBox=New-Object Windows.Forms.TextBox;$savedOnly=New-Object Windows.Forms.CheckBox

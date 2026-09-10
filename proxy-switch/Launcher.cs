@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -10,8 +10,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("流向 · FlowSwitch")]
 [assembly: AssemblyDescription("FlowSwitch Windows proxy manager")]
 [assembly: AssemblyProduct("流向 · FlowSwitch")]
-[assembly: AssemblyVersion("3.6.0.0")]
-[assembly: AssemblyFileVersion("3.6.0.0")]
+[assembly: AssemblyVersion("3.7.0.0")]
+[assembly: AssemblyFileVersion("3.7.0.0")]
 
 internal static class Launcher
 {
@@ -37,6 +37,7 @@ internal static class Launcher
         string[] required = {
             "ProxySwitch.ps1", "ProxyWindow.ps1", "ProxyBackend.ps1", "Preferences.ps1",
             "Storage.ps1", "RuntimeSupport.ps1", "DesktopBranding.cs", "FlowTheme.cs", "ProgramLaunch.ps1", "ProcessInventory.ps1", "ProxyDiscovery.ps1",
+            "ProgramIdentity.ps1", "ApplicationObservation.ps1", "RuleMaintenance.ps1",
             "AppRouting.ps1", "AppRouter.cjs", "IndependentRouter.cjs", "IndependentGateway.ps1", "GatewayWatchdog.ps1", "config.defaults.json", "Install-Shortcut.ps1",
             "assets/FlowSwitch.ico", "vendor/js-yaml/dist/js-yaml.cjs.js",
             "runtime/node.exe", "runtime/FlowSwitch.Core.exe", "runtime/FlowSwitch.Core.Compat.exe", "runtime/runtime-manifest.json"
@@ -71,7 +72,7 @@ internal static class Launcher
             string root = AppDomain.CurrentDomain.BaseDirectory;
             string app = Path.Combine(root, "app");
             VerifyFiles(app);
-            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.6.0 Windows package files are present."); return 0; }
+            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.7.0 Windows package files are present."); return 0; }
 
             string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
             if (!File.Exists(shell)) throw new FileNotFoundException("找不到 Windows PowerShell 5.1。");

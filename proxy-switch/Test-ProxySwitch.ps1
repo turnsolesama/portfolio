@@ -67,6 +67,7 @@ function Test-ProxyRoute([string]$Key){[pscustomobject]@{Name=$Key;Usable=$false
 $n=$script:Writes
 Assert-Throws {Set-SelectedProxy 'beta'} '检测未通过'
 Assert ($script:Writes -eq $n) 'failed probe must not mutate'
+$realGetRoutingSnapshot=${function:Get-RoutingSnapshot};$realSetRoutingSnapshot=${function:Set-RoutingSnapshot}
 function Get-RoutingSnapshot{$script:SavedRules}
 function Set-RoutingSnapshot($Snapshot){if($script:FailRouting){$script:FailRouting=$false;throw 'router validation failure'};$script:SavedRules=$Snapshot}
 $script:SavedSystem=$before;$script:SavedEnv=$beforeEnv;$script:SavedSelection=$null
@@ -109,4 +110,62 @@ Assert-Throws {Get-UnifiedPlan 'socks' $emptyRules} 'SOCKS5'
 Assert-Throws {Get-UnifiedPlan 'alpha' $beforeRules} '已有程序规则'
 Assert ((Get-EndpointKey 'http://user:password@localhost:7897') -eq 'Other') 'Credential-bearing endpoint not misidentified'
 Assert ((Get-EndpointKey 'http://localhost:7897/path') -eq 'Other') 'Nonproxy URI path rejected'
+
+# Engine identity metadata is part of ownership, regardless of JSON property order.
+$identityRules=[pscustomobject]@{entries=@([pscustomobject]@{path='C:\Apps\editor.exe';route='alpha';identity=[pscustomobject][ordered]@{Version=1;Kind='File';Path='C:\Apps\editor.exe';FileId='owned-file'}});defaultRoute='alpha';launchEntries=@()}
+$reordered=$identityRules|ConvertTo-Json -Depth 12|ConvertFrom-Json
+$reordered.entries[0].identity=[pscustomobject][ordered]@{FileId='owned-file';Path='C:\Apps\editor.exe';Kind='File';Version=1}
+Assert (Test-SameRouting $identityRules $reordered) 'Identity property order does not make an owned rule appear changed'
+$outsideIdentity=$identityRules|ConvertTo-Json -Depth 12|ConvertFrom-Json;$outsideIdentity.entries[0].identity.FileId='outside-file'
+Assert (-not (Test-SameRouting $identityRules $outsideIdentity)) 'Changed identity metadata is an external rule modification'
+$script:SavedRules=$beforeRules;$script:SavedSystem=$before;$script:SavedEnv=$beforeEnv;$script:SavedSelection=$null;$n=$script:Writes
+Assert-Throws {Invoke-ProxyTransaction $target $targetEnv $selection $before $beforeEnv $identityRules $beforeRules {$script:SavedRules=$outsideIdentity;throw 'isolated verification failure'}} '保留其他程序'
+Assert ($script:SavedRules.entries[0].identity.FileId -eq 'outside-file' -and $script:Writes -eq $n) 'Rollback preserves an outside metadata-only edit without writing Windows settings'
+
+# Real routing snapshot writer, isolated data files, and a conditional engine boundary.
+${function:Get-RoutingSnapshot}=$realGetRoutingSnapshot;${function:Set-RoutingSnapshot}=$realSetRoutingSnapshot
+[void][IO.Directory]::CreateDirectory($script:DataRoot)
+$fixtureConfig=ConvertTo-ValidProfileSettings $script:Profiles
+Write-LocalJson $script:ConfigPath $fixtureConfig
+$appStatePath=Join-Path $script:DataRoot 'app-rules.json';$script:Race='';$script:RouterCalls=0
+function Write-FixtureRouting($Value){Write-LocalJson $appStatePath ([pscustomobject]@{version=2;installed=$true;entries=@($Value.entries);defaultRoute=$Value.defaultRoute})}
+function Invoke-AppRouter($Request){
+    $script:RouterCalls++
+    if($Request.action -ne 'replace'){throw 'Unexpected fixture engine action'}
+    if($script:Race -in @('rule','rollback')){Write-FixtureRouting $outsideIdentity;$script:Race=''}
+    elseif($script:Race -eq 'settings'){$changed=$fixtureConfig|ConvertTo-Json -Depth 10|ConvertFrom-Json;$changed.Profiles[0].Port=17898;Write-LocalJson $script:ConfigPath $changed;$script:Race=''}
+    $stateImage=Read-RuleMaintenanceFile $appStatePath;$settingsImage=Read-RuleMaintenanceFile $script:ConfigPath
+    if($Request.expectedStateHash -cne $stateImage.TextHash -or $Request.expectedSettingsHash -cne $settingsImage.TextHash){throw 'fixture CAS rejected an external edit'}
+    Write-FixtureRouting $Request
+    [pscustomobject]@{ok=$true;stateHash=(Read-RuleMaintenanceFile $appStatePath).TextHash}
+}
+Write-FixtureRouting $beforeRules
+$baseline=Get-RoutingSnapshot
+Set-RoutingSnapshot $identityRules $baseline
+Assert ((Test-SameRouting (Get-RoutingSnapshot) $identityRules) -and $script:RouterCalls -eq 1) 'Ordinary replace carries matching state and settings hashes from one snapshot'
+Write-FixtureRouting $beforeRules;$baseline=Get-RoutingSnapshot;$script:Race='rule';$n=$script:Writes
+Assert-Throws {Set-RoutingSnapshot $identityRules $baseline} 'CAS rejected'
+Assert ((Get-RoutingSnapshot).entries[0].identity.FileId -eq 'outside-file' -and $script:Writes -eq $n) 'A rule edit between PowerShell validation and Node execution is not overwritten'
+Write-FixtureRouting $beforeRules;$baseline=Get-RoutingSnapshot;$script:Race='settings'
+Assert-Throws {Set-RoutingSnapshot $identityRules $baseline} 'CAS rejected'
+Assert ((Get-Content -LiteralPath $script:ConfigPath -Raw|ConvertFrom-Json).Profiles[0].Port -eq 17898 -and (Test-SameRouting (Get-RoutingSnapshot) $baseline)) 'A settings edit before Node execution preserves the newer settings and original rules'
+$calls=$script:RouterCalls
+Assert-Throws {Set-RoutingSnapshot $identityRules $baseline} '配置已改变'
+Assert ($script:RouterCalls -eq $calls) 'A config changed before byte capture cannot silently replace the settings that produced the user action'
+Write-LocalJson $script:ConfigPath $fixtureConfig
+Write-FixtureRouting $outsideIdentity;$calls=$script:RouterCalls
+Assert-Throws {Set-RoutingSnapshot $identityRules $baseline} '其他窗口改动'
+Assert ($script:RouterCalls -eq $calls -and (Get-RoutingSnapshot).entries[0].identity.FileId -eq 'outside-file') 'ExpectedBefore rejects a changed snapshot before reaching the engine boundary'
+
+# Inject an edit after the byte snapshot was captured. It must not be adopted as a new hash.
+$realMaintenanceSnapshot=${function:Get-RuleMaintenanceSnapshot};$script:ChangeAfterSnapshot=$true
+function Get-RuleMaintenanceSnapshot([string]$SavedPath){$value=& $realMaintenanceSnapshot $SavedPath;if($script:ChangeAfterSnapshot){$script:ChangeAfterSnapshot=$false;Write-FixtureRouting $outsideIdentity};$value}
+Write-FixtureRouting $beforeRules;$baseline=Get-RoutingSnapshot
+Assert-Throws {Set-RoutingSnapshot $identityRules $baseline} 'CAS rejected'
+Assert ((Get-RoutingSnapshot).entries[0].identity.FileId -eq 'outside-file') 'CAS hash is bound to the parsed snapshot bytes rather than a later reread'
+${function:Get-RuleMaintenanceSnapshot}=$realMaintenanceSnapshot
+
+Write-FixtureRouting $beforeRules;$baseline=Get-RoutingSnapshot;$script:SavedSystem=$before;$script:SavedEnv=$beforeEnv;$script:SavedSelection=$null;$n=$script:Writes
+Assert-Throws {Invoke-ProxyTransaction $target $targetEnv $selection $before $beforeEnv $identityRules $baseline {$script:Race='rollback';throw 'isolated post-route verification failure'}} '回滚未完成'
+Assert ((Get-RoutingSnapshot).entries[0].identity.FileId -eq 'outside-file' -and $script:Writes -eq $n) 'Rollback uses its own expected snapshot and refuses an edit arriving just before the engine undo'
 Write-Output ('PASS: ' + $script:Pass + ' assertions; no real network settings written.')
