@@ -1,11 +1,15 @@
 # 映序 Windows 发布包
 
-当前完整版 **0.3.5**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+当前完整版 **0.3.6**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
 
-**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.5/YingXu-v0.3.5-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.5/YingXu-v0.3.5-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.5/YingXu-v0.3.5-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.5/YingXu-v0.3.5-verification.json)
+**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-verification.json)
+
+0.3.6 增加标题改名与 Delete 快捷键：点击项目文件标题打开已有重命名弹窗，名称输入不含扩展名，确认时保留原扩展名和未保存正文。不是逐字自动重命名。资源区选中素材后按 Delete 可移入映序回收站，沿用普通删除确认设置；编辑标题、正文或其他输入框时只删除文字，不触发素材删除。0.3.5 的截图、框选、素材组与 Markdown 功能继续保留。
+
+[历史完整包 0.3.5](https://github.com/turnsolesama/portfolio/releases/tag/yingxu-v0.3.5) 的附件与验收记录保持不变。
 
 ## 历史轻量版
 

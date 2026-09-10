@@ -83,6 +83,24 @@ function groupController() {
   return resourceGroups;
 }
 function selectableResourceIds() { const hidden = new Set($$('#resourceItems [data-yx-group-hidden]').map(node => String(node.dataset.item))); return state.items.map(item => String(item.id)).filter(id => !hidden.has(id)); }
+function deleteSelectionShortcut(event) {
+  if (event.key !== 'Delete' || event.defaultPrevented || event.repeat || event.isComposing || event.keyCode === 229 || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return false;
+  const editing = node => node?.isContentEditable || node?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="textbox"],.cm-editor');
+  if (editing(event.target) || editing(document.activeElement)) return false;
+  if (state.section !== 'assets' || !state.projectId || state.loadingItems || state.deleteShortcutBusy || state.modalBusy || state.trashBusy || state.exitBusy || state.globalOpening || state.uploading || state.restoringDrafts || state.jobs.size) return false;
+  if ($('#appDialog').open || $('dialog[open]') || globalSearchIsOpen() || groupsIsOpen() || captureUI?.isBusy() || !$('#resourceMenu').hidden || $('.dragging-card,.external-drag')) return false;
+  if (state.tabs.some(tab => tab.saving || tab.propertiesSaving || tab.markdownEditor?.isComposing())) return false;
+  const selectable = new Set(selectableResourceIds());
+  const visible = new Set($$('#resourceItems .resource-card[data-item],#resourceItems .resource-row[data-item]')
+    .filter(node => !node.hidden && !node.closest('[hidden],[data-yx-group-hidden]')).map(node => String(node.dataset.item)));
+  const ids = state.items.filter(item => String(item.project_id) === String(state.projectId) && /^[a-f0-9]{32}$/.test(String(item.id)))
+    .map(item => String(item.id)).filter(id => state.selectedIds.has(id) && selectable.has(id) && visible.has(id));
+  if (!ids.length) return false;
+  event.preventDefault(); state.deleteShortcutBusy = true;
+  // Reuse confirmation, unsaved-draft guards and the recoverable app trash API.
+  trashItems([...new Set(ids)]).catch(report).finally(() => { state.deleteShortcutBusy = false; });
+  return true;
+}
 function renderResourceGroups() { groupController()?.render($('#resourceItems')); const ids = new Set(selectableResourceIds()); state.selectedIds = new Set([...state.selectedIds].filter(id => ids.has(String(id)))); updateSelection(); }
 let captureUI;
 function markdownImageURL(tab,url) { return window.YingXuCapture?.imageURL(tab?.source === 'file' && tab.item.kind === 'markdown' ? tab.id : null,url) || null; }
@@ -572,7 +590,8 @@ function markdownToolbarHtml(tab) {
 function markdownDocumentHeading(tab) {
   const filename = tab.item.kind !== 'skill' && tab.item.path ? String(tab.item.path).replace(/\\/g,'/').split('/').at(-1) : tab.item.name;
   const title = tab.item.kind !== 'skill' && tab.item.path ? String(filename || tab.item.name).replace(/^(.+)\.[^.]+$/,'$1') : filename || tab.item.name;
-  return `<header class="document-heading" contenteditable="false"><h1 title="${escapeHtml(title)}">${escapeHtml(title)}</h1></header>`;
+  const writable = tab.source === 'file' && tab.content?.editable && !tab.loading;
+  return `<header class="document-heading" contenteditable="false"><h1>${writable ? `<button type="button" class="document-title-button" data-action="rename-title" title="点击修改标题" aria-label="修改标题：${escapeHtml(title)}">${escapeHtml(title)}</button>` : escapeHtml(title)}</h1></header>`;
 }
 function applyMarkdownFormat(command) {
   const tab = activeTab();
@@ -780,9 +799,33 @@ async function relationDialog() {
   const find = async () => { const seq = ++request; try { const params = new URLSearchParams({project:tab.item.project_id,q:$('#relationSearch').value,limit:30,offset:0}); const result = await api(`/api/items?${params}`); if (!dialog.open || seq !== request || !$('#relationResults')) return; const items = (result.items || []).filter(item => String(item.id) !== String(tab.id)); $('#relationResults').innerHTML = items.length ? items.map(item => `<label class="relation-option"><input type="radio" name="target" value="${escapeHtml(item.id)}">${icon(kindIcons[item.kind])}<span class="relation-option-text"><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(categoryLabel(item.category))} · ${escapeHtml(item.status || '待开始')}</small></span></label>`).join('') : '<div class="subtle-loading">没有找到可关联的资源。</div>'; $$('input[name="target"]',dialog).forEach(input => input.addEventListener('change',() => selected = input.value)); } catch(error) { if ($('#relationResults')) $('#relationResults').textContent = error.message; } };
   $('#relationSearch').addEventListener('input',debounce(find)); await find();
 }
-function renameDialog() {
-  const tab = activeTab(); if (!tab || tab.source !== 'file') return; const filename = String(tab.item.path || tab.item.name).split(/[\\/]/).pop();
-  showDialog({title:'重命名磁盘文件',subtitle:'这会真实改变文件名称，文件仍保留在当前目录。',submit:'重命名',body:`<div class="field"><label for="diskFilename">新文件名</label><input id="diskFilename" name="name" value="${escapeHtml(filename)}" required maxlength="180"><p class="field-hint">文件后缀保持不变；同名文件不会被覆盖。外部软件引用的旧路径需要同步更新。</p></div>`,onSubmit:async form => { const result = await api('/api/rename',{method:'POST',body:{id:tab.id,name:String(new FormData(form).get('name')).trim()}}); tab.item = result.item || result; if (!tab.item.id) tab.item = await api(`/api/items/${encodeURIComponent(tab.id)}`); renderTabs(); renderInspector(); await loadItems(); toast('磁盘文件已重命名。'); }});
+function filenameParts(tab) {
+  const filename = String(tab.item.path || tab.item.name).split(/[\\/]/).pop();
+  const dot = filename.lastIndexOf('.');
+  return dot > 0 ? {title:filename.slice(0,dot),extension:filename.slice(dot)} : {title:filename,extension:''};
+}
+async function renameTabFile(tab,title) {
+  if (!tab || tab.source !== 'file' || tab.loading || tab.saving || tab.propertiesSaving || !markdownInputReady(tab)) throw new Error('请等待当前保存或输入完成，再修改标题。');
+  const parts = filenameParts(tab), name = String(title).trim();
+  if (!name) throw new Error('标题不能为空。');
+  if (name.length+parts.extension.length > 100) throw new Error(`标题最多 ${100-parts.extension.length} 个字符。`);
+  const previousName = tab.item.name;
+  const result = await api('/api/rename',{method:'POST',body:{id:tab.id,name:name+parts.extension}});
+  tab.item = result.item || result;
+  if (!tab.item.id) tab.item = await api(`/api/items/${encodeURIComponent(tab.id)}`);
+  if (tab.propertiesDraft?.name === previousName) tab.propertiesDraft.name = tab.item.name;
+  persistDrafts(true); renderTabs();
+  if (activeTab() === tab) {
+    const heading = $('#editorContent .document-heading'); if (heading) heading.outerHTML = markdownDocumentHeading(tab);
+    renderInspector();
+  }
+  await loadItems(); toast('标题和文件名称已更新。');
+}
+function renameDialog({titleOnly = false} = {}) {
+  const tab = activeTab(); if (!tab || tab.source !== 'file' || tab.loading || tab.saving || tab.propertiesSaving || !markdownInputReady(tab)) return;
+  if (titleOnly && !tab.content?.editable) return;
+  const parts = filenameParts(tab);
+  showDialog({title:titleOnly ? '修改标题' : '重命名文件',subtitle:'修改后同步更新文件名称，正文保持不变。',submit:'保存名称',body:`<div class="field"><label for="diskFilename">${titleOnly ? '标题' : '文件名称'}</label><input id="diskFilename" name="name" value="${escapeHtml(parts.title)}" required maxlength="${100-parts.extension.length}"><p class="field-hint">只需填写名称，文件后缀自动保留。同名文件不会被覆盖；外部软件引用的旧路径需要同步更新。</p></div>`,onSubmit:async form => renameTabFile(tab,String(new FormData(form).get('name')))});
 }
 
 async function loadSkills() {
@@ -843,6 +886,7 @@ async function handleAction(action,target) {
     if (action === 'clear-search' || action === 'clear-filters') { state.q = ''; $('#searchInput').value = ''; if (action === 'clear-filters') { state.status = ''; state.kind = ''; $('#statusFilter').value = ''; $('#kindFilter').value = ''; } state.offset = 0; return loadSection(); }
     if (action === 'toggle-inspector') { $('#workspace').classList.toggle('show-inspector'); return; }
     if (action === 'open-native') return runNative('open'); if (action === 'reveal') return runNative('reveal');
+    if (action === 'rename-title') return renameDialog({titleOnly:true});
     if (action === 'copy-path') return copyText(activeTab()?.item.path,'文件路径已复制。'); if (action === 'add-relation') return relationDialog(); if (action === 'rename-file') return renameDialog();
     if (action === 'show-context') return selectSection('context'); if (action === 'new-skill') return newSkillDialog();
     if (action === 'refresh-skills') { target.disabled = true; await api('/api/skills/refresh',{method:'POST',body:{}}); await loadSkills(); toast('本机 SKILL 已刷新。'); return; }
@@ -913,6 +957,7 @@ function wireEvents() {
   document.addEventListener('keydown',event => {
     if (event.isComposing || activeTab()?.markdownEditor?.isComposing()) { if ((event.ctrlKey || event.metaKey) && ['s','f','k'].includes(event.key.toLowerCase())) { event.preventDefault(); markdownInputReady(); } return; }
     if (searchShortcut(event) || globalSearchIsOpen() || groupsIsOpen()) return;
+    if (deleteSelectionShortcut(event)) return;
     if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) && !$('#appDialog').open) { const target = contextMenuTarget(event.target); if (target) { event.preventDefault(); showMenu(target.anchor,target.kind,target.id); return; } }
     if (event.key === 'Escape' && !$('#resourceMenu').hidden) { hideMenu(true); event.preventDefault(); return; }
     if (!$('#resourceMenu').hidden && ['ArrowDown','ArrowUp','Home','End'].includes(event.key) && $('#resourceMenu').contains(document.activeElement)) { const buttons = $$('button',$('#resourceMenu')); const current = buttons.indexOf(document.activeElement); const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length-1 : (current+(event.key === 'ArrowDown' ? 1 : -1)+buttons.length)%buttons.length; buttons[next]?.focus(); event.preventDefault(); return; }

@@ -8,7 +8,7 @@
 
 浅色中文界面，多标签文件工作区，普通目录保存素材。原创代码采用 [MIT](LICENSE)，无需订阅或云账号。
 
-**[下载 Windows x64 完整包 · v0.3.5](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.5/YingXu-v0.3.5-Windows-x64.zip)**
+**[下载 Windows x64 完整包 · v0.3.6](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.6/YingXu-v0.3.6-Windows-x64.zip)**
 
 自带 Python、图片处理组件、FFmpeg 和 WebView2，完整解压后双击即可使用。
 
@@ -108,6 +108,14 @@ Windows 10 22H2 / Windows 11 x64。完整包自带运行环境，使用系统自
 
 [完整包验收与性能对比](docs/完整包验收.md)
 
+
+## 0.3.6：标题改名与 Delete 快捷键
+
+点击项目文件的独立标题可打开重命名弹窗，名称输入框只显示名称，不带 `.md` 等原扩展名。确认后沿用原有文件重命名流程，保留原扩展名和当前尚未保存的正文；取消不会改动文件。标题仍位于正文之外，Ctrl+A 只选择文稿。
+
+这次补丁复用确认式重命名弹窗，不会随着每次输入自动重命名磁盘文件。
+
+在资源区选中素材后按 **Delete**，可将所选素材移入映序回收站，沿用设置中的普通删除确认开关。编辑标题、正文或其他输入框时，Delete 只处理文字，不触发素材删除。0.3.5 的截图、框选、素材组与 Markdown 功能继续保留。
 
 ## 0.3.5 新增
 
