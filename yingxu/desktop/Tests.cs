@@ -137,6 +137,16 @@ namespace YingXu.Desktop
             Check(!Hub.TryReadDragMessage(Hub.Url, valid.Replace("}", ",\"path\":\"C:/private.md\"}"), out parsed), "native drag rejects extra path field");
             Check(!Hub.TryReadDragMessage(Hub.Url, "null", out parsed) && !Hub.TryReadDragMessage(Hub.Url, "[]", out parsed), "native drag rejects non-object messages");
             Check(!Hub.TryReadDragMessage(Hub.Url, new string('x', 513), out parsed), "native drag rejects oversized message");
+            string[] parsedIds;
+            string multi = "{\"action\":\"drag-files\",\"ids\":[\"" + id + "\",\"" + new string('a', 32) + "\"]}";
+            Check(Hub.TryReadDragItemsMessage(Hub.Url, multi, out parsedIds) && parsedIds.Length == 2 && parsedIds[0] == id, "native multi-drag accepts resource IDs");
+            Check(Hub.TryReadDragItemsMessage(Hub.Url, valid, out parsedIds) && parsedIds.Length == 1, "native multi-drag accepts legacy handle");
+            Check(!Hub.TryReadDragItemsMessage("https://example.com", multi, out parsedIds), "native multi-drag rejects external source");
+            Check(!Hub.TryReadDragItemsMessage(Hub.Url, multi.Replace(id, "C:/secret.png"), out parsedIds), "native multi-drag rejects caller paths");
+            Check(!Hub.TryReadDragItemsMessage(Hub.Url, "{\"action\":\"drag-files\",\"ids\":[]}", out parsedIds), "native multi-drag rejects empty selection");
+            Check(!Hub.TryReadDragItemsMessage(Hub.Url, multi.Replace("}", ",\"path\":\"secret\"}"), out parsedIds), "native multi-drag rejects extra fields");
+            string tooMany = "{\"action\":\"drag-files\",\"ids\":[" + String.Join(",", new System.Collections.Generic.List<string>(System.Linq.Enumerable.Repeat("\"" + id + "\"", 201)).ToArray()) + "]}";
+            Check(!Hub.TryReadDragItemsMessage(Hub.Url, tooMany, out parsedIds), "native multi-drag bounds selection at 200");
             string file = Path.Combine(folder, "合成素材.md");
             File.WriteAllText(file, "Synthetic drag fixture; never user content");
             Check(Hub.ValidateNativeFilePath(file) == file, "native drag accepts ordinary safe file");

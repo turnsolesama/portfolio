@@ -127,6 +127,43 @@ namespace YingXu.Desktop
             catch { return false; }
         }
 
+        internal static bool TryReadDragItemsMessage(string source, string json, out string[] itemIds)
+        {
+            return TryReadFileIdsMessage(source, json, "drag-files", out itemIds);
+        }
+
+        internal static bool TryReadFileIdsMessage(string source, string json, string expectedAction, out string[] itemIds)
+        {
+            itemIds = null;
+            string legacyId;
+            if (expectedAction == "drag-files" && TryReadDragMessage(source, json, out legacyId))
+            {
+                itemIds = new string[] { legacyId };
+                return true;
+            }
+            if (!IsLocalPage(source, Url) || String.IsNullOrEmpty(json) || json.Length > 8192) return false;
+            try
+            {
+                var message = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(json);
+                object action, ids;
+                if (message == null || message.Count != 2 || !message.TryGetValue("action", out action) ||
+                    (action as string) != expectedAction || !message.TryGetValue("ids", out ids)) return false;
+                var values = ids as System.Collections.ArrayList;
+                if (values == null || values.Count == 0 || values.Count > 200) return false;
+                var result = new List<string>();
+                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (object entry in values)
+                {
+                    string value = entry as string;
+                    if (value == null || !Regex.IsMatch(value, "\\A[0-9a-fA-F]{32}\\z")) return false;
+                    if (seen.Add(value)) result.Add(value.ToLowerInvariant());
+                }
+                itemIds = result.ToArray();
+                return true;
+            }
+            catch { return false; }
+        }
+
         private static readonly HashSet<string> DragExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".yaml", ".yml",

@@ -10,7 +10,7 @@
 
 | 你现在想做什么 | 对应项目 | 当前版本 | 下载 Windows 程序包 |
 | --- | --- | --- | --- |
-| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.2.2 | **[下载映序 · 528 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/yingxu/releases/YingXu-v0.2.2-Windows-x64.zip)** |
+| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.2.3 | **[下载映序](https://raw.githubusercontent.com/turnsolesama/portfolio/main/yingxu/releases/YingXu-v0.2.3-Windows-x64.zip)** |
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | 导入 API 示例，管理服务、密钥变量和 Codex 配置切换 | **[Codex Switcher](codex-switcher/)** | 2.4.1 | **[下载切换器 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
 | 管理已有代理、统一出口，给程序设置专用线路 | **[流向 FlowSwitch](proxy-switch/)** | 3.3.2 | **[下载 FlowSwitch · 354 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-x64.zip)** |

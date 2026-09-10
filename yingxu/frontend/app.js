@@ -114,7 +114,7 @@ async function loadSection() { if (state.section === 'skills') return loadSkills
 
 async function loadItems() {
   state.listController?.abort(); const controller = new AbortController(); state.listController = controller; const sequence = ++state.listSequence;
-  state.loadingItems = true; state.selectedIds.clear(); hideMenu(); updateSelection(); configureSection(); renderQuery();
+  state.loadingItems = true; state.selectedIds.clear(); state.selectionAnchor = null; hideMenu(); updateSelection(); configureSection(); renderQuery();
   if (!state.projectId) { state.items = []; state.total = 0; state.loadingItems = false; renderItems(); renderInspector(); return; }
   $('#resourceItems').className = 'resource-grid'; $('#resourceItems').innerHTML = Array.from({length:4},() => '<div class="skeleton" aria-hidden="true"></div>').join('');
   const params = new URLSearchParams({project:state.projectId,limit:state.limit,offset:state.offset,sort:state.sort});
@@ -168,6 +168,24 @@ function updateSelection() {
   $('#selectPageButton').disabled = !state.items.length || !!state.loadingItems; $('#selectPageButton').textContent = count && count === state.items.length ? '取消选择' : '全选本页';
   $$('#resourceItems [data-item]').forEach(node => node.classList.toggle('checked',state.selectedIds.has(String(node.dataset.item))));
   $$('[data-select-item]').forEach(input => input.checked = state.selectedIds.has(String(input.dataset.selectItem)));
+  if (count && window.yingxuDesktopDrag && window.chrome?.webview?.postMessage) window.chrome.webview.postMessage({action:'prepare-drag-files',ids:[...state.selectedIds].slice(0,200)});
+}
+function selectResource(id,event = {},toggle = false) {
+  id = String(id);
+  // Use displayed order, including status columns in board view.
+  const ids = $$('#resourceItems [data-item]').map(node => String(node.dataset.item));
+  const end = ids.indexOf(id); if (end < 0) return;
+  const start = ids.indexOf(state.selectionAnchor);
+  if (event.shiftKey && start >= 0) {
+    if (!event.ctrlKey && !event.metaKey) state.selectedIds.clear();
+    ids.slice(Math.min(start,end),Math.max(start,end)+1).forEach(value => state.selectedIds.add(value));
+  } else {
+    if (toggle || event.ctrlKey || event.metaKey) {
+      if (state.selectedIds.has(id)) state.selectedIds.delete(id); else state.selectedIds.add(id);
+    } else { state.selectedIds.clear(); state.selectedIds.add(id); }
+    state.selectionAnchor = id;
+  }
+  updateSelection();
 }
 async function openFolder(id) {
   const next = id === 'root' ? null : id; if (String(next || '') !== String(state.folderId || '') && !await guardProperties()) return;
@@ -591,7 +609,7 @@ function renderContext() {
 
 async function copyText(value,message='已复制。') { try { await navigator.clipboard.writeText(String(value || '')); toast(message); } catch { showDialog({title:'复制内容',subtitle:'当前窗口不能直接访问剪贴板，可在下方选择并复制。',body:`<div class="field"><textarea id="copyFallback" readonly style="min-height:200px">${escapeHtml(value)}</textarea></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>完成</button>'}); $('#copyFallback').select(); } }
 async function runNative(action) { const tab = activeTab(); if (!tab || tab.source !== 'file') return; await api('/api/open',{method:'POST',body:{id:tab.id,action}}); }
-function helpDialog() { showDialog({title:'让每个镜头都有来处',subtitle:'映序把本地创作文件串成项目，你可以从最熟悉的一步开始。',wide:true,body:`<div class="guide-grid"><div class="guide-item"><strong>${icon('folder')}项目与分类</strong><p>创建项目，再用剧本、分镜、角色、场景、道具等分类整理内容。卡片可拖到左侧分类。</p></div><div class="guide-item"><strong>${icon('script')}像笔记一样写作</strong><p>单击打开文件，多标签自由切换。Markdown 支持编辑与预览，Word 可修改正文段落。</p></div><div class="guide-item"><strong>${icon('link')}把创作线索连起来</strong><p>在右侧信息面板把角色、场景、白模视频、生成版本关联到具体分镜，并记录状态与提示词。</p></div><div class="guide-item"><strong>${icon('upload')}导入与拖放</strong><p>导入目录引用原文件；把文件拖进页面会保存项目副本。桌面版可从“拖出文件”按住拖到其他软件。</p></div><div class="guide-item"><strong>${icon('skills')}集中管理 SKILL</strong><p>阅读已有 SKILL，创建自己的创作规范。绑定到项目后，交接文件会记录相关能力与位置。</p></div><div class="guide-item"><strong>${icon('context')}把进度交给 AI</strong><p>在 AI 协作中刷新项目进度，将本地交接文件路径发给 Codex，继续处理已有项目。</p></div></div><div class="shortcut-list"><span>搜索<kbd>Ctrl K</kbd></span><span>保存<kbd>Ctrl S</kbd></span><span>帮助<kbd>?</kbd></span></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>开始创作</button>'}); }
+function helpDialog() { showDialog({title:'让每个镜头都有来处',subtitle:'映序把本地创作文件串成项目，你可以从最熟悉的一步开始。',wide:true,body:`<div class="guide-grid"><div class="guide-item"><strong>${icon('folder')}项目与分类</strong><p>创建项目，再用剧本、分镜、角色、场景、道具等分类整理内容。卡片可拖到左侧分类。</p></div><div class="guide-item"><strong>${icon('script')}像笔记一样写作</strong><p>单击打开文件，多标签自由切换。Markdown 支持编辑与预览，Word 可修改正文段落。</p></div><div class="guide-item"><strong>${icon('link')}把创作线索连起来</strong><p>在右侧信息面板把角色、场景、白模视频、生成版本关联到具体分镜，并记录状态与提示词。</p></div><div class="guide-item"><strong>${icon('upload')}导入与拖放</strong><p>导入目录引用原文件；把文件拖进页面会保存项目副本。桌面版直接拖动图片或卡片即可拖到其他软件。先点第一项，按住 Shift 点最后一项可连续多选并一起拖动。</p></div><div class="guide-item"><strong>${icon('skills')}集中管理 SKILL</strong><p>阅读已有 SKILL，创建自己的创作规范。绑定到项目后，交接文件会记录相关能力与位置。</p></div><div class="guide-item"><strong>${icon('context')}把进度交给 AI</strong><p>在 AI 协作中刷新项目进度，将本地交接文件路径发给 Codex，继续处理已有项目。</p></div></div><div class="shortcut-list"><span>搜索<kbd>Ctrl K</kbd></span><span>保存<kbd>Ctrl S</kbd></span><span>帮助<kbd>?</kbd></span></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>开始创作</button>'}); }
 
 async function handleAction(action,target) {
   try {
@@ -640,7 +658,8 @@ function wireEvents() {
     const restore = event.target.closest('[data-restore-id]'); if (restore) { restoreTrash(restore.dataset.restoreId,restore.dataset.restoreKind,restore); return; }
     for (const [attribute,kind] of [['data-project-menu','project'],['data-folder-menu','folder'],['data-item-menu','item'],['data-skill-menu','skill']]) { const anchor = event.target.closest(`[${attribute}]`); if (anchor) { event.stopPropagation(); showMenu(anchor,kind,anchor.getAttribute(attribute)); return; } }
     if (!event.target.closest('#resourceMenu')) hideMenu();
-    if (event.target.closest('.item-selection,[data-select-item]')) return;
+    const selection = event.target.closest('[data-select-item]'); if (selection) { selectResource(selection.dataset.selectItem,event,true); return; }
+    if (event.target.closest('.item-selection')) return;
     const folderPage = event.target.closest('[data-folder-page]'); if (folderPage) { state.folderPage = Math.max(0,(state.folderPage || 0)+Number(folderPage.dataset.folderPage)); renderFolders(); return; }
     const folder = event.target.closest('[data-folder-open]'); if (folder) { openFolder(folder.dataset.folderOpen).catch(report); return; }
     const source = event.target.closest('[data-copy-source]'); if (source) { const value = activeTab()?.item.metadata?.[source.dataset.copySource]; copyText(typeof value === 'string' ? value : JSON.stringify(value,null,2),'原文件生成信息已复制。'); return; }
@@ -651,11 +670,10 @@ function wireEvents() {
     const section = event.target.closest('[data-section]'); if (section) { selectSection(section.dataset.section).catch(report); return; }
     const tab = event.target.closest('[data-tab]'); if (tab) { if (state.activeKey !== tab.dataset.tab && !await guardProperties()) return; state.activeKey = tab.dataset.tab; renderWorkspace(); return; }
     const mode = event.target.closest('[data-editor-mode]'); if (mode) { const tab = activeTab(); if (tab) { tab.mode = mode.dataset.editorMode; renderEditorToolbar(tab); renderEditorBody(tab); } return; }
-    const item = event.target.closest('[data-item]'); if (item && !event.target.closest('[data-drag-file]')) { if (event.ctrlKey || event.metaKey) { const id = String(item.dataset.item); if (state.selectedIds.has(id)) state.selectedIds.delete(id); else state.selectedIds.add(id); updateSelection(); } else openItem(item.dataset.item); return; }
+    const item = event.target.closest('[data-item]'); if (item && !event.target.closest('[data-drag-file]')) { selectResource(item.dataset.item,event); if (!event.shiftKey && !event.ctrlKey && !event.metaKey) openItem(item.dataset.item); return; }
     const skill = event.target.closest('[data-skill]'); if (skill) { openSkill(skill.dataset.skill); return; }
     const relation = event.target.closest('[data-remove-relation]'); if (relation) { try { await api(`/api/relations/${encodeURIComponent(relation.dataset.removeRelation)}`,{method:'DELETE'}); const tab = activeTab(); if (tab) { tab.item = await api(`/api/items/${encodeURIComponent(tab.id)}`); renderInspector(); } toast('关联已解除。'); } catch(error) { report(error); } }
   });
-  document.addEventListener('change',event => { if (!event.target.matches('[data-select-item]')) return; const id = String(event.target.dataset.selectItem); if (event.target.checked) state.selectedIds.add(id); else state.selectedIds.delete(id); updateSelection(); });
   document.addEventListener('keydown',event => {
     if ((event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) && !$('#appDialog').open) { const target = contextMenuTarget(event.target); if (target) { event.preventDefault(); showMenu(target.anchor,target.kind,target.id); return; } }
     if (event.key === 'Escape' && !$('#resourceMenu').hidden) { hideMenu(true); event.preventDefault(); return; }
@@ -678,24 +696,59 @@ function wireEvents() {
 
 function wireDragAndDrop() {
   let dragDepth = 0;
-  const isInternal = transfer => Array.from(transfer?.types || []).includes('application/x-yingxu-item');
+  let nativeDrag = null;
+  const isInternal = transfer => Boolean(nativeDrag) || Array.from(transfer?.types || []).includes('application/x-yingxu-item');
   const isExternal = transfer => !isInternal(transfer) && Array.from(transfer?.types || []).includes('Files');
+  const clearDrag = () => { nativeDrag = null; dragDepth = 0; $$('.dragging-card,.drop-category').forEach(node => node.classList.remove('dragging-card','drop-category')); document.body.classList.remove('external-drag'); };
+  const startNativeDrag = (ids,item) => {
+    nativeDrag = {ids:ids.slice(0,200)};
+    item?.classList.add('dragging-card'); hideMenu();
+    window.chrome.webview.postMessage({action:'drag-files',ids:nativeDrag.ids});
+  };
+  let preparedKey = '';
+  const prepareNativeDrag = event => {
+    if (!window.yingxuDesktopDrag || !window.chrome?.webview?.postMessage || nativeDrag) return;
+    const item = event.target.closest('[data-item]'); if (!item) return;
+    const id = String(item.dataset.item); const ids = (state.selectedIds.has(id) ? [...state.selectedIds] : [id]).slice(0,200);
+    const key = ids.join(','); if (key === preparedKey && event.type !== 'pointerdown') return;
+    preparedKey = key; window.chrome.webview.postMessage({action:'prepare-drag-files',ids});
+  };
+  document.addEventListener('pointerover',prepareNativeDrag);
+  document.addEventListener('pointerdown',prepareNativeDrag);
+  window.chrome?.webview?.addEventListener?.('message',event => {
+    const data = event.data; if (data?.action !== 'native-drag-ended') return;
+    // Some windowed WebView2 runtimes omit DOM drop events for their own OLE drag.
+    // The host reports an actual mouse release over this WebView (never Escape or another app).
+    if (nativeDrag && !nativeDrag.handled && data.released && data.inside && data.width > 0 && data.height > 0) {
+      const target = document.elementFromPoint(data.x * window.innerWidth / data.width,data.y * window.innerHeight / data.height)?.closest('[data-folder-drop],[data-category]');
+      if (target && target.dataset.category !== 'all') {
+        const category = target.dataset.folderCategory || target.dataset.category;
+        const folderId = target.hasAttribute('data-folder-drop') && target.dataset.folderDrop !== 'root' ? target.dataset.folderDrop : null;
+        performMove(nativeDrag.ids,category,folderId).catch(report);
+      }
+    }
+    preparedKey = ''; clearDrag();
+  });
   document.addEventListener('dragstart',event => { const item = event.target.closest('[data-item]'); if (!item || !event.dataTransfer) return; const id = String(item.dataset.item); const ids = state.selectedIds.has(id) ? [...state.selectedIds] : [id];
+    if (window.yingxuDesktopDrag && window.chrome?.webview?.postMessage) {
+      // Cancel Chromium's HTML-only drag; the host supplies real Windows files instead.
+      event.preventDefault(); startNativeDrag(ids,item); return;
+    }
     // Images can contribute browser file/URL payloads. This drag belongs to the card.
     event.dataTransfer.clearData();
     event.dataTransfer.setData('application/x-yingxu-item',id); event.dataTransfer.setData('application/x-yingxu-items',JSON.stringify(ids)); event.dataTransfer.effectAllowed = 'move'; item.classList.add('dragging-card'); hideMenu(); });
-  document.addEventListener('dragend',() => { $$('.dragging-card,.drop-category').forEach(node => node.classList.remove('dragging-card','drop-category')); document.body.classList.remove('external-drag'); dragDepth = 0; });
+  document.addEventListener('dragend',() => { if (!nativeDrag) clearDrag(); });
   document.addEventListener('dragenter',event => { if (isExternal(event.dataTransfer)) { event.preventDefault(); dragDepth++; document.body.classList.add('external-drag'); } });
   document.addEventListener('dragleave',event => { if (isExternal(event.dataTransfer)) { dragDepth = Math.max(0,dragDepth-1); if (!dragDepth) document.body.classList.remove('external-drag'); } const target = event.target.closest('[data-folder-drop],[data-category]'); if (target) target.classList.remove('drop-category'); });
-  document.addEventListener('dragover',event => { const transfer = event.dataTransfer; const target = event.target.closest('[data-folder-drop],[data-category]'); const valid = target && target.dataset.category !== 'all'; if (isInternal(transfer)) { event.preventDefault(); transfer.dropEffect = valid ? 'move' : 'none'; if (valid) target.classList.add('drop-category'); } else if (isExternal(transfer)) { event.preventDefault(); transfer.dropEffect = 'copy'; if (valid) target.classList.add('drop-category'); } });
+  document.addEventListener('dragover',event => { const transfer = event.dataTransfer; const target = event.target.closest('[data-folder-drop],[data-category]'); const valid = target && target.dataset.category !== 'all'; if (isInternal(transfer)) { event.preventDefault(); transfer.dropEffect = valid ? (nativeDrag ? 'copy' : 'move') : 'none'; if (valid) target.classList.add('drop-category'); } else if (isExternal(transfer)) { event.preventDefault(); transfer.dropEffect = 'copy'; if (valid) target.classList.add('drop-category'); } });
   document.addEventListener('drop',async event => { const transfer = event.dataTransfer; if (!transfer) return; document.body.classList.remove('external-drag'); dragDepth = 0; $$('.drop-category').forEach(node => node.classList.remove('drop-category'));
     const target = event.target.closest('[data-folder-drop],[data-category]'); const valid = target && target.dataset.category !== 'all'; const category = target?.dataset.folderCategory || (valid ? target.dataset.category : state.category !== 'all' ? state.category : 'references'); const folderId = target?.hasAttribute('data-folder-drop') ? target.dataset.folderDrop === 'root' ? null : target.dataset.folderDrop : valid ? null : state.folderId;
     // Internal moves take precedence even if WebView2 also exposes a Files payload.
-    const id = transfer.getData('application/x-yingxu-item');
-    if (isInternal(transfer) || id) { event.preventDefault(); if (!id || !valid) return; let ids = [id]; try { const parsed = JSON.parse(transfer.getData('application/x-yingxu-items') || '[]'); if (Array.isArray(parsed) && parsed.length) ids = [...new Set(parsed.map(String))].slice(0,200); await performMove(ids,category,folderId); } catch(error) { report(error); } return; }
+    const id = nativeDrag?.ids[0] || transfer.getData('application/x-yingxu-item');
+    if (isInternal(transfer) || id) { event.preventDefault(); if (!id || !valid) return; let ids = [id]; try { const parsed = nativeDrag?.ids || JSON.parse(transfer.getData('application/x-yingxu-items') || '[]'); if (Array.isArray(parsed) && parsed.length) ids = [...new Set(parsed.map(String))].slice(0,200); if (nativeDrag) nativeDrag.handled = true; await performMove(ids,category,folderId); } catch(error) { report(error); } return; }
     if (transfer.files.length) { event.preventDefault(); if (!state.projectId) { toast('先创建或选择一个项目，再拖入文件。','info'); return; } if (state.section !== 'assets' && !valid) { toast('请把文件拖到左侧资源分类，或打开一个资源文件夹。','info'); return; } uploadFiles([...transfer.files],category,folderId).catch(report); }
   });
-  document.addEventListener('pointerdown',event => { const handle = event.target.closest('[data-drag-file]'); if (!handle || event.button !== 0) return; event.preventDefault(); event.stopPropagation(); if (window.chrome?.webview?.postMessage) { window.chrome.webview.postMessage({action:'drag-file',id:handle.dataset.dragFile}); } else toast('桌面版支持直接拖出。当前浏览器请使用“定位文件”。','info',6000); });
+  document.addEventListener('pointerdown',event => { const handle = event.target.closest('[data-drag-file]'); if (!handle || event.button !== 0) return; event.preventDefault(); event.stopPropagation(); if (window.yingxuDesktopDrag && window.chrome?.webview?.postMessage) { const id = String(handle.dataset.dragFile); startNativeDrag(state.selectedIds.has(id) ? [...state.selectedIds] : [id],handle.closest('[data-item]')); } else if (window.chrome?.webview?.postMessage) { window.chrome.webview.postMessage({action:'drag-file',id:handle.dataset.dragFile}); } else toast('桌面版支持直接拖出。当前浏览器请使用“定位文件”。','info',6000); });
 }
 async function uploadFiles(files,category,folderId = null) {
   if (state.uploading) { toast('当前正在导入一批文件，请等这批完成后继续。','info'); return; }

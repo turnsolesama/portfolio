@@ -6,7 +6,7 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.2.2'
+VERSION = '0.2.3'
 FIXED = (
     'README.md', 'RUNNING.md', 'LICENSE', 'AGENTS.md', 'API_CONTRACT.md', '.gitignore',
     'server.py', 'launcher.pyw', 'start.vbs', 'Stop-YingXu.ps1', 'YingXu.exe',
@@ -17,7 +17,7 @@ FIXED = (
     'docs/功能指南.md', 'docs/安装与运行.md', 'docs/开发说明.md', 'docs/assets/workspace-map.svg',
 )
 PATTERNS = ('yingxu/*.py', 'frontend/*.html', 'frontend/*.css', 'frontend/*.js',
-            'tests/test_*.py', 'tests/frontend_context_menu.cjs', 'tests/frontend_drag_drop.cjs')
+            'tests/test_*.py', 'tests/frontend_context_menu.cjs', 'tests/frontend_drag_drop.cjs', 'tests/frontend_selection.cjs')
 TEXT_SUFFIXES = {'.md', '.py', '.pyw', '.js', '.cjs', '.css', '.html', '.cs', '.ps1', '.vbs', '.json', '.txt', '.manifest', '.svg'}
 
 

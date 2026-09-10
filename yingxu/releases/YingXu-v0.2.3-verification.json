@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "archive": "YingXu-v0.2.3-Windows-x64.zip",
+  "checks": [
+    "ZIP CRC and duplicate/path checks",
+    "all members match SHA-256 manifest",
+    "single YingXu root",
+    "health version and data identity",
+    "configured data/projects roots",
+    "empty projects and SKILL library",
+    "Chinese project/folder/document creation",
+    "launcher cold start and exact-data service reuse",
+    "different data directory refuses occupied service without stopping it",
+    "CLI path overrides and no site-packages/Pillow startup"
+  ],
+  "private_data_used": false
+}

@@ -17,8 +17,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.2.2.0")]
-[assembly: AssemblyFileVersion("0.2.2.0")]
+[assembly: AssemblyVersion("0.2.3.0")]
+[assembly: AssemblyFileVersion("0.2.3.0")]
 
 namespace YingXu.Desktop
 {
@@ -136,6 +136,9 @@ namespace YingXu.Desktop
         private readonly CancellationTokenSource closing = new CancellationTokenSource();
         private bool loaded;
         private bool draggingFile;
+        private bool nativeDragReleased;
+        private string preparedDragKey;
+        private Task<string[]> preparedDragPaths;
 
         internal StudioWindow()
         {
@@ -196,6 +199,10 @@ namespace YingXu.Desktop
                 loading.Text = "映序\n\n正在加载工作台…";
                 web = new WebView2 { Dock = DockStyle.Fill, DefaultBackgroundColor = BackColor };
                 Controls.Add(web);
+                web.QueryContinueDrag += delegate(object sender, QueryContinueDragEventArgs e)
+                {
+                    nativeDragReleased = !e.EscapePressed && (e.KeyState & 1) == 0;
+                };
                 var options = new CoreWebView2EnvironmentOptions();
                 options.Language = "zh-CN";
                 var environment = await CoreWebView2Environment.CreateAsync(null, Path.Combine(Hub.Cache, "WebView2"), options);
@@ -213,6 +220,7 @@ namespace YingXu.Desktop
                 core.Settings.IsPasswordAutosaveEnabled = false;
                 core.Settings.IsGeneralAutofillEnabled = false;
                 core.WebMessageReceived += ReceiveDragRequest;
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("window.yingxuDesktopDrag = true;");
                 core.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e)
                 {
                     if (Hub.IsLocalPage(e.Uri, Hub.Url)) return;
@@ -279,29 +287,39 @@ namespace YingXu.Desktop
 
         private async void ReceiveDragRequest(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
-            string itemId;
+            string[] itemIds;
             if (draggingFile || closing.IsCancellationRequested || web == null ||
-                !Hub.IsLocalPage(web.CoreWebView2.Source, Hub.Url) ||
-                !Hub.TryReadDragMessage(e.Source, e.WebMessageAsJson, out itemId)) return;
-            if ((Control.MouseButtons & MouseButtons.Left) == 0)
+                !Hub.IsLocalPage(web.CoreWebView2.Source, Hub.Url)) return;
+            if (Hub.TryReadFileIdsMessage(e.Source, e.WebMessageAsJson, "prepare-drag-files", out itemIds))
             {
-                status.Text = "请按住素材的拖出手柄，再拖到资源管理器或剪辑软件。";
+                try { await PrepareNativeDrag(itemIds); } catch { /* The actual drag reports preparation errors. */ }
+                return;
+            }
+            if (!Hub.TryReadDragItemsMessage(e.Source, e.WebMessageAsJson, out itemIds)) return;
+            if ((GetAsyncKeyState(1) & 0x8000) == 0)
+            {
+                status.Text = "请按住素材，再拖到目标位置。";
+                FinishNativeDrag();
                 return;
             }
             draggingFile = true;
+            nativeDragReleased = false;
             try
             {
                 status.Text = "正在准备真实文件，请继续按住鼠标左键…";
-                string path = await Task.Run(() => Hub.NativeFilePath(itemId));
+                // Yield out of the WebView2 callback before starting the Windows OLE loop.
+                string[] paths = await PrepareNativeDrag(itemIds);
+                // Even a cached lookup must leave the WebView2 event before the OLE loop.
+                await Task.Yield();
                 if (closing.IsCancellationRequested || web.IsDisposed) return;
-                if ((Control.MouseButtons & MouseButtons.Left) == 0)
+                if ((GetAsyncKeyState(1) & 0x8000) == 0)
                 {
-                    status.Text = "已取消拖出；请按住手柄直到文件进入目标窗口。";
+                    status.Text = "已取消拖拽；请按住素材直到文件进入目标位置。";
                     return;
                 }
                 // Recheck immediately before handing the file to Windows OLE.
-                path = Hub.ValidateNativeFilePath(path);
-                var data = new DataObject(DataFormats.FileDrop, new string[] { path });
+                paths = Array.ConvertAll(paths, Hub.ValidateNativeFilePath);
+                var data = new DataObject(DataFormats.FileDrop, paths);
                 DragDropEffects effect = web.DoDragDrop(data, DragDropEffects.Copy);
                 status.Text = effect == DragDropEffects.Copy ?
                     "已将文件交给目标应用；原素材保留在原位置。" : "拖出已结束；原素材保留在原位置。";
@@ -313,8 +331,48 @@ namespace YingXu.Desktop
                     status.Text = error is WebException ? "素材暂时无法拖出，请确认后台服务正常并重新打开素材。" : error.Message;
                 Hub.Log("native_drag_error " + error.GetType().Name);
             }
-            finally { draggingFile = false; }
+            finally { draggingFile = false; preparedDragPaths = null; preparedDragKey = null; FinishNativeDrag(nativeDragReleased); }
         }
+
+        private Task<string[]> PrepareNativeDrag(string[] ids)
+        {
+            string key = String.Join(",", ids);
+            if (preparedDragPaths == null || preparedDragKey != key || preparedDragPaths.IsFaulted)
+            {
+                preparedDragKey = key;
+                preparedDragPaths = Task.Run(() => {
+                    var paths = new string[ids.Length];
+                    Parallel.For(0, ids.Length, new ParallelOptions { MaxDegreeOfParallelism = 4 }, index => paths[index] = Hub.NativeFilePath(ids[index]));
+                    return paths;
+                });
+            }
+            return preparedDragPaths;
+        }
+
+        [DllImport("user32.dll")]
+        private static extern short GetAsyncKeyState(int key);
+
+        private void FinishNativeDrag(bool released = false)
+        {
+            if (closing.IsCancellationRequested || web == null || web.IsDisposed) return;
+            try
+            {
+                Point screen = Cursor.Position;
+                Point local = web.PointToClient(screen);
+                IntPtr target = WindowFromPoint(screen);
+                bool inside = web.ClientRectangle.Contains(local) && (target == web.Handle || IsChild(web.Handle, target));
+                web.CoreWebView2.PostWebMessageAsJson(new JavaScriptSerializer().Serialize(new {
+                    action = "native-drag-ended", released = released, inside = inside,
+                    x = local.X, y = local.Y, width = web.ClientSize.Width, height = web.ClientSize.Height
+                }));
+            }
+            catch (InvalidOperationException) { }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr WindowFromPoint(Point point);
+        [DllImport("user32.dll")]
+        private static extern bool IsChild(IntPtr parent, IntPtr child);
 
         private void RestoreWindow()
         {

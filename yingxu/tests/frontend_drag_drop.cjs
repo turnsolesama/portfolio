@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const {test} = require('node:test');
 
-function setup() {
+function setup(desktop = false) {
   const listeners = new Map(), nodes = [], moves = [], uploads = [], messages = [];
   function node(dataset = {}) {
     const classes = new Set();
@@ -14,8 +14,9 @@ function setup() {
       closest:selector=>selector==='[data-item]' && dataset.item ? element : selector==='[data-drag-file]' && dataset.dragFile ? element : selector==='[data-folder-drop],[data-category]' && ('folderDrop' in dataset || 'category' in dataset) ? element : null};
     nodes.push(element); return element;
   }
-  const document = {body:node(), addEventListener:(type,fn)=>listeners.set(type,fn), querySelectorAll:()=>nodes};
-  const context = vm.createContext({document, window:{chrome:{webview:{postMessage:m=>messages.push(m)}}}, localStorage:{getItem:()=>null}, console, setTimeout, clearTimeout, moves, uploads});
+  const document = {body:node(), addEventListener:(type,fn)=>{const previous=listeners.get(type);listeners.set(type,previous ? e=>{previous(e);return fn(e);} : fn);}, querySelectorAll:()=>nodes};
+  const hostListeners = new Map();
+  const context = vm.createContext({document, window:{innerWidth:1000,innerHeight:600,yingxuDesktopDrag:desktop,chrome:{webview:{postMessage:m=>messages.push(m),addEventListener:(type,fn)=>hostListeners.set(type,fn)}}}, localStorage:{getItem:()=>null}, console, setTimeout, clearTimeout, moves, uploads});
   const source = fs.readFileSync(path.join(__dirname,'../frontend/app.js'),'utf8').replace(/boot\(\);\s*$/, '');
   vm.runInContext(source+`\nhideMenu=()=>{}; performMove=async (...args)=>moves.push(args); uploadFiles=async (...args)=>uploads.push(args); report=error=>{throw error;}; globalThis.app={state,wireDragAndDrop,cardHtml,rowHtml};`,context);
   Object.assign(context.app.state,{projectId:'synthetic',section:'assets',category:'references',folderId:'current'});
@@ -23,8 +24,8 @@ function setup() {
   function transfer(files=[],data={}) {
     return {files, data:{...data}, get types(){return [...Object.keys(this.data),...(files.length?['Files']:[])];}, clearData(){this.data={};}, setData(k,v){this.data[k]=v;}, getData(k){return this.data[k]||'';}};
   }
-  function fire(type,target,dataTransfer) { const e={target,dataTransfer,button:0,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}}; return {event:e,result:listeners.get(type)(e)}; }
-  return {app:context.app,document,node,transfer,fire,moves,uploads,messages};
+  function fire(type,target,dataTransfer) { const e={type,target,dataTransfer,button:0,preventDefault(){this.prevented=true;},stopPropagation(){this.stopped=true;}}; return {event:e,result:listeners.get(type)(e)}; }
+  return {app:context.app,document,node,transfer,fire,moves,uploads,messages,hostListeners};
 }
 
 test('thumbnail drag with browser Files payload moves the selected resources without an import overlay',async()=>{
@@ -93,4 +94,47 @@ test('card and list thumbnails defer dragging to their resource container',()=>{
     const images=html.match(/<img\b[^>]*>/g);assert.ok(images.length);
     images.forEach(img=>assert.match(img,/draggable="false"/));
   }
+});
+
+test('direct desktop card drag sends real-file request for the whole selection and cancels HTML drag',()=>{
+  const s=setup(true), card=s.node({item:'a'});
+  s.app.state.selectedIds.add('a');s.app.state.selectedIds.add('b');
+  const e=s.fire('dragstart',card,s.transfer());
+  assert.equal(e.event.prevented,true);
+  assert.deepEqual(JSON.parse(JSON.stringify(s.messages)),[{action:'drag-files',ids:['a','b']}]);
+  s.fire('dragend',card,s.transfer());assert.equal(card.classList.contains('dragging-card'),true);
+  s.hostListeners.get('message')({data:{action:'native-drag-ended'}});
+  assert.equal(card.classList.contains('dragging-card'),false);
+});
+
+test('native Files dropped back inside the app move the captured selection without making copies',async()=>{
+  const s=setup(true), card=s.node({item:'a'}), folder=s.node({folderDrop:'nested',folderCategory:'characters'});
+  s.app.state.selectedIds.add('a');s.app.state.selectedIds.add('b');s.fire('dragstart',card,s.transfer());
+  const native=s.transfer([{name:'a.png'},{name:'b.png'}]);
+  s.fire('dragenter',folder,native);s.fire('dragover',folder,native);
+  assert.equal(s.document.body.classList.contains('external-drag'),false);
+  await s.fire('drop',folder,native).result;
+  assert.deepEqual(JSON.parse(JSON.stringify(s.moves)),[[['a','b'],'characters','nested']]);assert.equal(s.uploads.length,0);
+  s.hostListeners.get('message')({data:{action:'native-drag-ended'}});
+  await s.fire('drop',folder,native).result;assert.equal(s.uploads.length,1);
+});
+
+test('host release fallback moves once using CSS-scaled target coordinates when WebView omits drop',()=>{
+  const s=setup(true), card=s.node({item:'a'}), target=s.node({category:'props'});
+  s.document.elementFromPoint=(x,y)=>{assert.equal(x,100);assert.equal(y,200);return target;};
+  s.fire('dragstart',card,s.transfer());
+  s.hostListeners.get('message')({data:{action:'native-drag-ended',released:true,inside:true,x:150,y:300,width:1500,height:900}});
+  assert.deepEqual(JSON.parse(JSON.stringify(s.moves)),[[['a'],'props',null]]);assert.equal(s.uploads.length,0);
+});
+test('Escape and drops outside this window cannot trigger fallback moves',()=>{
+  for (const result of [{released:false,inside:true},{released:true,inside:false}]) {
+    const s=setup(true);s.document.elementFromPoint=()=>{throw Error('Must not hit-test another app or cancelled drag');};
+    s.fire('dragstart',s.node({item:'a'}),s.transfer());s.hostListeners.get('message')({data:{action:'native-drag-ended',width:1,height:1,...result}});
+    assert.equal(s.moves.length,0);assert.equal(s.uploads.length,0);
+  }
+});
+test('hover and pointer down prepare selected files before starting Windows drag',()=>{
+  const s=setup(true),card=s.node({item:'a'});s.app.state.selectedIds.add('a');s.app.state.selectedIds.add('b');
+  s.fire('pointerover',card);s.fire('pointerover',card);s.fire('pointerdown',card);
+  assert.deepEqual(JSON.parse(JSON.stringify(s.messages)),[{action:'prepare-drag-files',ids:['a','b']},{action:'prepare-drag-files',ids:['a','b']}]);
 });
