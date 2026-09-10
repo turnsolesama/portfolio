@@ -57,6 +57,7 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 ## 0.2.1 追加：本地目录与公开版启动隔离
 
 - POST /api/open-folder {project_id,category?,folder_id?} 在 Windows 资源管理器打开已验证的项目根目录、分类目录或子目录；客户端不能传入任意路径。文件通过原有 POST /api/open {id,action:'reveal'} 定位。
+- POST /api/open-folder {skill_id} 打开已登记且未移除的 SKILL.md 所在目录；本地与外部只读技能均可定位，不读取或改写正文。此目标与 project_id/category/folder_id 互斥，拒绝任意 path、未知 ID、已移除/缺失文件及联接或符号链接路径；同样需要当前会话令牌与同源校验。
 - GET /api/health -> {app:'yingxu',ok:true,version,instance_id}。公开版启动器通过数据目录规范路径的 SHA-256 指纹确认后台；拒绝旧版缺少指纹或指纹不符的服务，避免错误复用其他数据目录。
 - 默认数据路径与环境变量见 RUNNING.md；server.py 的 --data 与 --projects-root 参数优先于有效的环境变量默认值。
 

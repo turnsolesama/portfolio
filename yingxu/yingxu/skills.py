@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import threading
 
-from .store import UserError, has_link, now, safe_name, uid
+from .store import UserError, clean_path, has_link, now, safe_name, uid
 
 MAX_SKILL_BYTES = 1024 * 1024
 MAX_SKILLS = 2000
@@ -169,6 +169,11 @@ class SkillLibrary:
         if write and (row["source"] != "yingxu" or not row["editable"] or path.stat().st_nlink > 1):
             raise UserError("外部技能和共享链接文件只读；请在映序中新建自己的技能。", 403)
         return path
+
+    def directory(self, skill_id):
+        """Resolve a registered active skill's location without reading its content."""
+        with self.lock:
+            return clean_path(self._trusted_path(self._row(skill_id)).parent)
 
     def _record(self, path, source, content, etag, previous=None):
         info = path.stat()

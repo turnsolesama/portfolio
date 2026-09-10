@@ -45,6 +45,13 @@ class SkillLibraryTests(unittest.TestCase):
         self.assertEqual(error.exception.status, 403)
         self.assertEqual(path.read_bytes(), before)
 
+    def test_directory_resolves_registered_skill_without_reading_or_mutating_it(self):
+        path=self.external(); library=SkillLibrary(self.store); skill=library.list()['skills'][0]
+        with patch('yingxu.skills._read',side_effect=AssertionError('must not read body')), patch.object(library,'_upsert',side_effect=AssertionError('must not update index')):
+            self.assertEqual(library.directory(skill['id']),path.parent)
+        library.remove(skill['id'])
+        with self.assertRaises(UserError): library.directory(skill['id'])
+
     def test_create_save_backup_conflict_and_binding_survives_refresh(self):
         library = SkillLibrary(self.store)
         skill = library.create({"name": "镜头检查", "description": "审核运动连续性", "content": "# 检查\n\n检查人物走位。"})

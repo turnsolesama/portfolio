@@ -112,21 +112,29 @@ class Application:
         return {'ok':True}
 
     def open_folder(self,data):
-        if not isinstance(data,dict) or set(data)-{'project_id','category','folder_id'}:
-            raise UserError('请选择项目中的文件夹。')
+        if not isinstance(data,dict) or set(data)-{'project_id','category','folder_id','skill_id'}:
+            raise UserError('请选择已登记的项目文件夹或 SKILL。')
+        skill_target='skill_id' in data
+        if skill_target and (set(data)!={'skill_id'} or not isinstance(data['skill_id'],str) or not re.fullmatch('[a-f0-9]{32}',data['skill_id'])):
+            raise UserError('SKILL 位置请求仅接受一个有效的 skill_id。')
         if os.name!='nt':raise UserError('此操作需要 Windows 桌面环境。')
-        with self.store.lock:
-            project=self.store.get_project(data.get('project_id'))
-            root=clean_path(project['root'])
-            folder_id=data.get('folder_id')
-            if folder_id not in (None,'','root'):
-                folder=self.organize.get_folder(folder_id)
-                if folder['project_id']!=project['id']:raise UserError('文件夹不属于这个项目。',403)
-                path=self.organize.folder_path(project['id'],folder['category'],folder_id)
-            elif data.get('category') not in (None,'','all'):
-                path=self.organize.folder_path(project['id'],data['category'])
-            else:path=root
-            if not path.is_dir() or not path.is_relative_to(root):raise UserError('文件夹不存在或路径已改变。',404)
+        with self.skills.lock,self.store.lock:
+            if skill_target:
+                path=self.skills.directory(data['skill_id'])
+            else:
+                project=self.store.get_project(data.get('project_id'))
+                root=clean_path(project['root'])
+                folder_id=data.get('folder_id')
+                if folder_id not in (None,'','root'):
+                    folder=self.organize.get_folder(folder_id)
+                    if folder['project_id']!=project['id']:raise UserError('文件夹不属于这个项目。',403)
+                    path=self.organize.folder_path(project['id'],folder['category'],folder_id)
+                elif data.get('category') not in (None,'','all'):
+                    path=self.organize.folder_path(project['id'],data['category'])
+                else:path=root
+                if not path.is_relative_to(root):raise UserError('文件夹不存在或路径已改变。',404)
+            path=clean_path(path)
+            if not path.is_dir():raise UserError('文件夹不存在或路径已改变。',404)
             explorer=Path(os.environ.get('WINDIR','C:/Windows'))/'explorer.exe'
             subprocess.Popen([str(explorer),str(path)],creationflags=subprocess.CREATE_NO_WINDOW)
         return {'ok':True}
