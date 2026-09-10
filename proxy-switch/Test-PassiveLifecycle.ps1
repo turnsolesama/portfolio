@@ -4,7 +4,7 @@ Add-Type -AssemblyName System.Windows.Forms
 $qaSource=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('passive-ui-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','FlowTheme.cs','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','FlowTheme.cs','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','RuntimeSupport.ps1','IndependentGateway.ps1','GatewayWatchdog.ps1','IndependentRouter.cjs','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
 [void][IO.Directory]::CreateDirectory((Join-Path $qaRoot 'assets'))
 Copy-Item -LiteralPath (Join-Path $qaSource 'assets/FlowSwitch.ico') -Destination (Join-Path $qaRoot 'assets/FlowSwitch.ico')
 # Isolated Windows fixtures must not contend with the real manager or other test windows.

@@ -6,6 +6,7 @@ $script:Profiles=[pscustomobject]@{Version=3;Profiles=@(
     [pscustomobject]@{Id='beta';Name='备用';Protocol='http';Host='127.0.0.1';Port=29758},
     [pscustomobject]@{Id='socks';Name='远程 SOCKS';Protocol='socks5';Host='192.0.2.1';Port=1080}
 );Routing=[pscustomobject]@{Adapter='clash-verge';ProfileId='alpha'}}
+function Get-ClientInterference {[pscustomobject]@{Running=$false;Tun=$false;Guard=$false;SystemProxy=$false}}
 $script:Pass=0
 function Assert($Condition,[string]$Message){if(-not $Condition){throw $Message};$script:Pass++}
 function Assert-Throws([scriptblock]$Action,[string]$Pattern){

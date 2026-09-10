@@ -1,6 +1,6 @@
-﻿# 网络代理切换器
+# 网络代理切换器
 
-- Windows PowerShell 5.1 / WinForms。程序分流使用已安装的 Node.js 与本目录 vendor/js-yaml 5.4.1（保留 MIT 许可证）。不自动更新依赖。
+- Windows PowerShell 5.1 / WinForms。Windows 程序包自带锁定版本 Node.js 与 mihomo；源码开发也可使用已安装的组件。本目录 vendor/js-yaml 5.4.1 保留 MIT 许可证。不自动更新依赖。
 - `ProxySwitch.ps1` 是脚本入口；`ProxyBackend.ps1` 提供状态、诊断、事务切换和恢复。Windows 程序包由编译后的 `FlowSwitch.exe` 启动 `app/ProxySwitch.ps1`。
 - `Preferences.ps1` 提供本机设置、快捷方式解析、汇总诊断；`Storage.ps1` 解析共享目录，数据默认保存到 `%USERPROFILE%\.proxyswitch`，避免 MSIX AppData 重定向产生不同文件视图。代码目录仅保留 `config.defaults.json` 默认模板。测试可用 `PROXY_SWITCH_DATA_DIR` 指定隔离目录。
 - `Build-Release.ps1 -Destination <新目录>` 通过显式文件清单打包；不得把本机 config.json、selection.json、app-rules.json、备份或实机截图加入清单。
@@ -61,3 +61,10 @@
 - 3.3.1 的 ListHost / LogHost 使用裁切视口与独立滚动轨道。不得以删除滚动功能解决白色滚动条；列宽只由 DataList.SetColumnWeights 管理。所有主工作区须显式指定百分比行/列，测试需断言整个工作区及底栏不被裁切。Test-VisualTheme.ps1 -Scale 1.25 / 1.5 为布局模拟，不宣称已改变或逐个实测操作系统 DPI。
 
 - 3.3.2 列宽需在原生缩放完成和绘制前按实际客户区收敛；滚动回归必须检查 WS_HSCROLL，而不能只比较列宽总和或一张静态预览。
+
+- 3.4 独立模式由用户显式启用：standalone 内核和恢复进程只管理自己的本地端口，不复制订阅、不自动开启 TUN。自动接替只改独立内核出口，不反复覆盖 Windows 代理。正常退出与崩溃恢复必须先恢复仍归属本会话的系统代理和环境变量，再停止自有内核；原入口失效时恢复直连。RunOnce 只用于异常断电后的下次登录恢复，不自动接管网络。验证 Test-IndependentRouter.cjs、Test-IndependentIntegration.cjs、Test-ExitRecovery.ps1、Test-Watchdog.ps1。
+
+- 3.5 Windows 包自带锁定版本 Node 与 mihomo；运行时不下载或安装组件、不修改 PATH。Prepare-Runtime.ps1 只在明确构建时按 runtime.lock.json 从官方来源准备并校验组件。Build-WindowsPackage.ps1 必须使用已验证 RuntimeDirectory。包内保留许可证和对应内核源码。源码开发仍可使用已安装组件。
+- RuntimeSupport.ps1 统一解析运行组件。现有独立内核副本优先保留，新电脑先检查随包标准内核是否受处理器支持，不支持时使用兼容内核；健康检测从 Windows 绝对路径启动 curl。Test-RuntimeBundle.ps1 使用隔离目录、空 PATH、真实内核和 Windows 写入桩；不得修改真实用户配置或 RunOnce。
+- 3.5.1 重载规则与回滚保留仍有效的内核当前备用选择，不能使无关程序回跳首选。检测进程不可用是未知状态，不能据此宣告全部失败。HTTP 健康检查验证 CONNECT 隧道。接替事件仅存本机 gateway/failover-events.json，限制 100 条，不记录目标网址、进程路径或凭据。检测成功不能等同于用户目标网站可用。
+- 界面可在同一轮显示刷新中传递 TcpRows 快照，包含 Listen/Established/SynSent；不保存为跨轮缓存。切换、健康检查和退出恢复的网络就绪判断必须实时读取。Test-StatusSnapshot.ps1 验证空快照、状态过滤和实时校验不复用旧快照。

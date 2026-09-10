@@ -20,10 +20,12 @@ function Invoke-Fixture([string]$Arguments){
     $psi.UseShellExecute=$false;$psi.CreateNoWindow=$true;$psi.WindowStyle='Hidden'
     $psi.RedirectStandardOutput=$true;$psi.RedirectStandardError=$true
     $psi.EnvironmentVariables['PROXY_SWITCH_DATA_DIR']=Join-Path $qaRoot 'wrong environment'
+    $psi.EnvironmentVariables['PATH']=''
+    $psi.EnvironmentVariables['NODE_OPTIONS']='--require deliberately-missing-package-fixture'
     $p=[Diagnostics.Process]::Start($psi)
     try{
         $stdout=$p.StandardOutput.ReadToEndAsync();$stderr=$p.StandardError.ReadToEndAsync()
-        if(-not $p.WaitForExit(30000)){$p.Kill();throw 'Isolated package check timed out.'}
+        if(-not $p.WaitForExit(30000)){$p.Kill();throw ('Isolated package check timed out: '+$Arguments)}
         [pscustomobject]@{Code=$p.ExitCode;Out=$stdout.Result;Error=$stderr.Result}
     }finally{$p.Dispose()}
 }

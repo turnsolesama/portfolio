@@ -34,7 +34,7 @@ try{
         $link.TargetPath=$LauncherPath;$link.Arguments='--data-directory '+$quotedDataDirectory
         $link.WorkingDirectory=[IO.Path]::GetDirectoryName($LauncherPath)
     }
-    $link.Description='FlowSwitch 3.3.2 · 流向：管理自定义代理，一键统一切换，按程序指定线路。'
+    $link.Description='FlowSwitch 3.4.0 · 流向：管理自定义代理，一键统一切换，按程序指定线路。'
     $icon=Join-Path $PSScriptRoot 'assets\FlowSwitch.ico'
     if(Test-Path -LiteralPath $icon){$link.IconLocation=$icon+',0'}
     $link.Save()

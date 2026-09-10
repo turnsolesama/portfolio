@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.3.2'
+$script:ProductVersion='3.5.1'
 . (Join-Path $PSScriptRoot 'Storage.ps1')
 $script:LegacyDataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 $script:DataRoot=Resolve-ProxyDataDirectory $DataDirectory $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA
@@ -40,7 +40,7 @@ function ConvertTo-ValidProfileSettings($Value) {
         $ids[$id]=$true;$names[$name]=$true;$endpoints[$endpoint]=$true;$items+=[pscustomobject]$entry
     }
     $adapter=[string]$Value.Routing.Adapter;$gateway=[string]$Value.Routing.ProfileId
-    if($adapter -notin @('none','clash-verge')){throw '不支持的程序分流引擎。'}
+    if($adapter -notin @('none','clash-verge','standalone')){throw '不支持的程序分流引擎。'}
     if($adapter -eq 'none'){$gateway=''}else{
         $engine=$items | Where-Object {$_.Id -eq $gateway} | Select-Object -First 1
         if(-not $engine -or $engine.Protocol -ne 'http' -or $engine.Host -notin @('localhost','127.0.0.1','::1') -or -not $engine.CorePath){throw '分流引擎需要本地 HTTP / 混合入口与 Clash Verge 内核路径。'}
@@ -50,7 +50,16 @@ function ConvertTo-ValidProfileSettings($Value) {
     if(-not $unifiedMode){$unifiedMode='system'}
     if($unifiedMode -notin @('system','gateway')){throw '统一切换模式无效。'}
     if($unifiedMode -eq 'gateway' -and $adapter -eq 'none'){throw '固定入口模式需要配置分流引擎。'}
-    [pscustomobject]@{Version=3;Profiles=@($items);Routing=[pscustomobject]@{Adapter=$adapter;ProfileId=$gateway;UnifiedMode=$unifiedMode};DiscoveryIgnored=$ignored}
+    $routing=[pscustomobject]@{Adapter=$adapter;ProfileId=$gateway;UnifiedMode=$unifiedMode}
+    if($adapter -eq 'standalone'){
+        if($unifiedMode -ne 'gateway'){throw '独立内核必须使用固定入口模式。'}
+        $upstreams=@($items|Where-Object {$_.Id -ne $gateway}|ForEach-Object Id)
+        $order=@($Value.Routing.Failover.Order|Where-Object {$_ -in $upstreams}|Select-Object -Unique)
+        $order+=@($upstreams|Where-Object {$_ -notin $order})
+        $enabled=$true;if($Value.Routing.Failover -and $Value.Routing.Failover.PSObject.Properties['Enabled']){$enabled=[bool]$Value.Routing.Failover.Enabled}
+        $routing | Add-Member NoteProperty Failover ([pscustomobject]@{Enabled=$enabled;Order=@($order);AllowDirect=($Value.Routing.Failover.AllowDirect -eq $true)})
+    }
+    [pscustomobject]@{Version=3;Profiles=@($items);Routing=$routing;DiscoveryIgnored=$ignored}
 }
 function Read-ProfileSettings {
     $path=$script:ConfigPath;if(-not (Test-Path -LiteralPath $path)){$path=Join-Path $PSScriptRoot 'config.defaults.json'}
@@ -84,7 +93,7 @@ function Save-ProfileSettings($Value) {
     }
 }
 function Get-ProfileKeys { @($script:Profiles.Profiles | ForEach-Object Id) }
-function Get-GatewayKey { if($script:Profiles.Routing.Adapter -eq 'clash-verge'){[string]$script:Profiles.Routing.ProfileId}else{''} }
+function Get-GatewayKey { if($script:Profiles.Routing.Adapter -in @('clash-verge','standalone')){[string]$script:Profiles.Routing.ProfileId}else{''} }
 function Get-RouteName([string]$Key) {
     switch($Key){'Direct'{return '直连'};'Follow'{return '跟随统一线路'};'Unset'{return '未设置'};'Other'{return '其他 / 自动代理'};'Unknown'{return '出口待确认'};'Blocked'{return '已拦截'}}
     $p=$script:Profiles.Profiles | Where-Object {$_.Id -eq $Key} | Select-Object -First 1

@@ -13,7 +13,7 @@
 | 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.3.1 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.1/YingXu-v0.3.1-Windows-x64.zip)** |
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | 导入 API 示例，管理服务、密钥变量和 Codex 配置切换 | **[Codex Switcher](codex-switcher/)** | 2.4.1 | **[下载切换器 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
-| 管理已有代理、统一出口，给程序设置专用线路 | **[流向 FlowSwitch](proxy-switch/)** | 3.3.2 | **[下载 FlowSwitch · 354 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.3.2-Windows-x64.zip)** |
+| 管理已有代理、统一出口，给程序设置专用线路 | **[流向 FlowSwitch](proxy-switch/)** | 3.5.1 | **[下载 FlowSwitch · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.5.1-Windows-x64.zip)** |
 
 每个 ZIP 只包含对应软件。下载链接直接取得压缩包；完整解压后再运行，保留包内文件夹。各项目页面提供源码说明、校验值和版本记录；映序的程序包已包含源码。
 
@@ -63,10 +63,11 @@
 
 - 添加 HTTP / SOCKS5 入口、发现后台代理、检测入口并保存可恢复的设置。
 - 统一切换系统代理与相关用户环境变量，撤销本工具管理的程序专用线路。
-- 可选固定本地入口和按 EXE 路径分流，为不同程序选择线路；适配 Clash Verge Rev / mihomo。
+- 自带独立分流内核，使用固定本地入口并按 EXE 路径选择线路；上游失效时按备用顺序接替。
+- 保留有效备用出口，显示首选与实际出口；退出时先恢复仍归属本会话的网络设置。
 - 区分规则已加载、已观察到出口、旧连接和入口外连接；先预览再确认重连所选程序的旧连接。
 
-软件不提供 VPN、订阅或节点。按程序分流需要支持的引擎，且程序流量实际进入引擎；不会自动开启 TUN 或退出其他应用。
+软件不提供 VPN、订阅或节点。完整包自带运行组件；按程序分流要求流量实际进入独立入口，不会自动开启 TUN 或退出其他应用。
 
 [进入 FlowSwitch →](proxy-switch/) · [快速开始](proxy-switch/#快速开始) · [运行要求](proxy-switch/#运行要求)
 
@@ -77,9 +78,9 @@
 | 映序 | `YingXu.exe` | Windows 10 22H2 / Windows 11 x64；完整包自带 Python、图片与视频处理组件和 WebView2 |
 | AI Hub | `AI Hub.exe` | Windows x64、Python 3.9+、.NET Framework 4.8+、WebView2 Runtime |
 | Codex Switcher | `Codex Switcher.exe` | Windows x64、Python 3.11+（含 Tkinter）、.NET Framework 4.x |
-| FlowSwitch | `FlowSwitch.exe` | Windows 10 / 11 x64、PowerShell 5.1、.NET Framework 4.8、curl；可选分流需 Node.js 22+ 与受支持引擎 |
+| FlowSwitch | `FlowSwitch.exe` | Windows 10 1809+ / 11 x64、PowerShell 5.1、.NET Framework 4.x、curl；自带 Node.js 和独立内核 |
 
-这些 EXE 是桌面启动入口，需要保留完整程序包，并满足各自的运行条件。映序 0.3.1 完整包已自带运行环境；其他软件请按各自说明配置。各包不包含模型权重或代理服务。
+这些 EXE 是桌面启动入口，需要保留完整程序包，并满足各自的运行条件。映序 0.3.1 与 FlowSwitch 3.5.1 完整包已自带主要运行组件；各软件请按自己的说明配置。各包不包含模型权重或代理服务。
 
 如果 GitHub 页面显示 **Error loading page**，可直接使用上表的下载链接；已经下载但不能启动时，请查看对应项目的运行要求。版本升级、数据保留和诊断步骤都放在各软件的独立说明中。
 

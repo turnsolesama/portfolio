@@ -2,6 +2,10 @@
 param(
     [switch]$Status,
     [switch]$Discover,
+    [switch]$ConfigureGateway,
+    [switch]$Independent,
+    [switch]$RecoverNetwork,
+    [int]$OwnerPID=0,
     [string]$Check,
     [string]$Switch,
     [switch]$Restore,
@@ -35,6 +39,9 @@ if($LaunchProgram){
     return
 }
 if($NoUI){return}
+if($Independent){Enable-IndependentGateway $OwnerPID | ConvertTo-Json -Depth 6;return}
+if($RecoverNetwork){Restore-IndependentSession;return}
+if($ConfigureGateway){Enable-LocalGateway | ConvertTo-Json -Depth 5;return}
 if($Discover){Sync-LocalProxyDiscovery | ConvertTo-Json -Depth 5;return}
 if($ExportReport){Write-LocalJson ([IO.Path]::GetFullPath($ExportReport)) (New-SupportReport (Get-ProxyStatus) (Get-ApplicationRoutes));Write-Output 'Diagnostic summary exported.';return}
 if($AppStatus){Get-ApplicationRoutes | ConvertTo-Json -Depth 8;return}

@@ -1,0 +1,33 @@
+{
+  "platform": "win-x64",
+  "node": {
+    "version": "24.19.0",
+    "url": "https://nodejs.org/download/release/v24.19.0/node-v24.19.0-win-x64.zip",
+    "sha256": "57f71ab3652e797d84acddc79c81cc9ff1c6ddb2a1974cdb83f00fee9bff4c73",
+    "executable": "node-v24.19.0-win-x64/node.exe",
+    "executableSHA256": "3602f2bb1a10f2cbab4c36886218a33c1ab3db87290e73b033c46c77147d0237",
+    "license": "node-v24.19.0-win-x64/LICENSE"
+  },
+  "mihomo": {
+    "version": "1.19.29",
+    "architecture": "amd64-v2",
+    "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.29/mihomo-windows-amd64-v2-v1.19.29.zip",
+    "sha256": "55feeada4feed7b86edf7c853fb37e498d646400acc37b7cc5905bb5d1f77899",
+    "executable": "mihomo-windows-amd64-v2.exe",
+    "executableSHA256": "98986b574e41f92b22ed65aa42a61ad8cadf886cc7b3f76b722cd73a3a52d878",
+    "sourceUrl": "https://codeload.github.com/MetaCubeX/mihomo/zip/refs/tags/v1.19.29",
+    "sourceSHA256": "c9c47c922c2595a83bf204ffd7aebbc33b86f6b145a890c58a1c434a8c34aff4",
+    "sourceLicense": "mihomo-1.19.29/LICENSE"
+  },
+  "mihomoCompat": {
+    "version": "1.19.29",
+    "architecture": "amd64-v1",
+    "url": "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.29/mihomo-windows-amd64-v1-v1.19.29.zip",
+    "sha256": "4a5b4cdf76f1879043cea7488162517fd3fb95d5b7a205d89601f1942791ee39",
+    "executable": "mihomo-windows-amd64-v1.exe",
+    "executableSHA256": "67fe31f6ab810e10e8be20d8501f43ebdbedb9cb013ae70eaabd268a36b9d579",
+    "sourceUrl": "https://codeload.github.com/MetaCubeX/mihomo/zip/refs/tags/v1.19.29",
+    "sourceSHA256": "c9c47c922c2595a83bf204ffd7aebbc33b86f6b145a890c58a1c434a8c34aff4",
+    "sourceLicense": "mihomo-1.19.29/LICENSE"
+  }
+}

@@ -28,7 +28,7 @@ function normalizeOptions(options) {
     const profiles = ['Clash','Upnet'].filter(id=>options[id]).map(id=>({Id:id,Name:options[id].Name,Protocol:'http',Host:'127.0.0.1',Port:options[id].Port,CorePath:options[id].CorePath,AppPath:options[id].AppPath,AutoPort:id==='Clash'&&options[id].AutoPort!==false}));
     options={Version:3,Profiles:profiles,Routing:{Adapter:options.Clash?'clash-verge':'none',ProfileId:options.Clash?'Clash':''}};
   }
-  if(!Array.isArray(options.Profiles)||!options.Routing||!['none','clash-verge'].includes(options.Routing.Adapter)) throw new Error('代理列表格式无效。');
+  if(!Array.isArray(options.Profiles)||!options.Routing||!['none','clash-verge','standalone'].includes(options.Routing.Adapter)) throw new Error('代理列表格式无效。');
   const ids=new Set(),endpoints=new Set();
   for(const p of options.Profiles){
     if(!/^[A-Za-z0-9][A-Za-z0-9_-]{0,47}$/.test(p.Id)||['direct','follow','other','unset','blocked','unknown'].includes(p.Id.toLowerCase())||ids.has(p.Id.toLowerCase()))throw new Error('代理标识无效或重复。');
@@ -37,7 +37,7 @@ function normalizeOptions(options) {
     const endpoint=(['localhost','127.0.0.1','::1'].includes(p.Host)?'loopback':p.Host.toLowerCase())+':'+p.Port;
     if(endpoints.has(endpoint))throw new Error('代理入口重复。');endpoints.add(endpoint);
   }
-  if(options.Routing.Adapter==='clash-verge'){
+  if(['clash-verge','standalone'].includes(options.Routing.Adapter)){
     const gateway=options.Profiles.find(p=>p.Id===options.Routing.ProfileId);
     if(!gateway||gateway.Protocol!=='http'||!['127.0.0.1','localhost','::1'].includes(gateway.Host)||!gateway.CorePath)throw new Error('分流引擎必须为本地 HTTP 入口，并配置内核路径。');
   }
@@ -168,7 +168,7 @@ async function status(){
     if(Number(config['mixed-port'])!==gateway.Port&&Number(config.port)!==gateway.Port)throw new Error('所选引擎端口与控制接口不一致，未接管该入口。');
     return {available:true,mode:config.mode,tunEnabled:!!config.tun?.enable,defaultRoute:state.defaultRoute,defaultLoaded:!state.defaultRoute||(current&&config.mode==='rule'&&rules.rules.some(r=>r.type==='Match'&&r.proxy===routeName(state.defaultRoute))),
       entries:state.entries.map(e=>({...e,loaded:current&&config.mode==='rule'&&rules.rules.some(r=>ruleMatches(r,e))})),
-      connections:(connections.connections||[]).map(c=>({path:c.metadata?.processPath||'',sourcePort:Number(c.metadata?.sourcePort),route:routeOfChains(c.chains||[],options),managed:ownedName(c.chains?.at(-1)),rule:c.rule||''}))};
+      connections:(connections.connections||[]).map(c=>({path:c.metadata?.processPath||'',sourcePort:Number(c.metadata?.sourcePort),network:c.metadata?.network||'',inbound:c.metadata?.type||'',route:routeOfChains(c.chains||[],options),managed:ownedName(c.chains?.at(-1)),rule:c.rule||''}))};
   }catch(e){return {available:false,error:e.message,defaultRoute:state.defaultRoute,defaultLoaded:false,entries:state.entries.map(e=>({...e,loaded:false})),connections:[]};}
 }
 async function transaction(entries,defaultRoute=null){
@@ -235,6 +235,7 @@ async function reconnect(plan){
 }
 async function main(){
   let raw='';for await(const chunk of process.stdin)raw+=chunk;const input=JSON.parse(raw.replace(/^\uFEFF/,''));
+  if(readOptions().Routing.Adapter==='standalone')return require('./IndependentRouter.cjs').main(input);
   if(input.action==='status')return status();
   if(input.action==='reconnect-plan')return reconnectPlan(input.path);
   if(input.action==='reconnect')return withMutationLock(()=>reconnect(input.plan));

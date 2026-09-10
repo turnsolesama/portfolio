@@ -3,7 +3,7 @@ Add-Type -AssemblyName System.Windows.Forms
 [Windows.Forms.Application]::SetUnhandledExceptionMode([Windows.Forms.UnhandledExceptionMode]::ThrowException)
 $source=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('ProxySwitch-action-ui-'+[Guid]::NewGuid().ToString('N'));[void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','FlowTheme.cs','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $source $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','FlowTheme.cs','ProxyBackend.ps1','Preferences.ps1','Storage.ps1','RuntimeSupport.ps1','IndependentGateway.ps1','GatewayWatchdog.ps1','IndependentRouter.cjs','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $source $name) -Destination $qaRoot}
 [void][IO.Directory]::CreateDirectory((Join-Path $qaRoot 'assets'))
 Copy-Item -LiteralPath (Join-Path $source 'assets/FlowSwitch.ico') -Destination (Join-Path $qaRoot 'assets/FlowSwitch.ico')
 # Isolated Windows fixtures must not contend with the real manager or other test windows.
@@ -26,6 +26,7 @@ function Get-Process {param($Name)}
 function Get-ClientWarnings {}
 function Get-OverrideWarnings {}
 function Get-LiveConnections {}
+function Get-NetTCPConnection {param($State,$ErrorAction);@()}
 function Get-ApplicationRoutes {[pscustomobject]@{Available=$false;RuleCount=0;Rows=@()}}
 function Get-Listener($Profile){[pscustomobject]@{PID=1;Name='fixture'}}
 function Test-ProxyRoute($Key,[switch]$Fast){if(-not $Fast){throw 'Switch requested the slow diagnostics path'};[pscustomobject]@{Usable=$true;Results=@()}}

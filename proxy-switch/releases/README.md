@@ -1,4 +1,21 @@
-# 流向 FlowSwitch 3.3.2 · 下载与校验
+# 流向 FlowSwitch 3.5.1 · 下载与校验
+
+普通使用下载 Windows x64 程序包，完整解压后双击 `FlowSwitch/FlowSwitch.exe`，保留 `app` 文件夹。自带 Node.js 和独立分流内核，无需另装 Clash；仍需自己的可用代理入口。
+
+| 文件 | 大小 | SHA-256 |
+| --- | --- | --- |
+| [FlowSwitch-v3.5.1-Windows-x64.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.5.1-Windows-x64.zip) | 71,442,535 字节 | `f814cc1bddca70a138b1fe397e0c3e3fabe47047881e205d036f24cda6df664c` |
+| [FlowSwitch-v3.5.1-Windows-Source.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.5.1-Windows-Source.zip) | 1,753,693 字节 | `499bd0213ad698512d138ba14cff454941e1a0e5ff9510e09f2991f46464bceb` |
+
+[使用说明与运行要求](../README.md) · [更新记录](../CHANGELOG.md) · [SHA256SUMS.txt](SHA256SUMS.txt)
+
+Windows 包含 35 个文件，源码包含 67 个文件，均为单应用根目录；已核验 ZIP CRC、大小与 SHA-256。包内无个人配置、代理规则、节点、账户或凭据。运行要求与验证范围见使用说明。
+
+## 历史版本资料
+
+以下为 3.3.2 及更早版本的原始说明，其运行条件和升级行为仅适用于对应历史版本。
+
+### 流向 FlowSwitch 3.3.2 · 下载与校验
 
 普通使用下载 **Windows x64 程序包**，完整解压后双击 `FlowSwitch/FlowSwitch.exe`。请保留 EXE 旁的 `app` 文件夹。源码包用于开发与重新构建。
 

@@ -7,7 +7,7 @@ function Get-LocalEndpointId([string]$Address,[int]$Port) {
 function Get-LocalListenerInventory {
     $rows=@()
     try{$rows=@(Get-NetTCPConnection -State Listen -ErrorAction Stop)}catch{
-        foreach($line in (& netstat.exe -ano -p tcp)){
+        foreach($line in (& (Join-Path $env:SystemRoot 'System32\netstat.exe') -ano -p tcp)){
             if($line -match '^\s*TCP\s+(\S+)\s+\S+\s+LISTENING\s+(\d+)\s*$'){
                 $endpoint=$Matches[1];$ownerId=[int]$Matches[2]
                 if($endpoint -match '^(.+):(\d+)$'){$rows+=[pscustomobject]@{LocalAddress=$Matches[1].Trim('[',']');LocalPort=[int]$Matches[2];OwningProcess=$ownerId}}
