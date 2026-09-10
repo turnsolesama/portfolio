@@ -1,262 +1,357 @@
-﻿[
-    {
-        "path":  "ProxySwitch.ps1",
-        "bytes":  2512,
-        "sha256":  "86a2a4ac735d6e9499438eda03e0fbee2510f9a45e3245181cd96faf53fa35f9"
-    },
-    {
-        "path":  "ProxyBackend.ps1",
-        "bytes":  31073,
-        "sha256":  "a185756064ecfcc069e8ec746218ffb8bf134da3eeb6e39ed7990658adc41af8"
-    },
-    {
-        "path":  "ProxyWindow.ps1",
-        "bytes":  57064,
-        "sha256":  "0a0ae8247ae846bb1e2e87f76cd2d60f09074e3f32cef8c75ea584ea43f0dcb8"
-    },
-    {
-        "path":  "AppRouting.ps1",
-        "bytes":  13973,
-        "sha256":  "b665735758c1c952bb1574003bf70626326d2851ec0215ef4da4bfd716fb4901"
-    },
-    {
-        "path":  "AppRouter.cjs",
-        "bytes":  22954,
-        "sha256":  "7899c43ae143f11df28eb660522411f3ca7d9034287990b2b142f3e16291316a"
-    },
-    {
-        "path":  "Preferences.ps1",
-        "bytes":  11289,
-        "sha256":  "63c3fa133da480fead8f4de4001e7103a0dd62637a9afcb607104f0b4fbdc015"
-    },
-    {
-        "path":  "ProxyDiscovery.ps1",
-        "bytes":  13261,
-        "sha256":  "e4a148d36686b2a50ba5459ff2386506f1750854890e4672b048447c2e46c06c"
-    },
-    {
-        "path":  "ProcessInventory.ps1",
-        "bytes":  5675,
-        "sha256":  "a6cc558b6c661c1fd30dcf1366c08369b68acede6a17b00a22ace0d28e76ba8f"
-    },
-    {
-        "path":  "ProgramLaunch.ps1",
-        "bytes":  14626,
-        "sha256":  "d4c2d2685b5177172d81a42c067e6ce274518533b946e9aedb9934470edccef1"
-    },
-    {
-        "path":  "Storage.ps1",
-        "bytes":  3723,
-        "sha256":  "a3607f435a07cfd4c4c3ffc001478b35904e7100e856db03378b2844e052b543"
-    },
-    {
-        "path":  "DesktopBranding.cs",
-        "bytes":  4157,
-        "sha256":  "bc4158951cdbdc9f57f577e3bca984343563d82d0a5827a1d346ecafd47b7645"
-    },
-    {
-        "path":  "FlowTheme.cs",
-        "bytes":  19214,
-        "sha256":  "acc3ade477d3784360d7f966f159a5b4749e2d8800c6e901606b1f312b81b0db"
-    },
-    {
-        "path":  "config.defaults.json",
-        "bytes":  93,
-        "sha256":  "aac9b43374897dd5434a7c71021f1ce5a2a18ca94735905b2b6d957d7e9585d8"
-    },
-    {
-        "path":  "启动代理切换.cmd",
-        "bytes":  259,
-        "sha256":  "4bb875c81fcfa30c9300da2069057c1ab6cde3b028aa2f59a24e12f045e7a7e4"
-    },
-    {
-        "path":  "Install-Shortcut.ps1",
-        "bytes":  3070,
-        "sha256":  "c1e80be3b2287852dff54c57b0da50b188b6980aaaea03bece229543086032c7"
-    },
-    {
-        "path":  "Test-All.ps1",
-        "bytes":  1098,
-        "sha256":  "7ed666e441c2ec3e8c362c9fab3ff6590f65f5da10c355459908b1c05e44fa6d"
-    },
-    {
-        "path":  "Test-GatewayControl.ps1",
-        "bytes":  3516,
-        "sha256":  "c6189b2a11705a05c4803fd90015b14e03ba2b14ab64815e136042575fe517d4"
-    },
-    {
-        "path":  "Test-GatewayIntegration.cjs",
-        "bytes":  8113,
-        "sha256":  "dbe021b2cd335f9a13a579e967aebb6073a0e7d3b7ac855db33e2fbb7787263c"
-    },
-    {
-        "path":  "Test-ProxySwitch.ps1",
-        "bytes":  9618,
-        "sha256":  "508582eac97a27112acfe0f7ef0b00b20e46da8446ec95095b7599b8d0d40c70"
-    },
-    {
-        "path":  "Test-AppRouter.cjs",
-        "bytes":  6100,
-        "sha256":  "39699b873b921a1170bc70afcfc019c7f36c1e61b02e433c76beff60b87cdc82"
-    },
-    {
-        "path":  "Test-Preferences.ps1",
-        "bytes":  5208,
-        "sha256":  "d88c03e14a7b738d53b2a6f6eaba143903feb71122fbb233c8ef23dc16a0e373"
-    },
-    {
-        "path":  "Test-ProxyDiscovery.ps1",
-        "bytes":  8139,
-        "sha256":  "6f9771eb2874c6b382daa962dc5f5aa5ba734bc7f4e04f8088e31dbd5229f495"
-    },
-    {
-        "path":  "Build-Release.ps1",
-        "bytes":  2891,
-        "sha256":  "89008db86f85cf318d58ea1bc83ae465e3515ce0e0e43f3df6735999068e162b"
-    },
-    {
-        "path":  "Build-WindowsPackage.ps1",
-        "bytes":  3435,
-        "sha256":  "ecfcc40a48b68331a94bb8afda7487d736e4d0972b9d3210ce1bdd863315becd"
-    },
-    {
-        "path":  "Launcher.cs",
-        "bytes":  6366,
-        "sha256":  "c1d648d15019c14b226d73862add8a30e738539a50cfe61528f2e976ce2b6ee3"
-    },
-    {
-        "path":  "Windows-QuickStart.txt",
-        "bytes":  2020,
-        "sha256":  "199d03fbda53cb54646a7b28c00da98a5e4b56705a82a0e07857453b1c20b82f"
-    },
-    {
-        "path":  "Test-WindowsPackage.ps1",
-        "bytes":  6229,
-        "sha256":  "7e0b9e2e4b9ac6892b21d69bea50823585cb05c1daf55014f735af9f49dda1a0"
-    },
-    {
-        "path":  "Test-Compatibility.ps1",
-        "bytes":  7938,
-        "sha256":  "93a580d58d766b7943d498711b9ba7b384bfbb212dddb83762d042a0199b182e"
-    },
-    {
-        "path":  "Test-AutomaticDiscovery.ps1",
-        "bytes":  5878,
-        "sha256":  "200a1e16470ab3600f42da6345d3e60dee71f35efd99eb8976f3ac196bfb2a68"
-    },
-    {
-        "path":  "Test-ProgramLaunch.ps1",
-        "bytes":  11358,
-        "sha256":  "59a14e14715202c1f8670bb77c0122c5cf1c73b11eef14599e37cb7286f07e4a"
-    },
-    {
-        "path":  "Test-Storage.ps1",
-        "bytes":  4118,
-        "sha256":  "e694833e9324b1f37706316a08f2d9783b11b365f32918c55610ee28cbb2d0db"
-    },
-    {
-        "path":  "Test-AutomaticDiscoveryUI.ps1",
-        "bytes":  5199,
-        "sha256":  "57218cee096287175166f0f66f69cba2330e0455ce97495b44ea9605513ad157"
-    },
-    {
-        "path":  "Test-SwitchInteraction.ps1",
-        "bytes":  6213,
-        "sha256":  "e8da65b01788bf5c8780748f16fb583cddadfd9789c4fd90978997bc9fb20e68"
-    },
-    {
-        "path":  "Test-PassiveLifecycle.ps1",
-        "bytes":  7373,
-        "sha256":  "2dd87309d976dc84df45ec43a347323c1e80b11685c10c2cc74924e46716a329"
-    },
-    {
-        "path":  "Test-DiscoveryUI.ps1",
-        "bytes":  6448,
-        "sha256":  "9668b923f73995c790d8c288e367f78e388bdf997d16f64ee6c7465ff2b533bc"
-    },
-    {
-        "path":  "README.md",
-        "bytes":  26118,
-        "sha256":  "57c676e1fb993b68ce5b53815b8b87fab93f36a07757c89feb590929e892cbe7"
-    },
-    {
-        "path":  "CHANGELOG.md",
-        "bytes":  10325,
-        "sha256":  "4311cd33aa8278ffbfdf1ea9bc936d78a4e67e6c7fa8626ee6c477f4e07aa159"
-    },
-    {
-        "path":  "LICENSE",
-        "bytes":  1081,
-        "sha256":  "7eae95a7023b3bf37b600892639de417b923260474d346025582f7d9308bfc30"
-    },
-    {
-        "path":  "THIRD_PARTY_NOTICES.md",
-        "bytes":  839,
-        "sha256":  "9f89b527d443b6144e49504ca6b17519d0bb738b15729aa12c1694bca0e44070"
-    },
-    {
-        "path":  "AGENTS.md",
-        "bytes":  11485,
-        "sha256":  "a877fb666383f6728256ad7db4b1f0b20762a198cc7129c25c40a8e7069ec4c4"
-    },
-    {
-        "path":  ".gitignore",
-        "bytes":  373,
-        "sha256":  "7ef8d0213352f5cfaffe18cd3d0728940432ab9179eba621641d546c12e21756"
-    },
-    {
-        "path":  ".gitattributes",
-        "bytes":  156,
-        "sha256":  "9064bf3f1396344247dbff552f3ab7ec8e2c83c3424392d50b45756cca46b1b2"
-    },
-    {
-        "path":  "DESIGN.md",
-        "bytes":  3671,
-        "sha256":  "d9bd39175e2c1ce8a378255089aa2542da037c010cb44b697cb2b7a79bc978de"
-    },
-    {
-        "path":  "Test-VisualTheme.ps1",
-        "bytes":  8342,
-        "sha256":  "2e9cae2586f77415845a96244a10f617b07bd775c903c2556844b01135935920"
-    },
-    {
-        "path":  "assets/FlowSwitch.ico",
-        "bytes":  372526,
-        "sha256":  "f319b2929ddf68310eea183186189fd566b41f5370b2d9c12da615d43ba12159"
-    },
-    {
-        "path":  "assets/FlowSwitch.png",
-        "bytes":  1235887,
-        "sha256":  "73499087ad4a4dacbcc6cf17e56d441bb47c4611905b6c182070af68611f7148"
-    },
-    {
-        "path":  "assets/screenshot.png",
-        "bytes":  73217,
-        "sha256":  "2f92fab096de0e5fa19208e4ff382b2ff91a70ce15065beb449d2ea21c4e6512"
-    },
-    {
-        "path":  "assets/program-menu.png",
-        "bytes":  78137,
-        "sha256":  "3585a46b31dd6d16675cd6dd72ab4a376fa092d541b82b5c44af69f43f0e32f7"
-    },
-    {
-        "path":  "assets/proxy-management.png",
-        "bytes":  69444,
-        "sha256":  "1d5c444ee533b646533186b2b2a1d43410a2abbcaee28908cc507315dff40682"
-    },
-    {
-        "path":  "vendor/js-yaml/package.json",
-        "bytes":  2950,
-        "sha256":  "c2cc78a2ef55f2c00fe43c474d0047d2187af815b5a410febeafdd2f022d1560"
-    },
-    {
-        "path":  "vendor/js-yaml/LICENSE",
-        "bytes":  1084,
-        "sha256":  "a07bc24468b9654ce76a547d47a2db282d07733b715db4c73a98bd63961f9550"
-    },
-    {
-        "path":  "vendor/js-yaml/dist/js-yaml.cjs.js",
-        "bytes":  136349,
-        "sha256":  "53f77f649a51aaa5adb8ebcb4e41aa52acb915ab14e0872109d0bb81cb6f46f7"
-    }
+[
+  {
+    "path": "ProxySwitch.ps1",
+    "bytes": 2900,
+    "sha256": "3d8da32a11c8980a6db35a1860fb63985e0b788cc32881582c1201130561b24c"
+  },
+  {
+    "path": "ProxyBackend.ps1",
+    "bytes": 34158,
+    "sha256": "9f4915f730d4b68acda32c6263d2847cebcca1494780a1189c8ff416df11a74c"
+  },
+  {
+    "path": "ProxyWindow.ps1",
+    "bytes": 69723,
+    "sha256": "bd9091fb0ab8db9c350e9beef02bf3393deb1dfd18fe5da4ea25be89c178f22e"
+  },
+  {
+    "path": "AppRouting.ps1",
+    "bytes": 17634,
+    "sha256": "9def11152cf2ee1576f36768b3508b75385c3fce98ed09fdbf1380ab6f44f6e0"
+  },
+  {
+    "path": "AppRouter.cjs",
+    "bytes": 22931,
+    "sha256": "d33bebc3889709bbef407c18ec392e033c8c51a35a3fe8573beb411eba752dbc"
+  },
+  {
+    "path": "IndependentRouter.cjs",
+    "bytes": 24795,
+    "sha256": "b4df07c0a9f19b77b90fb7d85fcdebb11daa92dc509929722019b81a4e33af45"
+  },
+  {
+    "path": "IndependentGateway.ps1",
+    "bytes": 21931,
+    "sha256": "3fa0920d1646cd6abe4df3b4fbe62c24f65eb345ccf72da7713be858989bc0aa"
+  },
+  {
+    "path": "GatewayWatchdog.ps1",
+    "bytes": 1883,
+    "sha256": "e1a7412e493c0f820bda4d14da518ce7e712d3d3cc85b617bc9bf7b8cd4950d6"
+  },
+  {
+    "path": "Preferences.ps1",
+    "bytes": 11924,
+    "sha256": "b437f88d1da07130e974ac0c184c868311826eb2c1acebce4023ae6c9a8e6047"
+  },
+  {
+    "path": "ProxyDiscovery.ps1",
+    "bytes": 13124,
+    "sha256": "0afcebee1adfb3303021bbcd3a8ae4887d7737eac2249329c36918b4ae6422a1"
+  },
+  {
+    "path": "ProcessInventory.ps1",
+    "bytes": 5589,
+    "sha256": "9ece63a148e1966159bf84931520e0bdafb31988991e81dda5ea1b4be5bada7e"
+  },
+  {
+    "path": "ProgramLaunch.ps1",
+    "bytes": 14589,
+    "sha256": "474629e935ba11704b75bdc39b48f2ec90955bd9f7d75f84721090db83427fef"
+  },
+  {
+    "path": "Storage.ps1",
+    "bytes": 3672,
+    "sha256": "bde02a5f407b8886971edc2ad9872266956dc2cb469e1e27f3c415316cfb0507"
+  },
+  {
+    "path": "RuntimeSupport.ps1",
+    "bytes": 3349,
+    "sha256": "a8355ad7d1447ed43b11303cdd0b1a4cb57402749e69d13e7f25762514515641"
+  },
+  {
+    "path": "Prepare-Runtime.ps1",
+    "bytes": 3091,
+    "sha256": "bb7be984b23e825ea3f1a560435736c2077eb061436d6a27225f5c0e1370c30c"
+  },
+  {
+    "path": "runtime.lock.json",
+    "bytes": 1706,
+    "sha256": "ecbd0f4a3ae7814fd56433d7fa11402c46caf13e471e87a4969cce68a52268b1"
+  },
+  {
+    "path": "Test-RuntimeBundle.ps1",
+    "bytes": 8426,
+    "sha256": "cc476f433c488e8f97d13cf98026d02d7ec45c40d837f9e8465cbf956a455841"
+  },
+  {
+    "path": "Test-RuntimePerformance.cjs",
+    "bytes": 4991,
+    "sha256": "4dc21998181d3901925b7b16487c0aa5a687840392c92ecea8e2e1adee319a59"
+  },
+  {
+    "path": "Test-StatusSnapshot.ps1",
+    "bytes": 2913,
+    "sha256": "2c8657321dacf959b4cff7458069cf162fce19ab7beacbb4ead1082bbf092b22"
+  },
+  {
+    "path": "DesktopBranding.cs",
+    "bytes": 5307,
+    "sha256": "29b809b1d0ceed3ef51681b6a0f4fc874f1fa4f740267d245fc0844cf4a05f0a"
+  },
+  {
+    "path": "FlowTheme.cs",
+    "bytes": 18958,
+    "sha256": "bd678e36b4799aec6e8d07d2f1fb3e136ea97639672fb598692b05bc3f3e1e2f"
+  },
+  {
+    "path": "config.defaults.json",
+    "bytes": 93,
+    "sha256": "aac9b43374897dd5434a7c71021f1ce5a2a18ca94735905b2b6d957d7e9585d8"
+  },
+  {
+    "path": "启动代理切换.cmd",
+    "bytes": 259,
+    "sha256": "4bb875c81fcfa30c9300da2069057c1ab6cde3b028aa2f59a24e12f045e7a7e4"
+  },
+  {
+    "path": "Install-Shortcut.ps1",
+    "bytes": 3192,
+    "sha256": "7a48d126be1b5a8c41be623174dc61382bae1d638d5ad7e6f8c9f913ad30c8f2"
+  },
+  {
+    "path": "Test-All.ps1",
+    "bytes": 1338,
+    "sha256": "a7d2753670761faddc165b17dcd14e3cf5b8fe13f899332cd334a904ab027750"
+  },
+  {
+    "path": "Test-WindowInstance.ps1",
+    "bytes": 3067,
+    "sha256": "7f2963fd9c912925a3a9ba53d078835dab3fa740b25524dcdbdd95214365c01a"
+  },
+  {
+    "path": "Test-Lifecycle.cjs",
+    "bytes": 7013,
+    "sha256": "dd9d22773298ffb5bc70e84fceb8ed77ad7e5b3324c3e49a067ab6647ed8379c"
+  },
+  {
+    "path": "Test-LifecycleProtection.ps1",
+    "bytes": 4726,
+    "sha256": "592e30af34995a05dfb357cf4f04e41d8c51774837b4f01a19bac74d06b95e00"
+  },
+  {
+    "path": "Test-TrayLifecycle.ps1",
+    "bytes": 7323,
+    "sha256": "aca445bbd0a6d03e7d787afca1deec5b50f8566ede1e92f0110f4bb07564db69"
+  },
+  {
+    "path": "Test-SupervisorRecovery.ps1",
+    "bytes": 5490,
+    "sha256": "6be1209264e0e429c2eb37ff6e0a46ef458dd76126c8125ed7e0e3450531e48e"
+  },
+  {
+    "path": "Test-IndependentRouter.cjs",
+    "bytes": 4636,
+    "sha256": "6ccbd906cefb78755eb23a815cd19e91b27176cdb2dee9e2d99d2b8ef099589f"
+  },
+  {
+    "path": "Test-IndependentIntegration.cjs",
+    "bytes": 8128,
+    "sha256": "1b951c99e417c6740d92bfe596f000270e6b17ea524e4365c23b8b0d09eb70df"
+  },
+  {
+    "path": "Test-ExitRecovery.ps1",
+    "bytes": 4058,
+    "sha256": "9bc8ad66ba00b2bf19a99968c83b7c3fe4f870c646cc18ad107b19980e57abef"
+  },
+  {
+    "path": "Test-Watchdog.ps1",
+    "bytes": 5541,
+    "sha256": "2cb1c3d28eea7b46e80e517d7e3b37247a1e13ef2ea20a8033aad6c415df54c0"
+  },
+  {
+    "path": "Test-GatewayControl.ps1",
+    "bytes": 7694,
+    "sha256": "02bd7f2efe92929743d2ff99aeeb4b7f443f73a15953a58774c696696f50ea46"
+  },
+  {
+    "path": "Test-GatewayIntegration.cjs",
+    "bytes": 8113,
+    "sha256": "dbe021b2cd335f9a13a579e967aebb6073a0e7d3b7ac855db33e2fbb7787263c"
+  },
+  {
+    "path": "Test-ProxySwitch.ps1",
+    "bytes": 9618,
+    "sha256": "9b0f101bbddd929e5b5b0c2e50820c0871f42685837c1dcfe0a9bd1b1964209a"
+  },
+  {
+    "path": "Test-AppRouter.cjs",
+    "bytes": 6058,
+    "sha256": "fb0ed5e1ca52af258d77ef6d144dd76b63f0b1b525fb7dd2c8293df4d00d6166"
+  },
+  {
+    "path": "Test-Preferences.ps1",
+    "bytes": 5160,
+    "sha256": "40b26a46867b691eb6be0a3a8a22e81a4c5adcbcf716b5cea85fc3a111628744"
+  },
+  {
+    "path": "Test-ProxyDiscovery.ps1",
+    "bytes": 8050,
+    "sha256": "23197d7936c1ed00bfff9a0991cecc85cfd1b280467c508ab063b87ea9b29d4c"
+  },
+  {
+    "path": "Build-Release.ps1",
+    "bytes": 3583,
+    "sha256": "3c8c8c8060291d777ae3d38e1f20e99611fb87448377bcb75d8de9412fd5f967"
+  },
+  {
+    "path": "Build-WindowsPackage.ps1",
+    "bytes": 5358,
+    "sha256": "3b22c66bb7967aa470e3f04f6ea091556f56deceb7f8ee7f4c324bba88a5509d"
+  },
+  {
+    "path": "Launcher.cs",
+    "bytes": 6470,
+    "sha256": "9a0149a1dfc1a5b5145eabbea53f615cd315334e264a2e1ab6d0a421fa887092"
+  },
+  {
+    "path": "Windows-QuickStart.txt",
+    "bytes": 1553,
+    "sha256": "18c6589a70f455315e5ac8ad4e6d82f5fc85e6b03f85da49f6ffdff0ae3eb3f5"
+  },
+  {
+    "path": "Test-WindowsPackage.ps1",
+    "bytes": 6313,
+    "sha256": "b9b317620184a765d6d2e1cdd21c4a8fe385214130138a35f33b16d49e41669d"
+  },
+  {
+    "path": "Test-Compatibility.ps1",
+    "bytes": 7831,
+    "sha256": "ffe27f8d1be695884ebfdb1c507b3b8694e2d4a4d891a1d6cfea902c348f2b17"
+  },
+  {
+    "path": "Test-AutomaticDiscovery.ps1",
+    "bytes": 5813,
+    "sha256": "032cdb0489fe25444a7d5ca1918f44139474abcf8f624e2a55e14dbcfcd2d060"
+  },
+  {
+    "path": "Test-ProgramLaunch.ps1",
+    "bytes": 11238,
+    "sha256": "bf8b64636182297f7aef005d23812e497e9d34847b57ae6703c658e3b63e2090"
+  },
+  {
+    "path": "Test-Storage.ps1",
+    "bytes": 4083,
+    "sha256": "178104f49e90def0e940fe0bd4a6e8dec1b33a02bd68e64ccf2113d30dd2406c"
+  },
+  {
+    "path": "Test-AutomaticDiscoveryUI.ps1",
+    "bytes": 5432,
+    "sha256": "a8a760d539033f0c0e792f03cc59adf53b2dce673049090acaa77c1567bc6e78"
+  },
+  {
+    "path": "Test-SwitchInteraction.ps1",
+    "bytes": 6440,
+    "sha256": "4762d2b3d5bfb87341b27959c9696cd395f1835658287749c1c2608b0eb875b0"
+  },
+  {
+    "path": "Test-PassiveLifecycle.ps1",
+    "bytes": 7515,
+    "sha256": "6af08c5e9548d40de0ce65c69b760ad0b66b4bc254fa3d166ad15fea1d7931df"
+  },
+  {
+    "path": "Test-DiscoveryUI.ps1",
+    "bytes": 6738,
+    "sha256": "c7ebb45f2e7f8bb5c389cb8228aa712f0901ed7b67e17744eed7ca8f3bb2eff7"
+  },
+  {
+    "path": "Test-FailoverDisplay.ps1",
+    "bytes": 2911,
+    "sha256": "965b73d3dc9120579fe82e6bb7dc4dfe296a6eee099724fd7e16ba3d8d245c38"
+  },
+  {
+    "path": "README.md",
+    "bytes": 6995,
+    "sha256": "fdf8a73b391d8f3346eb6c139b309190e4277d158e365893046846bfa5690c23"
+  },
+  {
+    "path": "CHANGELOG.md",
+    "bytes": 14185,
+    "sha256": "17265f2b966fb6804713258a414fd5a7cdb591571a4d02ffa037d451a583e783"
+  },
+  {
+    "path": "LICENSE",
+    "bytes": 1081,
+    "sha256": "7eae95a7023b3bf37b600892639de417b923260474d346025582f7d9308bfc30"
+  },
+  {
+    "path": "THIRD_PARTY_NOTICES.md",
+    "bytes": 2218,
+    "sha256": "75efbfadcc691ca80ddfbe791c3ca8871689969b5bb9b494d36f443916bf565e"
+  },
+  {
+    "path": "AGENTS.md",
+    "bytes": 15250,
+    "sha256": "dfea688d71a18ce3940abbc11954bbbc7853798a92b282bd3688e636238ebe26"
+  },
+  {
+    "path": ".gitignore",
+    "bytes": 421,
+    "sha256": "d230ed7e3f5d0e65323ee27a2da9e8e14d45967763cbbe73b298b030f1facb96"
+  },
+  {
+    "path": ".gitattributes",
+    "bytes": 156,
+    "sha256": "9064bf3f1396344247dbff552f3ab7ec8e2c83c3424392d50b45756cca46b1b2"
+  },
+  {
+    "path": "DESIGN.md",
+    "bytes": 3622,
+    "sha256": "7ad1e43e8be597fc9c0016b141eeeeff1f79def9428b2bde5462cb6218effa34"
+  },
+  {
+    "path": "Test-VisualTheme.ps1",
+    "bytes": 8341,
+    "sha256": "e4aaa4a00505853e3911037e0501ee433f86121790249c7ef8aaecabc7284537"
+  },
+  {
+    "path": "assets/FlowSwitch.ico",
+    "bytes": 372526,
+    "sha256": "f319b2929ddf68310eea183186189fd566b41f5370b2d9c12da615d43ba12159"
+  },
+  {
+    "path": "assets/FlowSwitch.png",
+    "bytes": 1235887,
+    "sha256": "73499087ad4a4dacbcc6cf17e56d441bb47c4611905b6c182070af68611f7148"
+  },
+  {
+    "path": "assets/screenshot.png",
+    "bytes": 73217,
+    "sha256": "2f92fab096de0e5fa19208e4ff382b2ff91a70ce15065beb449d2ea21c4e6512"
+  },
+  {
+    "path": "assets/program-menu.png",
+    "bytes": 78137,
+    "sha256": "3585a46b31dd6d16675cd6dd72ab4a376fa092d541b82b5c44af69f43f0e32f7"
+  },
+  {
+    "path": "assets/proxy-management.png",
+    "bytes": 69444,
+    "sha256": "1d5c444ee533b646533186b2b2a1d43410a2abbcaee28908cc507315dff40682"
+  },
+  {
+    "path": "vendor/js-yaml/package.json",
+    "bytes": 2950,
+    "sha256": "c2cc78a2ef55f2c00fe43c474d0047d2187af815b5a410febeafdd2f022d1560"
+  },
+  {
+    "path": "vendor/js-yaml/LICENSE",
+    "bytes": 1084,
+    "sha256": "a07bc24468b9654ce76a547d47a2db282d07733b715db4c73a98bd63961f9550"
+  },
+  {
+    "path": "vendor/js-yaml/dist/js-yaml.cjs.js",
+    "bytes": 136349,
+    "sha256": "53f77f649a51aaa5adb8ebcb4e41aa52acb915ab14e0872109d0bb81cb6f46f7"
+  }
 ]

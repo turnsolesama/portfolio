@@ -36,7 +36,7 @@ function makeConfig(o,s,selections={}){validate(s.entries,s.defaultRoute,o);cons
  const proxies=o.Profiles.filter(p=>p.Id!==entrance.Id).map(p=>({name:upstream(p.Id),type:p.Protocol,server:p.Host,port:p.Port}));
  proxies.push({name:group('Direct'),type:'direct'});
  const groups=used.filter(id=>id!=='Direct').map(id=>{const list=[...candidates(id,o).map(x=>x==='Direct'?group(x):upstream(x)),'REJECT'];const selected=selections[group(id)];return {name:group(id),type:'select',proxies:list.includes(selected)?[selected,...list.filter(x=>x!==selected)]:list};});
- return {'mixed-port':entrance.Port,'bind-address':'127.0.0.1','allow-lan':false,'external-controller-pipe':PIPE,mode:'rule',ipv6:false,'log-level':'silent','find-process-mode':'always',profile:{'store-selected':false},dns:{enable:false},tun:{enable:false},proxies,'proxy-groups':groups,rules:[...s.entries.map(e=>'PROCESS-PATH,'+e.path+','+group(e.route)),'MATCH,'+(s.defaultRoute?group(s.defaultRoute):'REJECT')]};
+ return {'mixed-port':entrance.Port,'bind-address':'127.0.0.1','allow-lan':false,'external-controller-pipe':PIPE,mode:'rule',ipv6:false,'log-level':'warning','find-process-mode':'always',profile:{'store-selected':false},dns:{enable:false},tun:{enable:false},proxies,'proxy-groups':groups,rules:[...s.entries.map(e=>'PROCESS-PATH,'+e.path+','+group(e.route)),'MATCH,'+(s.defaultRoute?group(s.defaultRoute):'REJECT')]};
 }
 function actualRoute(chains,o){for(const c of chains){const p=o.Profiles.find(p=>c===upstream(p.Id));if(p)return p.Id;if(c===group('Direct')||c==='DIRECT')return 'Direct';if(c==='REJECT'||c==='REJECT-DROP')return 'Blocked';}return 'Unknown';}
 function decide(previous,list,health,now,settings,details={}){
@@ -110,22 +110,89 @@ async function status(){const o=options(),s=state();try{
   entries:s.entries.map(e=>({...e,effectiveRoute:effective(e.route),loaded:r.rules.some(x=>x.type==='ProcessPath'&&x.payload.toLowerCase()===e.path.toLowerCase()&&x.proxy===group(e.route))})),
   connections:(con.connections||[]).map(x=>({path:x.metadata?.processPath||'',sourcePort:Number(x.metadata?.sourcePort),network:x.metadata?.network||'',inbound:x.metadata?.type||'',route:actualRoute(x.chains||[],o),managed:true})),failover:{...json(path.join(ROOT,'health.json'),{}),events:json(path.join(ROOT,'failover-events.json'),[])}};
  }catch(e){return {available:false,error:'独立分流内核未就绪：'+e.message,defaultRoute:s.defaultRoute,defaultLoaded:false,entries:s.entries.map(e=>({...e,loaded:false})),connections:[]};}}
+
+const LIFECYCLE=path.join(ROOT,'lifecycle-state.json');
+function lifecycleEvent(event,fields={}) {
+ try {
+  fs.mkdirSync(ROOT,{recursive:true});const file=path.join(ROOT,'lifecycle-core.jsonl');
+  if(fs.existsSync(file)&&fs.statSync(file).size>262144){fs.rmSync(file+'.1',{force:true});fs.renameSync(file,file+'.1');}
+  const row={at:new Date().toISOString(),event,pid:process.pid};
+  for(const k of ['core','attempt','exitCode','delayMs'])if(Number.isFinite(fields[k]))row[k]=fields[k];
+  for(const k of ['reason','signal'])if(typeof fields[k]==='string'&&/^[a-zA-Z0-9_-]{1,64}$/.test(fields[k]))row[k]=fields[k];
+  fs.appendFileSync(file,JSON.stringify(row)+'\n');
+ }catch{} // A full disk must not stop a working proxy.
+}
+function nextRestart(attempts,now=Date.now()) {
+ const recent=attempts.filter(t=>now-t<300000);
+ return {allowed:recent.length<3,attempt:recent.length+1,delayMs:1000*2**recent.length,recent};
+}
+async function waitForCore(child,entrance,stopping,timeout=6000) {
+ const end=Date.now()+timeout;
+ while(Date.now()<end&&!stopping()){
+  if(child.exitCode!==null||child.signalCode||!child.pid)return false;
+  try {const config=await api('GET','/configs');
+   if(child.exitCode===null&&!child.signalCode&&config['mixed-port']===entrance.Port&&config.mode==='rule'&&await listening(entrance.Host,entrance.Port))return true;
+  }catch{}
+  await new Promise(r=>setTimeout(r,100));
+ }
+ return false;
+}
+
 async function start(){try{if((await status()).available)return {ok:true};}catch{}
- const o=options();fs.mkdirSync(ROOT,{recursive:true});const s=state();write(CONFIG,yaml.dump(makeConfig(o,s,resumeSelections(o,s,json(path.join(ROOT,'health.json'),{}))),{lineWidth:-1}));
- const entrance=o.Profiles.find(p=>p.Id===o.Routing.ProfileId);if(await listening(entrance.Host,entrance.Port))throw Error('独立入口端口已被其他程序占用');
+ const o=options();fs.mkdirSync(ROOT,{recursive:true});lifecycleEvent('start-request');const s=state();write(CONFIG,yaml.dump(makeConfig(o,s,resumeSelections(o,s,json(path.join(ROOT,'health.json'),{}))),{lineWidth:-1}));
+ const entrance=o.Profiles.find(p=>p.Id===o.Routing.ProfileId);if(await listening(entrance.Host,entrance.Port)){lifecycleEvent('start-rejected',{reason:'port-occupied'});throw Error('独立入口端口已被其他程序占用；未接管该端口，未更改 Windows 代理');}
  const stopped=path.join(ROOT,'stop');if(fs.existsSync(stopped))fs.unlinkSync(stopped);
  const env={...process.env};delete env.PROXY_SWITCH_PROFILES;
  const node=path.join(ROOT,'runtime','node.exe');const child=spawn(fs.existsSync(node)?node:process.execPath,[__filename,'--serve'],{windowsHide:true,detached:true,stdio:'ignore',env});child.unref();
- for(let i=0;i<60;i++){await new Promise(r=>setTimeout(r,100));try{if((await status()).available)return {ok:true};}catch{}}
+ for(let i=0;i<90;i++){await new Promise(r=>setTimeout(r,100));try{if((await status()).available&&json(LIFECYCLE,{}).phase==='ready')return {ok:true};}catch{}}
+ write(path.join(ROOT,'stop'),'startup-timeout');lifecycleEvent('start-failed',{reason:'readiness-timeout'});
  throw Error('独立内核启动失败，原系统设置保持不变');
 }
 async function serve(){fs.mkdirSync(ROOT,{recursive:true});const singleton=path.join(ROOT,'supervisor.lock');
  try{const fd=fs.openSync(singleton,'wx');fs.writeFileSync(fd,JSON.stringify({pid:process.pid}));fs.closeSync(fd);}catch(e){if(e.code!=='EEXIST')throw e;const old=json(singleton,{});try{process.kill(old.pid,0);return;}catch(e){if(e.code!=='ESRCH')throw e;fs.unlinkSync(singleton);return serve();}}
- const o=options(),core=o.Profiles.find(p=>p.Id===o.Routing.ProfileId).CorePath;
+ const o=options(),entrance=o.Profiles.find(p=>p.Id===o.Routing.ProfileId),core=entrance.CorePath;
  const env={...process.env};for(const key of Object.keys(env))if(/^(http|https|all)_proxy$/i.test(key))delete env[key];
- const child=spawn(core,['-d',ROOT,'-f',CONFIG],{windowsHide:true,stdio:'ignore',env});let exited=false;child.on('exit',()=>exited=true);child.on('error',()=>exited=true);
- write(path.join(ROOT,'process.json'),{supervisor:process.pid,core:child.pid,started:new Date().toISOString()});let policies={},generation='';
- try{while(!fs.existsSync(path.join(ROOT,'stop'))&&!exited){
+ let child=null,exited=true,policies={},generation='',attempts=[],unreadySince=0;
+ const stopped=()=>fs.existsSync(path.join(ROOT,'stop'));
+ let life={phase:'starting',supervisor:process.pid,core:null,attempt:0,reason:'startup',startedAt:new Date().toISOString()};
+ const publish=()=>{try{write(LIFECYCLE,{...life,updatedAt:new Date().toISOString()});}catch{}};
+ const setPhase=(phase,reason)=>{life.phase=phase;life.reason=reason;publish();};
+ const heartbeat=setInterval(publish,1000);publish();
+ const pause=async ms=>{const end=Date.now()+ms;while(Date.now()<end&&!stopped())await new Promise(r=>setTimeout(r,Math.min(100,end-Date.now())));};
+ async function spawnCore(){
+  if(stopped())return false;
+  // A listener without our live controller is not a healthy FlowSwitch instance.
+  if(await listening(entrance.Host,entrance.Port)){setPhase('failed','port-occupied');lifecycleEvent('start-rejected',{reason:'port-occupied'});return false;}
+  child=spawn(core,['-d',ROOT,'-f',CONFIG],{windowsHide:true,stdio:['ignore','pipe','pipe'],env});exited=false;
+  child.on('exit',(code,signal)=>{exited=true;lifecycleEvent('core-exit',{core:child.pid,exitCode:code,signal:signal||'none',reason:stopped()?'requested-stop':'unexpected-exit'});});
+  child.on('error',()=>{exited=true;lifecycleEvent('core-spawn-failed',{reason:'spawn-error'});});
+  // Drain both streams, but never retain raw core output: it can contain URLs or credentials.
+  let warningReported=false;
+  for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{if(!warningReported){warningReported=true;lifecycleEvent('core-output',{reason:/bind|address already in use|Only one usage/i.test(chunk.toString().slice(0,4096))?'listener-bind-failed':'output-observed'});}});
+  life.core=child.pid||null;const started=new Date().toISOString();
+  write(path.join(ROOT,'process.json'),{supervisor:process.pid,core:child.pid||null,started});
+  lifecycleEvent('core-start',{core:child.pid,attempt:life.attempt});
+  const ready=await waitForCore(child,entrance,()=>stopped()||exited);
+  if(!ready){lifecycleEvent('readiness-failed',{reason:exited?'core-exited':'listener-or-controller-timeout'});if(!exited){child.kill();await Promise.race([new Promise(r=>child.once('exit',r)),pause(2000)]);}return false;}
+  setPhase('ready','listener-and-controller-ready');lifecycleEvent('entry-ready',{core:child.pid,attempt:life.attempt});unreadySince=0;return true;
+ }
+ try{
+  if(!await spawnCore()){setPhase('failed','initial-start-failed');return;}
+  while(!stopped()){
+   if(exited){
+    const retry=nextRestart(attempts);if(!retry.allowed){setPhase('failed','restart-limit');lifecycleEvent('restart-exhausted',{reason:'restart-limit'});break;}
+    attempts=retry.recent;attempts.push(Date.now());life.attempt=retry.attempt;
+    setPhase('restarting','unexpected-core-exit');lifecycleEvent('restart-attempt',{attempt:retry.attempt,delayMs:retry.delayMs});await pause(retry.delayMs);
+    if(stopped())break;
+    // Last verified selection survives a crash, as it does an unrelated rules reload.
+    const currentOptions=options(),saved=state();
+    write(CONFIG,yaml.dump(makeConfig(currentOptions,saved,resumeSelections(currentOptions,saved,json(path.join(ROOT,'health.json'),{}))),{lineWidth:-1}));
+    if(!await spawnCore()){if(life.reason==='port-occupied')break;setPhase('restarting','readiness-failed');continue;}
+    policies={};generation='';
+   }
+   try{const c=await api('GET','/configs');if(c['mixed-port']!==entrance.Port||c.mode!=='rule'||!await listening(entrance.Host,entrance.Port))throw Error('not-ready');unreadySince=0;}
+   catch{if(!unreadySince)unreadySince=Date.now();setPhase('degraded','listener-or-controller-unavailable');if(Date.now()-unreadySince>=10000){lifecycleEvent('core-unresponsive',{reason:'readiness-lost'});if(!exited)child.kill();}await pause(500);continue;}
+   setPhase('ready','listener-and-controller-ready');
   const o=options(),s=state(),gen=read(path.join(ROOT,'generation.json'))||s.changedAt||'';
   if(gen!==generation){policies={};generation=gen;}
   const ids=[...new Set([...s.entries.map(e=>e.route),s.defaultRoute].filter(id=>id&&id!=='Direct'))];
@@ -143,19 +210,26 @@ async function serve(){fs.mkdirSync(ROOT,{recursive:true});const singleton=path.
   }
   write(path.join(ROOT,'health.json'),{updated:new Date().toISOString(),health,details,policies});
   });}catch{}
-  await new Promise(r=>setTimeout(r,policy(o).IntervalMs));
- }}finally{if(!exited)child.kill();if(fs.existsSync(singleton))fs.unlinkSync(singleton);}
+
+   await pause(policy(o).IntervalMs);
+  }
+ }catch{setPhase('failed','supervisor-error');lifecycleEvent('supervisor-failed',{reason:'supervisor-error'});}
+ finally{
+  if(child&&!exited){child.kill();await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,2000))]);}
+  clearInterval(heartbeat);if(stopped())setPhase('stopped','requested-stop');else if(life.phase!=='failed')setPhase('failed','supervisor-ended');
+  lifecycleEvent('supervisor-stop',{reason:life.reason});if(json(singleton,{}).pid===process.pid)fs.unlinkSync(singleton);
+ }
 }
 async function reconnectPlan(executable){const o=options(),s=state(),live=await status();require('./AppRouter.cjs').normalizeEntry(executable,'Follow',o);const rule=live.entries.find(e=>e.path.toLowerCase()===executable.toLowerCase());const wanted=rule?rule.effectiveRoute:live.effectiveDefaultRoute;
  if(!live.available||!live.defaultLoaded||wanted==='Blocked'||wanted==='Unknown')throw Error('当前没有已验证的可用出口');
  const all=(await api('GET','/connections')).connections||[];
  return {path:executable,wanted,createdAt:Date.now(),fingerprint:JSON.stringify(s),connections:all.filter(c=>c.metadata?.processPath?.toLowerCase()===executable.toLowerCase()&&actualRoute(c.chains||[],o)!==wanted).map(c=>({id:c.id,start:c.start,route:actualRoute(c.chains||[],o)}))};
 }
-async function main(input){if(input.action==='status')return status();if(input.action==='start')return start();if(input.action==='stop'){write(path.join(ROOT,'stop'),'stop');return {ok:true};}
+async function main(input){if(input.action==='status')return status();if(input.action==='start')return start();if(input.action==='stop'){lifecycleEvent('stop-request',{reason:'explicit-stop'});write(path.join(ROOT,'stop'),'stop');return {ok:true};}
  if(input.action==='replace')return replace(input.entries,input.defaultRoute);if(input.action==='sync'){const s=state();return replace(s.entries,s.defaultRoute);}
  if(input.action==='reconnect-plan')return reconnectPlan(input.path);
  if(input.action==='reconnect'){const p=input.plan;if(!p||!Array.isArray(p.connections)||p.connections.length>1024||!Number.isFinite(p.createdAt)||Date.now()-p.createdAt>60000||p.createdAt>Date.now())throw Error('重连预览已失效');const now=await reconnectPlan(p.path);if(now.wanted!==p.wanted||now.fingerprint!==p.fingerprint)throw Error('线路已改变，请重新预览');let closed=0;for(const c of now.connections.filter(c=>p.connections.some(x=>x.id===c.id&&x.start===c.start&&x.route===c.route))){if(/^[a-zA-Z0-9-]{1,100}$/.test(c.id)){await api('DELETE','/connections/'+encodeURIComponent(c.id));closed++;}}return {ok:true,closed,Message:'已关闭 '+closed+' 条预览确认的旧连接。'};}
  throw Error('独立内核不支持此操作');
 }
 if(require.main===module&&process.argv.includes('--serve'))serve().catch(()=>{process.exitCode=1;});
-module.exports={main,api,makeConfig,actualRoute,decide,policy,candidates,healthCheck,retainedSelections,resumeSelections,status,replace,start,ROOT,PIPE,CONFIG};
+module.exports={main,api,makeConfig,actualRoute,decide,policy,candidates,healthCheck,retainedSelections,resumeSelections,status,replace,start,nextRestart,lifecycleEvent,ROOT,PIPE,CONFIG};

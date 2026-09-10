@@ -146,6 +146,8 @@ function Start-ManagedProgram([string]$Executable) {
     $entry=Get-ProgramLaunchEntries|Where-Object {$_.path -ieq $Executable}|Select-Object -First 1
     if(-not $entry){throw '此程序尚未配置启动代理，请先在管理器中指定线路。'}
     if(@(Get-ProgramFamily $Executable @(Get-ProcessInventory)).Count){throw '该程序仍在运行。请先保存任务并完整退出，再从这个入口打开，才能让界面和联网子进程同时使用新线路。没有结束现有进程。'}
+    $readyKey=$entry.route;if($readyKey -eq 'Follow'){$readyKey=Get-SystemKey (Get-SystemSnapshot)}
+    Wait-ManagedProxyReady $readyKey
     $plan=Get-ProgramLaunchPlan $Executable $entry.route
     $psi=New-Object Diagnostics.ProcessStartInfo;$psi.FileName=$Executable;$psi.WorkingDirectory=[IO.Path]::GetDirectoryName($Executable)
     $psi.UseShellExecute=$false;$psi.CreateNoWindow=$false;$psi.Arguments=(@($plan.Arguments|ForEach-Object {ConvertTo-ProgramArgument $_}) -join ' ')

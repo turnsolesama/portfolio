@@ -93,3 +93,22 @@ public static class FlowSwitchDesktop
         finally { Marshal.ReleaseComObject(store); }
     }
 }
+
+
+// One visible/tray UI per shared data directory. A second launch wakes the first.
+public sealed class FlowSwitchWindowLease : System.IDisposable {
+    private System.Threading.Mutex mutex;
+    private System.Threading.EventWaitHandle wake;
+    public bool IsPrimary { get; private set; }
+    public FlowSwitchWindowLease(string directory) {
+        string id;
+        using(var hash=System.Security.Cryptography.SHA256.Create())
+            id=System.BitConverter.ToString(hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(System.IO.Path.GetFullPath(directory).TrimEnd('\\').ToLowerInvariant()))).Replace("-","");
+        mutex=new System.Threading.Mutex(false,@"Local\FlowSwitch.UI."+id);
+        try { IsPrimary=mutex.WaitOne(0); } catch(System.Threading.AbandonedMutexException) { IsPrimary=true; }
+        wake=new System.Threading.EventWaitHandle(false,System.Threading.EventResetMode.AutoReset,@"Local\FlowSwitch.Wake."+id);
+        if(!IsPrimary)wake.Set();
+    }
+    public bool ConsumeWake() { return wake.WaitOne(0); }
+    public void Dispose() { if(IsPrimary){mutex.ReleaseMutex();IsPrimary=false;}wake.Dispose();mutex.Dispose(); }
+}

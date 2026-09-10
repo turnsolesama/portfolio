@@ -9,9 +9,10 @@ if($LASTEXITCODE -ne 0){throw 'Fixture compile failed'}
 $body=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'GatewayWatchdog.ps1'))
 $body=$body.Substring($body.IndexOf('$path=Get-IndependentSessionPath'))
 $mock=@'
+function Use-ChangeLock([scriptblock]$Action){& $Action}
 function Get-SystemSnapshot {Get-Content (Join-Path $script:DataRoot 'fake-system.json') -Raw|ConvertFrom-Json}
 function Get-UserProxyEnv {Get-Content (Join-Path $script:DataRoot 'fake-env.json') -Raw|ConvertFrom-Json}
-function Set-SystemSnapshot($v){Write-LocalJson (Join-Path $script:DataRoot 'fake-system.json') $v}
+function Set-SystemSnapshot($v){if(Test-Path (Join-Path $script:DataRoot 'fail-restore')){throw 'isolated write failure'};Write-LocalJson (Join-Path $script:DataRoot 'fake-system.json') $v}
 function Set-UserProxyEnv($v){Write-LocalJson (Join-Path $script:DataRoot 'fake-env.json') $v}
 function Remove-ItemProperty {param($LiteralPath,$Name,$ErrorAction)}
 function Get-ItemPropertyValue {param($LiteralPath,$Name,$ErrorAction);throw 'No registration in isolated fixture'}
@@ -19,7 +20,7 @@ function Test-RecoveryEndpoint([string]$value){if($value -eq '127.0.0.1:18790'){
 '@
 $shell=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 $checks=0
-foreach($case in @('owner-crash','core-crash','external-change')){
+foreach($case in @('owner-crash','core-crash','external-change','restore-failure')){
     $data=Join-Path $qa $case;[void][IO.Directory]::CreateDirectory((Join-Path $data 'gateway'))
     $owner=Start-Process -FilePath $exe -WindowStyle Hidden -PassThru
     $watch=$null
@@ -33,6 +34,7 @@ foreach($case in @('owner-crash','core-crash','external-change')){
         [IO.File]::WriteAllText((Join-Path $data 'fake-system.json'),($system|ConvertTo-Json),$utf8)
         [IO.File]::WriteAllText((Join-Path $data 'fake-env.json'),($targetEnv|ConvertTo-Json),$utf8)
         [IO.File]::WriteAllText((Join-Path $data 'listener-ready'),'ready')
+        if($case -eq 'restore-failure'){[IO.File]::WriteAllText((Join-Path $data 'fail-restore'),'yes')}
         $fixture=Join-Path $data 'Watch.ps1'
         $prefix='$ErrorActionPreference=''Stop'''+"`r`n"+('. '''+(Join-Path $PSScriptRoot 'ProxyBackend.ps1').Replace("'","''")+''' -DataDirectory '''+$data.Replace("'","''")+'''')+"`r`n"
         [IO.File]::WriteAllText($fixture,($prefix+$mock+"`r`n"+$body),$utf8)
@@ -42,6 +44,12 @@ foreach($case in @('owner-crash','core-crash','external-change')){
         if($case -eq 'core-crash'){[IO.File]::Delete((Join-Path $data 'listener-ready'))}else{$owner.Kill()}
         if(-not $watch.WaitForExit(10000)){throw ('Watchdog did not recover '+$case)}
         $after=Get-Content (Join-Path $data 'fake-system.json') -Raw|ConvertFrom-Json
+        if($case -eq 'restore-failure'){
+            if($after.Server -ne '127.0.0.1:18790' -or -not (Test-Path (Join-Path $data 'gateway-session.json')) -or (Test-Path (Join-Path $data 'gateway\stop'))){throw 'Failed restoration lost journal or falsely stopped service'}
+            $events=Get-Content (Join-Path $data 'gateway\lifecycle-session.jsonl')|ForEach-Object {$_|ConvertFrom-Json}
+            if(@($events|Where-Object event -eq 'watchdog-restore-failed').Count -ne 3){throw 'Restoration retry limit failed'}
+            $checks++;Write-Output 'PASS: watchdog finite restore failure preserves session';continue
+        }
         if($case -eq 'external-change'){if($after.Server -ne '127.0.0.1:20000'){throw 'Overwrote external choice'}}elseif($after.Flags -ne 1 -or $after.Server){throw 'Dead proxy was left behind'}
         if((Test-Path (Join-Path $data 'gateway-session.json')) -or -not (Test-Path (Join-Path $data 'gateway\stop'))){throw 'Recovery order/journal failure'}
         $checks++;Write-Output ('PASS: watchdog '+$case)

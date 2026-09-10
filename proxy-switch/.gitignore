@@ -21,3 +21,7 @@ node_modules/
 *diagnostics*.json
 界面预览.png
 右键菜单预览.png
+
+ui-settings.json
+gateway-session.json
+gateway/

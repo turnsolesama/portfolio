@@ -10,8 +10,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("流向 · FlowSwitch")]
 [assembly: AssemblyDescription("FlowSwitch Windows proxy manager")]
 [assembly: AssemblyProduct("流向 · FlowSwitch")]
-[assembly: AssemblyVersion("3.5.1.0")]
-[assembly: AssemblyFileVersion("3.5.1.0")]
+[assembly: AssemblyVersion("3.6.0.0")]
+[assembly: AssemblyFileVersion("3.6.0.0")]
 
 internal static class Launcher
 {
@@ -71,7 +71,7 @@ internal static class Launcher
             string root = AppDomain.CurrentDomain.BaseDirectory;
             string app = Path.Combine(root, "app");
             VerifyFiles(app);
-            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.5.1 Windows package files are present."); return 0; }
+            if (mode == "--verify") { Console.WriteLine("PASS: FlowSwitch 3.6.0 Windows package files are present."); return 0; }
 
             string shell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
             if (!File.Exists(shell)) throw new FileNotFoundException("找不到 Windows PowerShell 5.1。");

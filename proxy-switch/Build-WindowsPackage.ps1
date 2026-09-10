@@ -1,6 +1,8 @@
 ﻿[CmdletBinding()]
 param([Parameter(Mandatory=$true)][string]$Destination,[Parameter(Mandatory=$true)][string]$RuntimeDirectory)
 $ErrorActionPreference='Stop'
+$productVersion=[regex]::Match([IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Preferences.ps1')),"ProductVersion='([0-9.]+)'").Groups[1].Value
+if($productVersion -notmatch '^\d+\.\d+\.\d+$'){throw '产品版本无效'}
 $destinationPath=[IO.Path]::GetFullPath($Destination)
 if(Test-Path -LiteralPath $destinationPath){throw '输出目录已存在，请使用新目录以保留原发布包。'}
 $compiler=Join-Path $env:SystemRoot 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
@@ -39,7 +41,7 @@ $manifest=@(Get-ChildItem -LiteralPath $package -File -Recurse | ForEach-Object 
 })
 [IO.File]::WriteAllText((Join-Path $package 'manifest.json'),($manifest|ConvertTo-Json -Depth 4),(New-Object Text.UTF8Encoding($false)))
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$archive=Join-Path $destinationPath 'FlowSwitch-v3.5.1-Windows-x64.zip'
+$archive=Join-Path $destinationPath ('FlowSwitch-v'+$productVersion+'-Windows-x64.zip')
 [IO.Compression.ZipFile]::CreateFromDirectory($package,$archive,[IO.Compression.CompressionLevel]::Optimal,$true)
 $hash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText((Join-Path $destinationPath 'SHA256SUMS.txt'),($hash+'  '+[IO.Path]::GetFileName($archive)+"`r`n"),(New-Object Text.UTF8Encoding($false)))

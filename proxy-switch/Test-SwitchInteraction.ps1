@@ -10,7 +10,7 @@ Copy-Item -LiteralPath (Join-Path $source 'assets/FlowSwitch.ico') -Destination 
 $qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
 $qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
 [IO.File]::WriteAllText($qaBackend,$qaBackendText,(New-Object Text.UTF8Encoding($true)))
-$env:PROXY_SWITCH_DATA_DIR=Join-Path $qaRoot 'settings';[void][IO.Directory]::CreateDirectory($env:PROXY_SWITCH_DATA_DIR)
+$env:PROXY_SWITCH_DATA_DIR=Join-Path $qaRoot 'settings';[void][IO.Directory]::CreateDirectory($env:PROXY_SWITCH_DATA_DIR);[IO.File]::WriteAllText((Join-Path $env:PROXY_SWITCH_DATA_DIR 'ui-settings.json'),'{"CloseToTray":false}')
 $encoding=New-Object Text.UTF8Encoding($true)
 $config=@{Version=3;Routing=@{Adapter='none';ProfileId=''};Profiles=@(@{Id='alpha';Name='QA Alpha';Protocol='http';Host='127.0.0.1';Port=18081;CorePath='';AppPath='';AutoPort=$false},@{Id='beta';Name='QA Beta';Protocol='http';Host='127.0.0.1';Port=18082;CorePath='';AppPath='';AutoPort=$false})}
 [IO.File]::WriteAllText((Join-Path $env:PROXY_SWITCH_DATA_DIR 'config.json'),($config|ConvertTo-Json -Depth 5),$encoding)
@@ -36,7 +36,7 @@ function Sync-AutomaticProxyDiscovery($Cache,$Cancellation){
     [pscustomobject]@{Detected=0;Added=0;Names=@();Cache=@();CheckedAt='12:00:00'}
 }
 '@,$encoding)
-$path=Join-Path $qaRoot 'ProxyWindow.ps1';$text=[IO.File]::ReadAllText($path).Replace('$timer.Start();[void]$form.ShowDialog()','$form.Opacity=0;$form.ShowInTaskbar=$false;$timer.Start();[void]$form.ShowDialog()');[IO.File]::WriteAllText($path,$text,$encoding)
+$path=Join-Path $qaRoot 'ProxyWindow.ps1';$text=[IO.File]::ReadAllText($path).Replace('$timer.Start();[Windows.Forms.Application]::Run($form)','$form.Opacity=0;$form.ShowInTaskbar=$false;$timer.Start();[Windows.Forms.Application]::Run($form)');[IO.File]::WriteAllText($path,$text,$encoding)
 function Find-Control($Parent,[string]$Text){foreach($c in $Parent.Controls){if($c.Text -eq $Text){return $c};$found=Find-Control $c $Text;if($found){return $found}}}
 function Find-Type($Parent,[type]$Type){foreach($c in $Parent.Controls){if($c -is $Type){$c};Find-Type $c $Type}}
 $global:step=0;$global:failure='';$clock=[Diagnostics.Stopwatch]::StartNew();$global:clickedAt=0.0

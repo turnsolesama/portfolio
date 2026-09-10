@@ -23,7 +23,7 @@ $script:Ready=$false;Throws {Get-UnifiedPlan 'upstream' $rules} '固定入口';$
 $script:Profiles.Routing.UnifiedMode='system'
 Check ((Get-UnifiedPlan 'upstream' $rules).Entrance -eq 'upstream') 'Existing system mode remains opt-in compatible'
 $script:Profiles.Routing.UnifiedMode='gateway'
-$exe=Join-Path $env:PROXY_SWITCH_DATA_DIR 'Fixture.exe';[void][IO.Directory]::CreateDirectory($env:PROXY_SWITCH_DATA_DIR);[IO.File]::WriteAllText($exe,'fixture only')
+$exe=Join-Path $env:PROXY_SWITCH_DATA_DIR 'Fixture.exe';[void][IO.Directory]::CreateDirectory($env:PROXY_SWITCH_DATA_DIR);[IO.File]::WriteAllText((Join-Path $env:PROXY_SWITCH_DATA_DIR 'ui-settings.json'),'{"CloseToTray":false}');[IO.File]::WriteAllText($exe,'fixture only')
 $rules.launchEntries=@([pscustomobject]@{path=$exe;route='Direct';adapter='chromium'})
 function Get-RoutingSnapshot {$rules}
 function Get-SystemSnapshot {[pscustomobject]@{Flags=3;Server='127.0.0.1:18081';Bypass='localhost'}}

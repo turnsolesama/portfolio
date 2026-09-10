@@ -68,3 +68,10 @@
 - RuntimeSupport.ps1 统一解析运行组件。现有独立内核副本优先保留，新电脑先检查随包标准内核是否受处理器支持，不支持时使用兼容内核；健康检测从 Windows 绝对路径启动 curl。Test-RuntimeBundle.ps1 使用隔离目录、空 PATH、真实内核和 Windows 写入桩；不得修改真实用户配置或 RunOnce。
 - 3.5.1 重载规则与回滚保留仍有效的内核当前备用选择，不能使无关程序回跳首选。检测进程不可用是未知状态，不能据此宣告全部失败。HTTP 健康检查验证 CONNECT 隧道。接替事件仅存本机 gateway/failover-events.json，限制 100 条，不记录目标网址、进程路径或凭据。检测成功不能等同于用户目标网站可用。
 - 界面可在同一轮显示刷新中传递 TcpRows 快照，包含 Listen/Established/SynSent；不保存为跨轮缓存。切换、健康检查和退出恢复的网络就绪判断必须实时读取。Test-StatusSnapshot.ps1 验证空快照、状态过滤和实时校验不复用旧快照。
+
+
+- 3.6 窗口默认关闭到 NotifyIcon 托盘，必须使用 Application.Run 保持隐藏窗口消息循环；托盘明确提供打开和停止服务并退出。ui-settings.json 属于本机私有设置，不能发布。同一数据目录再次启动只唤醒现有窗口；Windows 注销/关机不拦截为隐藏。
+- 独立内核恢复使用同一 supervisor，五分钟内最多三次，退避 1/2/4 秒；同时校验监听和控制接口。上游全失效只暂停出口，不因健康站点失败重启内核。恢复守护必须验证 supervisor 身份与新鲜心跳，最多给予 45 秒入口恢复时间；恢复 Windows 失败最多尝试三次，保留会话和提示。
+- 退出先实读验证仍归属本会话的 Windows 设置恢复，再请求 supervisor 停止当前 child。Supervisor 崩溃后的 child 必须同时核对 PID、父 PID、启动时间与 EXE 路径，不得只按文件名杀进程。生命周期日志只接受固定事件/原因码及数字，不记录原始 stdout/stderr、URL、程序路径或凭据；限制大小。
+- Google 登录诊断仅对固定 oauth2.googleapis.com/token 发出无凭据 HEAD 请求。区分本地入口、代理握手和 HTTPS 响应，任何 HTTP 响应不能等同登录成功。托管启动等待独立入口及已加载出口；普通启动只能诊断与提示，不声称刷新了应用环境或缓存。
+- 新验证：Test-LifecycleProtection.ps1（已纳入 Test-All）、node Test-Lifecycle.cjs <现有内核EXE>、Test-TrayLifecycle.ps1 -CorePath <现有内核EXE>、Test-SupervisorRecovery.ps1 -CorePath <现有内核EXE>。后三者使用真实隔离内核；Windows 设置使用桩。UI 旧回归通过 ui-settings.json 关闭驻留以正常清理测试窗口；托盘测试单独覆盖默认行为。

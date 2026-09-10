@@ -274,7 +274,7 @@ function Get-ProxyStatus($RoutingStatus=$null,$TcpRows=$null) {
     }
     $ready=$key -eq 'Direct'
     if($key -ne 'Direct'){$entry=$listeners | Where-Object {$_.Key -eq $key} | Select-Object -First 1;$ready=$(if($entry){$entry.Ready}else{$null})}
-    $live=@(Get-LiveConnections -TcpRows $TcpRows);$warnings=@(Get-ClientWarnings)+@(Get-OverrideWarnings $key)
+    $live=@(Get-LiveConnections -TcpRows $TcpRows);$warnings=@(Get-ClientWarnings)+@(Get-OverrideWarnings $key)+@(Get-EntryLifecycleWarnings $snapshot $envValues $listeners)
     $drift=($null -ne $selection -and $selection.Key -and $selection.Key -ne $key)
     $oldConnections=@($live | Where-Object {$_.Route -ne $key})
     # Historical intent is not evidence of the engine's live route.

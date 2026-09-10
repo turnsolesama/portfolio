@@ -12,6 +12,7 @@ $qaBackend=Join-Path $qaRoot 'ProxyBackend.ps1'
 $qaBackendText=[IO.File]::ReadAllText($qaBackend).Replace("'Local\UnifiedProxySwitch-'",("'Local\ProxySwitch-QA-"+[IO.Path]::GetFileName($qaRoot)+"-'"))
 [IO.File]::WriteAllText($qaBackend,$qaBackendText,(New-Object Text.UTF8Encoding($true)))
 $env:PROXY_SWITCH_DATA_DIR=Join-Path $qaRoot 'settings'
+[void][IO.Directory]::CreateDirectory($env:PROXY_SWITCH_DATA_DIR);[IO.File]::WriteAllText((Join-Path $env:PROXY_SWITCH_DATA_DIR 'ui-settings.json'),'{"CloseToTray":false}')
 $encoding=New-Object Text.UTF8Encoding($true)
 [IO.File]::WriteAllText((Join-Path $qaRoot 'port.txt'),'19081')
 [IO.File]::AppendAllText((Join-Path $qaRoot 'ProxyBackend.ps1'),@'
@@ -34,7 +35,7 @@ function Test-LocalProxyProtocol($Address,$Port,$Protocol){
 }
 function Get-ApplicationRoutes {[pscustomobject]@{Available=$false;RuleCount=0;Rows=@([pscustomobject]@{Name='CalabiYau';Path='';PIDs='30';Policy='Follow';Loaded=$false;Actual='入口外连接 ×3';Status='路径不可读，仅观察'})}}
 '@,$encoding)
-$path=Join-Path $qaRoot 'ProxyWindow.ps1';$text=[IO.File]::ReadAllText($path).Replace('$timer.Start();[void]$form.ShowDialog()','$form.Opacity=0;$form.ShowInTaskbar=$false;$timer.Start();[void]$form.ShowDialog()');[IO.File]::WriteAllText($path,$text,$encoding)
+$path=Join-Path $qaRoot 'ProxyWindow.ps1';$text=[IO.File]::ReadAllText($path).Replace('$timer.Start();[Windows.Forms.Application]::Run($form)','$form.Opacity=0;$form.ShowInTaskbar=$false;$timer.Start();[Windows.Forms.Application]::Run($form)');[IO.File]::WriteAllText($path,$text,$encoding)
 function Find-Type($Parent,[type]$Type){foreach($c in $Parent.Controls){if($c -is $Type){$c};Find-Type $c $Type}}
 $global:step=0;$global:failure='';$clock=[Diagnostics.Stopwatch]::StartNew()
 $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=250

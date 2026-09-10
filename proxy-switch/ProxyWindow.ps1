@@ -5,6 +5,11 @@ Add-Type -AssemblyName System.Drawing
 if(-not ('FlowSwitchDesktop' -as [type])){Add-Type -Path (Join-Path $PSScriptRoot 'DesktopBranding.cs')}
 [FlowSwitchDesktop]::Initialize()
 if(-not ('FlowSwitch.UI.Palette' -as [type])){Add-Type -Path (Join-Path $PSScriptRoot 'FlowTheme.cs') -ReferencedAssemblies System.Windows.Forms,System.Drawing}
+$script:WindowLease=$null
+if(-not $SmokeTest -and -not $Demo -and -not $PreviewPath){
+    $script:WindowLease=New-Object FlowSwitchWindowLease($script:DataRoot)
+    if(-not $script:WindowLease.IsPrimary){$script:WindowLease.Dispose();return}
+}
 [Windows.Forms.Application]::EnableVisualStyles()
 $script:Worker=$null;$script:LastState=$null;$script:LastApps=$null;$script:NextPoll=[DateTime]::MinValue
 $script:Controls=@();$script:RouteButtons=@{};$script:UiRoot=$PSScriptRoot
@@ -15,7 +20,7 @@ $muted=[Drawing.ColorTranslator]::FromHtml('#ADB6C4')
 $mint=[Drawing.ColorTranslator]::FromHtml('#ACC8F0')
 $paper=[Drawing.ColorTranslator]::FromHtml('#14171C')
 $form=New-Object Windows.Forms.Form
-$form.Text='流向 · 网络代理管家 | FlowSwitch 3.4.0'
+$form.Text='流向 · 网络代理管家 | FlowSwitch '+$script:ProductVersion
 $form.ClientSize=New-Object Drawing.Size(1260,840)
 $form.MinimumSize=New-Object Drawing.Size(1180,790)
 $form.StartPosition='CenterScreen';$form.AutoScaleMode='Dpi';$form.BackColor=$paper
@@ -69,7 +74,7 @@ $sideIcon=New-Object Windows.Forms.PictureBox;$sideIcon.SetBounds(22,28,42,42);$
 $null=New-Label $sidebar 'FlowSwitch' 20 84 150 30 17 $true
 $sideSubtitle=New-Label $sidebar '流向 · 网络代理管家' 22 118 150 24 9;$sideSubtitle.ForeColor=$muted
 $sectionLabel=New-Label $sidebar '工作空间' 24 158 130 25 9;$sectionLabel.ForeColor=$muted
-$sideFoot=New-Label $sidebar "每条连接，自由选择。`r`nFlowSwitch 3.4.0" 22 740 150 54 9;$sideFoot.ForeColor=$muted;$sideFoot.Anchor='Bottom,Left'
+$sideFoot=New-Label $sidebar ("每条连接，自由选择。`r`nFlowSwitch "+$script:ProductVersion) 22 740 150 54 9;$sideFoot.ForeColor=$muted;$sideFoot.Anchor='Bottom,Left'
 $sidebar.Add_SizeChanged({$sideFoot.Top=$sidebar.ClientSize.Height-84})
 $header=New-Object Windows.Forms.Panel;$header.Dock='Fill';$header.BackColor=$paper;$header.Margin=New-Object Windows.Forms.Padding(0,0,0,12)
 $layout.Controls.Add($header,0,0)
@@ -147,6 +152,7 @@ $toolsPage.Controls.Add($toolsGrid)
 $toolsBar=New-Object Windows.Forms.FlowLayoutPanel;$toolsBar.Dock='Fill';$toolsBar.WrapContents=$false;$toolsBar.Margin=New-Object Windows.Forms.Padding(0)
 $toolsGrid.Controls.Add($toolsBar,0,0)
 $null=New-Button $toolsBar '检测所选代理' 0 0 153 36 {if($networkChoice.SelectedItem -and $networkChoice.SelectedItem.Id -ne 'Direct'){Start-Work 'Diagnose' $networkChoice.SelectedItem.Id}else{Write-Activity '请先在上方选择一个代理。'}}
+$null=New-Button $toolsBar 'Google 登录诊断' 0 0 158 36 {Start-Work 'LoginDiagnostic' (Get-GatewayKey)}
 $null=New-Button $toolsBar '重载程序规则' 0 0 153 36 {Start-Work 'AppSync' ''}
 $null=New-Button $toolsBar '导出诊断报告' 0 0 170 36 {Export-Diagnostics}
 $clientBar=New-Object Windows.Forms.FlowLayoutPanel;$clientBar.Dock='Fill';$clientBar.WrapContents=$false;$clientBar.Margin=New-Object Windows.Forms.Padding(0)
@@ -363,7 +369,7 @@ function Show-ProxyCatalog {
     if($proxyList.Items.Count -eq 0 -and $script:DiscoveryStatus -ne '正在自动识别'){$proxyEmpty.Text='暂未识别到可用 HTTP / SOCKS5 入口。可重新检测，或手动填写地址与端口。'}
     $intro.Text='自动发现 · '+$script:DiscoveryStatus+'。识别代理与观察游戏连接均保留，线路切换由你控制。'
     $engineKey=Get-GatewayKey
-    if($script:Profiles.Routing.Adapter -eq 'standalone'){$engineLabel.Text='独立分流入口 · 自动接替 '+$(if($script:Profiles.Routing.Failover.Enabled){'已开启'}else{'已关闭'})+' · 关闭窗口时恢复网络';return}
+    if($script:Profiles.Routing.Adapter -eq 'standalone'){$engineLabel.Text='独立分流入口 · 自动接替 '+$(if($script:Profiles.Routing.Failover.Enabled){'已开启'}else{'已关闭'})+' · 托盘停止服务时恢复网络';return}
     $engineLabel.Text=$(if($engineKey){'分流引擎：'+(Get-RouteName $engineKey)+$(if($script:Profiles.Routing.UnifiedMode -eq 'gateway'){' · 固定入口模式：引擎保持运行，出口由你选择。'}else{' · 系统入口模式；可编辑引擎启用固定入口。'})}else{'分流引擎未配置：仅能切换系统代理。编辑本地引擎入口可启用程序分流。'})
 }
 function Export-Diagnostics {
@@ -438,9 +444,9 @@ function Show-State($State) {
     $envLabel.Text='本地监听 '+@($State.Listeners | Where-Object Ready).Count+' 个 · 变量'+$(if($State.EnvConflict){'存在冲突'}elseif($State.Aligned){'已同步'}else{'未完整设置'})
     $noticeLabel.Text='自动发现不改变网络选择；切换与程序分流照常使用。已有连接和启动器可能仍保留旧代理。'
     if(-not $State.EnvConflict -and -not $State.Aligned -and $State.EndpointReady -ne $false){$statusLabel.Text='系统入口已读取 · 命令行代理变量未完整设置';$statusLabel.ForeColor=$muted}
-    if($script:Profiles.Routing.Adapter -eq 'standalone'){$noticeLabel.Text='独立入口自动接替已启用；关闭窗口会先恢复 Windows 网络设置。旧连接由应用自行重连。'}
+    if($script:Profiles.Routing.Adapter -eq 'standalone'){$noticeLabel.Text='独立入口自动接替已启用；关闭窗口驻留托盘，入口继续运行；托盘菜单可停止服务。旧连接由应用自行重连。'}
     if(@($State.Warnings).Count){$noticeLabel.Text=$State.Warnings -join ' '}
-    if($State.EndpointReady -eq $false){$noticeLabel.Text='当前代理入口已退出。请先启动它，或选择仍可用的线路并统一切换；固定入口的引擎必须保持运行。'}
+    if($State.EndpointReady -eq $false){$noticeLabel.Text='当前代理入口未就绪。请先启动并等待就绪后重试登录；已有应用可能保留旧代理地址，保存工作后完整重开。'}
     if($script:ChoiceDirty){$noticeLabel.Text='下拉框是待应用目标；当前实际入口以上方卡片为准。'}
     if(-not $script:ChoiceDirty){$networkChoice.SelectedIndex=-1;for($i=0;$i -lt $networkChoice.Items.Count;$i++){if($networkChoice.Items[$i].Id -eq $State.NetworkKey){$networkChoice.SelectedIndex=$i;break}}}
     Show-ProxyCatalog;$checkedLabel.Text='最近读取 '+$State.CheckedAt
@@ -509,6 +515,7 @@ function Start-Work([string]$Kind,[string]$Key) {
                 'AppLaunch'{$result=Start-ManagedProgram $Key}
                 'AppReconnectPlan'{$result=Get-ApplicationReconnectPlan $Key}
                 'AppReconnect'{$result=Invoke-ApplicationReconnect ($Key | ConvertFrom-Json)}
+                'LoginDiagnostic'{$result=Test-LoginChain $Key}
                 'Diagnose'{
                     $result=@()
                     foreach($route in @($Key)){
@@ -525,8 +532,84 @@ function Start-Work([string]$Kind,[string]$Key) {
     [void]$ps.AddScript($code.ToString()).AddArgument($script:UiRoot).AddArgument($Kind).AddArgument($Key).AddArgument($script:DataRoot).AddArgument($scan).AddArgument($automatic).AddArgument(@($script:DiscoveryCache)).AddArgument($progress).AddArgument($cancellation.Token)
     $script:Worker=[pscustomobject]@{PowerShell=$ps;Handle=$ps.BeginInvoke();Kind=$Kind;Progress=$progress;Started=[DateTime]::Now;Cancellation=$cancellation}
 }
+
+# Hide only the window; its message loop, status worker, supervisor and watchdog remain alive.
+function Read-WindowPreferences {
+    $closeToTray=$true
+    try{$value=Get-Content -LiteralPath (Join-Path $script:DataRoot 'ui-settings.json') -Raw -Encoding UTF8|ConvertFrom-Json;if($value.CloseToTray -is [bool]){$closeToTray=$value.CloseToTray}}catch{}
+    [pscustomobject]@{CloseToTray=$closeToTray}
+}
+function Show-FlowWindow {
+    $form.ShowInTaskbar=$true;$form.Show();$form.WindowState='Normal';$form.Activate()
+    Write-LifecycleEvent 'window-shown' 'user-request'
+}
+function Request-FlowExit {
+    $script:ExitRequested=$true;$form.Close()
+}
+function Initialize-FlowTray {
+    $script:ExitRequested=$false;$script:TrayHintShown=$false;$script:LastLifecycleNotice=''
+    $script:WindowPreferences=Read-WindowPreferences
+    $script:TrayMenu=New-Object Windows.Forms.ContextMenuStrip
+    $script:TrayOpen=$script:TrayMenu.Items.Add('打开主界面');$script:TrayOpen.Add_Click({Show-FlowWindow})
+    $script:TrayMode=$script:TrayMenu.Items.Add('关闭窗口后驻留托盘');$script:TrayMode.CheckOnClick=$true;$script:TrayMode.Checked=$script:WindowPreferences.CloseToTray
+    $script:TrayMode.Add_CheckedChanged({
+        try{Write-LocalJson (Join-Path $script:DataRoot 'ui-settings.json') ([pscustomobject]@{CloseToTray=$script:TrayMode.Checked});$script:WindowPreferences.CloseToTray=$script:TrayMode.Checked}
+        catch{Write-Activity '托盘设置保存失败，本次使用原设置。'}
+    })
+    [void]$script:TrayMenu.Items.Add((New-Object Windows.Forms.ToolStripSeparator))
+    $script:TrayExit=$script:TrayMenu.Items.Add('停止代理服务并退出');$script:TrayExit.Add_Click({Request-FlowExit})
+    $script:Tray=New-Object Windows.Forms.NotifyIcon;$script:Tray.Icon=$form.Icon;$script:Tray.ContextMenuStrip=$script:TrayMenu
+    $script:Tray.Text='FlowSwitch '+$script:ProductVersion+' · 正在读取状态';$script:Tray.Visible=$true
+    $script:Tray.Add_DoubleClick({Show-FlowWindow});$script:Tray.Add_BalloonTipClicked({Show-FlowWindow})
+    Write-LifecycleEvent 'window-start' 'tray-ready'
+}
+function Update-LifecycleNotice {
+    if(-not $script:Tray){return}
+    $life=Get-GatewayLifecycle;$recovery=$null
+    try{$recovery=Get-Content -LiteralPath (Join-Path $script:DataRoot 'gateway\recovery-status.json') -Raw -Encoding UTF8|ConvertFrom-Json}catch{}
+    $description='状态读取中';$notice='';$key=''
+    if($script:LastState){$description=$(if($script:LastState.EndpointReady){'入口可连接'}else{'入口未就绪'})}
+    if($script:Profiles.Routing.Adapter -eq 'standalone'){
+        if($life.phase -eq 'restarting'){$description='内核恢复中';$notice='内核意外停止，正在限次重启。入口恢复前请暂停登录。';$key='restarting-'+$life.attempt}
+        elseif($life.phase -eq 'failed'){$description='内核恢复失败';$notice='内核恢复失败，正在尝试恢复本会话代理设置。已有应用可能保留旧地址；请打开主界面检查，保存工作后重开应用。';$key='failed-'+$life.startedAt}
+        elseif($script:LastApps.EffectiveDefaultRoute -eq 'Blocked'){$description='出口已暂停';$notice='全部上游不可用，出口已暂停。入口仍在运行，不会自动切到直连。';$key='blocked'}
+        if($recovery.phase -eq 'restore-failed'){$description='设置恢复失败';$notice='网络设置或内核停止尚未通过校验。请打开主界面处理；会话记录已保留，请勿删除数据目录。';$key='restore-failed-'+$recovery.at}
+    }
+    if($recovery.phase -eq 'restored' -and $life.phase -eq 'failed'){$description='代理设置已恢复';$notice='内核恢复失败后，本会话代理设置已恢复。已运行应用仍可能缓存旧地址，请保存工作后完整重开应用。';$key='restored-'+$recovery.at}
+    if(-not $notice -and $script:LastState.EndpointReady -eq $false -and $script:Profiles.Routing.Adapter -eq 'standalone'){$description='固定入口未就绪';$notice='固定入口不可用。请先启动独立分流并等待就绪，再重试登录。恢复设置不会刷新已有应用缓存的代理地址。';$key='entry-unavailable'}
+    $script:Tray.Text='FlowSwitch '+$script:ProductVersion+' · '+$description
+    if($notice -and $key -ne $script:LastLifecycleNotice){
+        $script:LastLifecycleNotice=$key;Write-Activity $notice
+        $script:Tray.ShowBalloonTip(8000,'FlowSwitch 需要关注',$notice,[Windows.Forms.ToolTipIcon]::Warning)
+    }
+    if(-not $notice){$script:LastLifecycleNotice=''}
+}
+function Invoke-FlowWindowClose($Event) {
+    if($PreviewPath -or $SmokeTest -or $Demo){return}
+    if($Event.CloseReason -eq [Windows.Forms.CloseReason]::UserClosing -and -not $script:ExitRequested -and $script:WindowPreferences.CloseToTray){
+        $Event.Cancel=$true;$form.Hide();$form.ShowInTaskbar=$false
+        Write-LifecycleEvent 'window-hidden' 'tray-resident'
+        if(-not $script:TrayHintShown){$script:TrayHintShown=$true;$script:Tray.ShowBalloonTip(5000,'流向仍在后台运行','代理入口继续运行。双击托盘图标可打开；右键可停止代理服务并退出。',[Windows.Forms.ToolTipIcon]::Info)}
+        return
+    }
+    if($script:Worker -and $script:Worker.Kind -ne 'Status'){$Event.Cancel=$true;$script:ExitRequested=$false;Show-FlowWindow;Write-Activity '正在完成网络操作，完成后再停止服务。';return}
+    try{
+        if(Test-Path -LiteralPath (Get-IndependentSessionPath)){
+            $session=Get-Content -LiteralPath (Get-IndependentSessionPath) -Raw -Encoding UTF8|ConvertFrom-Json
+            if($session.OwnerPID -eq $PID){Restore-IndependentSession}
+        }
+        Write-LifecycleEvent 'window-stop' 'explicit-or-system-close'
+    }catch{
+        $Event.Cancel=$true;$script:ExitRequested=$false;Show-FlowWindow
+        Write-Activity ('停止服务尚未完成，窗口与会话记录保留：'+$_.Exception.Message)
+        $script:Tray.ShowBalloonTip(8000,'停止服务未完成','请查看主界面恢复结果。尚未确认停止，不会假报已退出。',[Windows.Forms.ToolTipIcon]::Error)
+    }
+}
+
 $timer=New-Object Windows.Forms.Timer;$timer.Interval=150
 $timer.Add_Tick({
+    if($script:WindowLease -and $script:WindowLease.ConsumeWake()){Show-FlowWindow}
+    if(-not $script:NextLifePoll -or [DateTime]::UtcNow -ge $script:NextLifePoll){Update-LifecycleNotice;$script:NextLifePoll=[DateTime]::UtcNow.AddSeconds(2)}
     if($script:Worker -and $script:Worker.Kind -ne 'Status'){
         $message='';while($script:Worker.Progress.TryDequeue([ref]$message)){Write-Activity $message}
         $checkedLabel.Text='操作进行中 · '+[int]([DateTime]::Now-$script:Worker.Started).TotalSeconds+' 秒'
@@ -560,6 +643,7 @@ $timer.Add_Tick({
                         try{if([Windows.Forms.MessageBox]::Show($form,('将关闭「'+[IO.Path]::GetFileName($plan.path)+'」的 '+$number+' 条旧线路连接，让应用有机会重新连接。进行中的对话、下载或登录可能中断；不会退出应用，也不会关闭其他程序的连接。是否继续？'),'确认重连旧连接','OKCancel','Warning') -eq 'OK'){$script:PendingAction=[pscustomobject]@{Kind='AppReconnect';Key=($plan | ConvertTo-Json -Depth 6 -Compress)}}}finally{$script:DialogOpen=$false}
                     }
                 }
+                elseif($reply.Kind -eq 'LoginDiagnostic'){Write-Activity $reply.Result.Message;$tabs.SelectedTab=$toolsPage}
                 elseif($reply.Kind -eq 'Diagnose'){Write-Activity (Format-Diagnostics $reply.Result);$tabs.SelectedTab=$toolsPage}
                 elseif($reply.Kind -notin @('Status','Discover')){
                     Write-Activity $reply.Result.Message
@@ -596,23 +680,10 @@ $timer.Add_Tick({
     }
     if(-not $script:Worker -and -not $script:MenuOpen -and -not $script:DialogOpen -and $autoRefresh.Checked -and [DateTime]::Now -ge $script:NextPoll){Start-Work 'Status' ''}
 })
-$form.Add_FormClosing({
-    if($script:Worker -and $script:Worker.Kind -in @('Switch','Restore','AppRoute','AppSync','AppLaunch','AppReconnect')){
-        $_.Cancel=$true
-        Write-Activity '正在完成设置与校验，请稍候再关闭，以便失败时能恢复原配置。'
-    }
-})
-$form.Add_FormClosing({
-    if($PreviewPath -or $SmokeTest -or $Demo){return}
-    if($script:Worker -and $script:Worker.Kind -ne 'Status'){$_.Cancel=$true;Write-Activity '正在完成网络操作，完成后再退出。';return}
-    try{
-        if(Test-Path -LiteralPath (Get-IndependentSessionPath)){
-            $s=Get-Content -LiteralPath (Get-IndependentSessionPath) -Raw -Encoding UTF8|ConvertFrom-Json
-            if($s.OwnerPID -eq $PID){Restore-IndependentSession}
-        }
-    }catch{$_.Cancel=$true;Write-Activity ('退出恢复未完成，分流入口继续运行：'+$_.Exception.Message)}
-})
+$form.Add_FormClosing({Invoke-FlowWindowClose $_})
 $form.Add_FormClosed({
+    if($script:Tray){$script:Tray.Visible=$false;$script:Tray.Dispose();$script:TrayMenu.Dispose()}
+    if($script:WindowLease){$script:WindowLease.Dispose();$script:WindowLease=$null}
     $timer.Stop()
     if($script:Worker){$script:Worker.Cancellation.Cancel();$script:Worker.PowerShell.Stop();$script:Worker.PowerShell.Dispose();$script:Worker.Cancellation.Dispose();$script:Worker=$null}
     $timer.Dispose()
@@ -662,7 +733,8 @@ if($PreviewPath){
     return
 }
 if($SmokeTest){$form.Opacity=0;$form.ShowInTaskbar=$false}
-Write-Activity '自动发现代理与程序连接观察已开启；发现结果只补充代理列表，不改系统入口或程序规则。'
+Write-Activity '关闭窗口默认驻留系统托盘；停止服务后，已运行应用可能仍需重开。自动发现代理与程序连接观察已开启；发现结果只补充代理列表，不改系统入口或程序规则。'
 $form.Add_Shown({if(-not $SmokeTest -and -not $PreviewPath -and -not $Demo -and $script:Profiles.Routing.Adapter -eq 'standalone'){Start-Work 'Independent' ''}})
-$timer.Start();[void]$form.ShowDialog();$form.Dispose()
+if(-not $SmokeTest -and -not $Demo){Initialize-FlowTray}
+$timer.Start();[Windows.Forms.Application]::Run($form);$form.Dispose()
 if($SmokeTest){if($script:SmokeFailed){throw 'UI worker smoke test failed'};Write-Output 'PASS: UI background status worker completed.'}

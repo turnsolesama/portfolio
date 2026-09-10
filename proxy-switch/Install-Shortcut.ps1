@@ -34,7 +34,9 @@ try{
         $link.TargetPath=$LauncherPath;$link.Arguments='--data-directory '+$quotedDataDirectory
         $link.WorkingDirectory=[IO.Path]::GetDirectoryName($LauncherPath)
     }
-    $link.Description='FlowSwitch 3.4.0 · 流向：管理自定义代理，一键统一切换，按程序指定线路。'
+    $versionText=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Preferences.ps1'))
+    $version=[regex]::Match($versionText,"ProductVersion='([0-9.]+)'").Groups[1].Value
+    $link.Description='FlowSwitch '+$version+' · 流向：关闭窗口驻留托盘；通过托盘停止服务。'
     $icon=Join-Path $PSScriptRoot 'assets\FlowSwitch.ico'
     if(Test-Path -LiteralPath $icon){$link.IconLocation=$icon+',0'}
     $link.Save()

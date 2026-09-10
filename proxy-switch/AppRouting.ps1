@@ -1,5 +1,5 @@
 ﻿$script:AppRouterRoot=$PSScriptRoot
-function Invoke-AppRouter($Request) {
+function Invoke-AppRouter($Request,[int]$TimeoutMilliseconds=55000) {
     $psi=New-Object Diagnostics.ProcessStartInfo
     $psi.FileName=Get-NodeRuntimePath
     $psi.Arguments='"' + (Join-Path $script:AppRouterRoot 'AppRouter.cjs') + '"'
@@ -15,7 +15,7 @@ function Invoke-AppRouter($Request) {
         $outTask=$proc.StandardOutput.ReadToEndAsync();$errTask=$proc.StandardError.ReadToEndAsync()
         $inputBytes=[Text.Encoding]::UTF8.GetBytes(($Request | ConvertTo-Json -Depth 5 -Compress))
         $proc.StandardInput.BaseStream.Write($inputBytes,0,$inputBytes.Length);$proc.StandardInput.BaseStream.Flush();$proc.StandardInput.Close()
-        if(-not $proc.WaitForExit(55000)){
+        if(-not $proc.WaitForExit($TimeoutMilliseconds)){
             # Do not kill a writer in the middle of rollback. Read-only requests are safe to stop.
             if($Request.action -eq 'status'){$proc.Kill()}
             throw '程序规则操作超时，请等待后台操作完成后刷新，勿重复切换。'
