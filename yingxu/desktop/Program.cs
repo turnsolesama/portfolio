@@ -204,7 +204,11 @@ namespace YingXu.Desktop
             var bar = new StatusStrip { BackColor = Color.FromArgb(246, 247, 245), ForeColor = Color.FromArgb(104, 115, 108), SizingGrip = true };
             status = new ToolStripStatusLabel("本地工作台 · 关闭窗口默认保留在托盘，可从设置调整") { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
             bar.Items.Add(status);
-            zoomStatus=new ToolStripStatusLabel("界面 100%") { IsLink=true,ToolTipText="点击恢复界面 100%" };
+            zoomStatus=new ToolStripStatusLabel("界面 100%") {
+                IsLink=true,ToolTipText="点击恢复界面 100%",LinkBehavior=LinkBehavior.HoverUnderline,
+                LinkColor=bar.ForeColor,VisitedLinkColor=bar.ForeColor,
+                ActiveLinkColor=Color.FromArgb(79,113,92)
+            };
             zoomStatus.Click+=delegate { if(web!=null&&!web.IsDisposed&&web.CoreWebView2!=null){web.ZoomFactor=1.0;UpdateZoomStatus();} };
             bar.Items.Add(zoomStatus);
             Controls.Add(bar);
