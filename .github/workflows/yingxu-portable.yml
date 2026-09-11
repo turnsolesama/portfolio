@@ -64,7 +64,12 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tag = 'yingxu-v0.4.2'
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
-          if ($LASTEXITCODE -eq 0) { Write-Output 'Release already exists; verified build finished, preserving published assets'; exit 0 }
+          $taskExistingDraft = $false
+          if ($LASTEXITCODE -eq 0) {
+            $taskIsDraft = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
+            if ($taskIsDraft -ne 'true') { Write-Output 'Published release preserved'; exit 0 }
+            $taskExistingDraft = $true
+          }
           @'
           完整解压后双击 YingXu.exe。自带锁定 Python、Pillow、FFmpeg 和 WebView2，无新增依赖或模型。
           
@@ -72,7 +77,11 @@ jobs:
           
           更新前保存文稿，从托盘退出映序，运行旧目录Stop-YingXu.ps1，再完整解压新版。保留原项目和应用数据目录。发布附件经过完整下载、SHA-256与隔离运行验证；历史版本保留。
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/release-notes.md"
+          if ($taskExistingDraft) {
+            gh release upload $tag releases/YingXu-v0.4.2-Windows-x64.zip releases/YingXu-v0.4.2-SHA256.txt releases/YingXu-v0.4.2-manifest.json releases/YingXu-v0.4.2-verification.json --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
           gh release create $tag releases/YingXu-v0.4.2-Windows-x64.zip releases/YingXu-v0.4.2-SHA256.txt releases/YingXu-v0.4.2-manifest.json releases/YingXu-v0.4.2-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.4.2 · 分类粘贴、离线画板与窗口前置' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
+          }
           if ($LASTEXITCODE) { throw 'Draft upload failed' }
           gh release download $tag --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/published-check"
           if ($LASTEXITCODE) { throw 'Draft download failed' }
@@ -81,5 +90,4 @@ jobs:
           if ($zip.Length -ne $manifest.bytes -or (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower() -ne $manifest.sha256) { throw 'Downloaded asset differs' }
           python tools/verify_release.py $zip.FullName
           if ($LASTEXITCODE) { throw 'Downloaded asset failed verification' }
-          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest=false
-          if ($LASTEXITCODE) { throw 'Publish failed' }
+          Write-Output 'Windows draft downloaded and verified; publish after all platform assets are ready.'
