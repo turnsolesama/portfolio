@@ -1,0 +1,9 @@
+{
+  "deno": {
+    "version": "2.9.6",
+    "url": "https://github.com/denoland/deno/releases/download/v2.9.6/deno-x86_64-pc-windows-msvc.zip",
+    "sha256": "15e5300b0ba3c3695a7621d90160a746ec9e710228cee639afa9d580f6e3cd11",
+    "license": "MIT",
+    "source": "https://github.com/denoland/deno/tree/v2.9.6"
+  }
+}

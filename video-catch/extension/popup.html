@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>拾影 VideoCatch</title><link rel="stylesheet" href="popup.css"></head>
+<body><span class="eyebrow">VIDEOCATCH / 浏览器连接</span><h1>拾影</h1><p>发现视频，把原画留在本地。</p>
+<label for="token">桌面程序配对码</label><input id="token" type="password" autocomplete="off" placeholder="点击桌面程序「复制配对码」">
+<label for="name">浏览器名称（用于区分来源）</label><input id="name" placeholder="例如：Edge · 工作">
+<button id="connect">连接 / 刷新标签页</button><p id="status" role="status">等待连接</p>
+<ol><li>打开 0.3.0 桌面程序并复制配对码。</li><li>粘贴到这里，点击连接。</li><li>在桌面程序左侧单击视频页面，再点「开始监听」。</li><li>回网页刷新并播放；在桌面右侧选中视频，点「保存所选视频」。</li></ol>
+<small>扩展文件夹必须保留在固定位置，导入后不要移动或删除。程序与扩展升级时请一起更新。</small>
+<small>配对码在桌面程序重启后更换。浏览器扩展仅连接本机；视频不会上传。页面需要继续产生媒体请求，已缓存内容需刷新。不会读取无痕标签页。</small>
+<script src="popup.js"></script></body></html>
