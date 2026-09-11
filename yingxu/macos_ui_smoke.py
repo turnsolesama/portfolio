@@ -53,7 +53,7 @@ def run():
                 assert window.run_js('state.tabs[0].dirty === true')
                 result['checks'].append('Native close prompts for dirty draft; cancel preserves draft and window')
                 window.run_js("(async () => { const n=await api('/api/items',{method:'POST',body:{project_id:state.tabs[0].item.project_id,category:'unclassified',name:'离线画板',format:'excalidraw'}}); await openItem(n.id); return true; })()")
-                wait(lambda:window.run_js("Boolean(document.querySelector('iframe[title=\"Excalidraw 画板\"]')?.contentWindow?.yingxuCanvas)"))
+                wait(lambda:window.run_js("Boolean(document.querySelector('iframe[title=\"Excalidraw 画板\"]')?.contentDocument?.querySelector('canvas'))"))
                 scene=window.run_js("document.querySelector('iframe[title=\"Excalidraw 画板\"]').contentWindow.yingxuCanvas.getValue()")
                 scene=json.loads(scene)
                 assert scene['type']=='excalidraw' and scene['version']==2 and isinstance(scene['elements'],list)
