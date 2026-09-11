@@ -61,7 +61,7 @@ class ArchiveTests(unittest.TestCase):
     def test_legacy_chinese_names_are_decoded(self):
         class LegacyInfo(zipfile.ZipInfo):
             def _encodeFilenameFlags(self):
-                return self.filename.encode('gb18030'), self.flag_bits
+                return self.filename.encode('gb18030'), self.flag_bits & ~0x800
         path=self.make_zip([(LegacyInfo('第一集/中文.md'),'legacy')])
         result=import_zip(self.app.store,path,self.pid,'scripts')
         destination=Path(self.app.organize.get_folder(result['folder_id'])['path'])

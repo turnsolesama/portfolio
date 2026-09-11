@@ -159,5 +159,5 @@ def import_zip(store, path, pid, category, folder_id=None, name=None, progress=l
                     except Exception as error:
                         raise UserError(f'文件已完整解压至「{target.name}」，索引未完成；请点击同步项目文件。') from error
                     return {'done':done,'skipped':skipped,'folder_id':ids[()],'name':target.name}
-    except (zipfile.BadZipFile, EOFError, struct.error, RuntimeError, zlib.error) as error:
+    except (zipfile.BadZipFile, EOFError, struct.error, RuntimeError, zlib.error, UnicodeError) as error:
         raise UserError('ZIP 文件损坏或使用了暂不支持的格式，未完成解压。') from error
