@@ -1,5 +1,15 @@
 # 映序 Windows 发布包
 
+## 0.4.2：分类粘贴、离线画板与窗口前置
+
+| 平台 | 下载 | 大小 | SHA-256 |
+| --- | --- | --- | --- |
+| Windows x64 | [完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.2/YingXu-v0.4.2-Windows-x64.zip) | 447764752 字节 | `14557aa56ac7a60f4b0e17b1973d22ba91fcb43436f6f4850f32bea78b37c249` |
+| macOS 14+ Apple Silicon 试用版 | [0.4.2-mac.1](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.2/YingXu-v0.4.2-mac.1-macOS-arm64.zip) | 76202136 字节 | `6078432e20a745b4378868e32aab7c54a4a9ea9a26d3a44b9fcfcf209334240c` |
+
+全选或多选后点击资源区空白处取消选择。新增未分类与分类内粘贴，右键新建文件夹/笔记/Excalidraw 画板。画板离线编辑，保留保存备份和冲突检查。Windows 统一处理打开文件夹和定位文件的前置请求。macOS 包未公证，不支持 Intel Mac。
+
+
 当前完整版 **0.4.1**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
