@@ -48,7 +48,7 @@ test('pending submission is sent once even with repeated clicks',async()=>{
 });
 test('context menu acts on selected group or only the unselected clicked resource',async()=>{
   for(const id of ['a','b']){const s=setup();s.state.selectedIds=new Set(['a']);await s.runMenu('batch-status',{id});assert.equal(s.dialogs.length,1);assert.match(s.dialogs[0].body,/id="batchStatus"[^>]*autofocus/);await s.dialogs[0].onSubmit({status:'待审核'});assert.deepEqual(Array.from(s.writes()[0].body.ids),[id]);}
-  const s=setup();s.showMenu(s.node('anchor'),'item','a');assert.match(s.node('#resourceMenu').innerHTML,/批量添加标签/);assert.match(s.node('#resourceMenu').innerHTML,/批量修改制作状态/);
+  const s=setup();s.showMenu(s.node('anchor'),'item','a');assert.match(s.node('#resourceMenu').innerHTML,/添加标签（2 项）/);assert.match(s.node('#resourceMenu').innerHTML,/修改状态（2 项）/);
 });
 
 

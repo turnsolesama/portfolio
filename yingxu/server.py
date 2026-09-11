@@ -55,12 +55,14 @@ class Application:
         self.resource_groups=ResourceGroups(self.store)
         from yingxu.markdown_assets import MarkdownAssets
         self.markdown_assets=MarkdownAssets(self.store)
+        from yingxu.maintenance import Maintenance
+        self.maintenance=Maintenance(self.store)
 
     def bootstrap(self):
         return {'app':'yingxu','version':__version__,'token':self.token,'settings':self.settings.get(),
           'project_root':str(self.store.project_root),'data_root':str(self.store.data_root),
           'categories':[{'key':k,'label':v[0]} for k,v in CATEGORIES.items()], 'statuses':STATUSES,
-          'capabilities':{'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True,'global_search':True,'resource_groups':True}}
+          'capabilities':{'lazy_markdown':True,'document_search':True,'maintenance':True,'thumbnails':image_support(), 'image_thumbnails':image_support(),'ffmpeg':bool(self.thumbnails.ffmpeg),'docx_edit':True,'native_picker':os.name=='nt','skills':True,'project_context':True,'folders':True,'trash':True,'move_files':True,'trash_delete':True,'settings':True,'external_open':True,'project_library':True,'global_search':True,'resource_groups':True}}
 
     def changed(self,project_id=None):
         with self.store.connection() as db:
@@ -372,6 +374,12 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/bootstrap':return self.json(self.app.bootstrap())
                 if path=='/api/settings':return self.json(self.app.settings.get())
                 if path=='/api/project-library':return self.json(self.app.project_library.snapshot())
+                if path=='/api/markdown-assets/file-link':
+                    if set(query)-{'note','item'}:raise UserError('文件链接仅接受笔记与素材 ID。')
+                    return self.json(self.app.markdown_assets.file_link(query.get('note',''),query.get('item','')))
+                if path=='/api/markdown-assets/resolve-file':
+                    if set(query)-{'note','path'}:raise UserError('文件链接仅接受笔记 ID 与相对路径。')
+                    return self.json(self.app.markdown_assets.resolve_file(query.get('note',''),query.get('path','')))
                 if path=='/api/markdown-assets/link':
                     if set(query)-{'note','image'}:raise UserError('图片引用仅接受笔记与素材 ID。')
                     return self.json(self.app.markdown_assets.link(query.get('note',''),query.get('image','')))
@@ -434,6 +442,8 @@ class Handler(BaseHTTPRequestHandler):
                     if self.command=='PATCH':return self.json(self.app.resource_groups.rename(group[1],data))
                     if self.command=='DELETE':return self.json(self.app.resource_groups.dissolve(group[1],data))
                 raise UserError('接口或请求方式不存在。',404)
+            if self.command=='POST' and path=='/api/maintenance/preview':return self.json(self.app.maintenance.preview(data))
+            if self.command=='POST' and path=='/api/maintenance/cleanup':return self.json(self.app.maintenance.execute(data))
             if self.command=='PATCH' and path=='/api/settings':return self.json(self.app.settings.update(data))
             library_folder=re.fullmatch(r'/api/project-folders/([a-f0-9]{32})',path)
             if library_folder:

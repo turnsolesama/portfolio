@@ -150,3 +150,12 @@ DOCX content 保留 paragraphs/content/notice，并增加 blocks（paragraph/tab
 ## 0.4.1 SVG兼容
 
 SVG内容notice包含本次静态预览省略的装饰效果提示；内容与媒体均用相同净化结果。filter装饰省略，stroke-dasharray降级实线；不放宽脚本、外链、事件或动画边界。
+
+## 0.4.4 文档搜索、文件链接与维护
+
+- Ctrl+F 按焦点选择范围：编辑区搜索当前文档草稿，资源区搜索当前分类/文件夹；Ctrl+K 保持跨项目搜索。文内查找采用字面文本，不执行正则；最多扫描 200 万字符、显示 1 万个匹配，并提示限额。Word 预览和编辑每页最多 40 段，查找可跳到其他页且保留草稿。
+- `GET /api/markdown-assets/file-link?note=ID&item=ID` 返回 `{markdown,relative_path,item_id}`。使用标准相对 Markdown 链接，附 `#yx-item=ID`；链接目标改名或移动后，映序优先按登记 ID 解析。
+- `GET /api/markdown-assets/resolve-file?note=ID&path=RELATIVE` 返回 `{id,project_id,name,kind}`。校验笔记和目标均为同项目内登记存活的独立文件，并检查路径边界；非法/已删除/他项目 ID 不回退。首次版本不为外部独立文稿建立本地文件链接。
+- `POST /api/maintenance/preview` 接收 `include_cache`、`include_versions`、`keep_versions`、`older_than_days`，返回容量分组、可清理数量、5 分钟一次性 token、truncated 与 warnings。默认只选缓存，历史不自动清理。
+- `POST /api/maintenance/cleanup {token}` 只处理本次预览绑定的候选，执行前复验身份；原稿、数据库和数据库备份不进入候选，每篇至少保留最新历史。扫描超出 2 万入口或 3 秒时拒绝清理；返回 removed_files/removed_bytes/skipped_files/warnings。前端改变选项或离开弹窗时不得复用旧确认。
+- 画板 iframe 挂载到固定宿主，标签切换隐藏而不重载；关闭标签销毁。只在场景内容版本变化后合并序列化，保存/关闭同步读取最终内容。字体仅使用本地来源。Markdown 编辑器首次打开需要时才载入本地 bundle。

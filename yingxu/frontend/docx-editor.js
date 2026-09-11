@@ -40,7 +40,15 @@
     const key=event=>{if(event.key==='Enter'&&event.target.matches('[data-docx-page-input]')){event.preventDefault();goTo(Number(event.target.value)-1);}};
     for(const [type,listener] of [['input',input],['compositionstart',start],['compositionend',end],['click',click],['keydown',key]])parent.addEventListener(type,listener);
     draw();
-    return {getPage:()=>current,isComposing:()=>composing,goTo,destroy(){if(disposed)return;disposed=true;cancelResize();for(const [type,listener] of [['input',input],['compositionstart',start],['compositionend',end],['click',click],['keydown',key]])parent.removeEventListener(type,listener);}};
+    function clearSearch(){for(const node of parent.querySelectorAll('.docx-search-current'))node.classList.remove('docx-search-current');}
+    function revealMatch({segmentIndex,from,to},{focus=true}={}){
+      if(!Number.isInteger(segmentIndex)||segmentIndex<0||segmentIndex>=paragraphs.length)return false;
+      if(!goTo(Math.floor(segmentIndex/PAGE_SIZE)))return false;
+      const editor=parent.querySelector(`[data-docx-index="${segmentIndex}"]`);if(!editor)return false;
+      clearSearch();editor.closest('.docx-paragraph').classList.add('docx-search-current');
+      if(focus)editor.focus();editor.setSelectionRange(Math.max(0,from),Math.min(editor.value.length,to));editor.scrollIntoView({block:'center'});return true;
+    }
+    return {getPage:()=>current,isComposing:()=>composing,goTo,revealMatch,clearSearch,destroy(){if(disposed)return;disposed=true;cancelResize();for(const [type,listener] of [['input',input],['compositionstart',start],['compositionend',end],['click',click],['keydown',key]])parent.removeEventListener(type,listener);}};
   }
   scope.YingXuDocxEditor={mount,PAGE_SIZE};
   if(typeof module!=='undefined')module.exports={mount,PAGE_SIZE};

@@ -1,7 +1,7 @@
 {
   "file": "live-markdown.js",
-  "bytes": 518373,
-  "sha256": "41870dc1c15bd692ccb7280d67c0e9eb8a9b6aea67e8e03a3807b489ce117cad",
+  "bytes": 521057,
+  "sha256": "edfeca71bd00cc13e1ed02f5ea8b0ffd8249d0d57a7bc5088290911f411caa62",
   "dependencies": [
     {
       "name": "@codemirror/autocomplete",

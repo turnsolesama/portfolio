@@ -63,7 +63,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.4.3'
+    assert health['version'] == '0.4.4'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -156,6 +156,32 @@ def check_server(port, data, projects):
     second_item = request(port, 'POST', '/api/items', {'project_id': second['id'], 'category': 'scripts', 'name': '搜索文稿', 'content': '# 合成文稿\n跨项目验收令牌'}, token)
     search = request(port, 'GET', '/api/search?' + urlencode({'q': '跨项目验收令牌', 'limit': 20}))
     assert any(result['type'] == 'item' and result['id'] == second_item['id'] and result['project_id'] == second['id'] for result in search['results'])
+    # Exercise the new routes from the extracted package without modifying notes.
+    file_link = request(port, 'GET', '/api/markdown-assets/file-link?' + urlencode({
+        'note': item['id'], 'item': companion['id']}))
+    assert file_link['item_id'] == companion['id']
+    destination = file_link['relative_path'] + '#yx-item=' + companion['id']
+    assert file_link['markdown'].startswith('[') and destination in file_link['markdown']
+    for relative in (destination, file_link['relative_path']):
+        resolved = request(port, 'GET', '/api/markdown-assets/resolve-file?' + urlencode({
+            'note': item['id'], 'path': relative}))
+        assert resolved['id'] == companion['id'] and resolved['project_id'] == project['id']
+        assert set(resolved) == {'id', 'project_id', 'name', 'kind'}
+    assert bootstrap['capabilities']['maintenance'] is True
+    # Explicitly deselect both ranges: even a populated synthetic history has
+    # zero candidates. This verifies execution wiring without deleting files.
+    maintenance = request(port, 'POST', '/api/maintenance/preview',
+                          {'include_cache': False, 'include_versions': False}, token)
+    assert maintenance['token'] and not maintenance['truncated']
+    assert maintenance['reclaimable_files'] == 0 and maintenance['reclaimable_bytes'] == 0
+    assert all(group['reclaimable_files'] == 0 for group in maintenance['groups'])
+    cleaned = request(port, 'POST', '/api/maintenance/cleanup', {'token': maintenance['token']}, token)
+    assert cleaned['removed_files'] == 0 and cleaned['removed_bytes'] == 0
+    assert cleaned['skipped_files'] == 0 and cleaned['warnings'] == []
+    for original_path, original_bytes, _, _ in originals.values():
+        assert original_path.read_bytes() == original_bytes
+    assert external_path.read_bytes() == b'\xef\xbb\xbf# External\r\nEdited\r\n'
+    assert all(path.is_file() for path in backups)
     with socket.socket() as connection:
         connection.connect(('127.0.0.1', port))
     return ['health version and data identity', 'configured data/projects roots', 'empty projects and SKILL library',
@@ -163,6 +189,8 @@ def check_server(port, data, projects):
             'cross-category group create/list/atomic transfer/remove/dissolve preserves file paths, bytes and categories',
             'batch tags append without replacing individual tags and batch status preserves original file bytes',
             'global search finds indexed document content across projects',
+            'project Markdown file-link and stable/plain resolve routes preserve original notes',
+            'maintenance preview and zero-candidate cleanup preserve originals and history',
             'project rename preserves project root',
             'project classification subtree moves and returns to root without changing project records',
             'external Markdown saves original path with BOM/newlines, backup and no project import']
@@ -315,6 +343,22 @@ def main():
             assert (root / relative).is_file()
         assert not any('node_modules' in PurePosixPath(name).parts for name in names)
         checked.append('offline Markdown bundle SHA-256, stylesheet and licenses; no Node runtime')
+        for relative in ('frontend/document-search.js','frontend/document-search.css','frontend/document-links.js','yingxu/maintenance.py'):
+            assert (root / relative).is_file()
+        canvas_root = root / 'frontend/canvas'
+        canvas_manifest = json.loads((canvas_root / 'manifest.json').read_text(encoding='utf-8'))
+        expected_canvas = {'manifest.json'}
+        for member in canvas_manifest['files']:
+            relative = PurePosixPath(member['path'])
+            assert not relative.is_absolute() and '..' not in relative.parts
+            asset = canvas_root / relative
+            data_bytes = asset.read_bytes()
+            assert len(data_bytes) == member['bytes']
+            assert hashlib.sha256(data_bytes).hexdigest() == member['sha256']
+            expected_canvas.add(relative.as_posix())
+        assert expected_canvas == {file.relative_to(canvas_root).as_posix() for file in canvas_root.rglob('*') if file.is_file()}
+        assert (canvas_root / 'local-assets.js').is_file()
+        checked.append('all local canvas assets and fonts match SHA-256 manifest with no obsolete chunks')
         environment = os.environ.copy()
         environment.update(USERPROFILE=str(base / '空白用户'), LOCALAPPDATA=str(base / 'Local'),
                            APPDATA=str(base / 'Roaming'), YINGXU_DATA_DIR=str(base / '数据 覆盖'),

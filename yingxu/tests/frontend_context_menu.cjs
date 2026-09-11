@@ -23,12 +23,28 @@ function setup() {
   return {app:context.app,node,listeners,calls,event,element,context};
 }
 
+test('bulk menu labels use its captured selection and omit single-file rename',async()=>{
+  const s=setup();s.app.state.items=[{id:'a'},{id:'b'},{id:'c'}];s.app.state.selectedIds=new Set(['a','b']);
+  s.app.showMenu(s.element('unused','unused'),'item','a');const captured=s.app.state.menu;
+  const html=s.node('#resourceMenu').innerHTML;assert.match(html,/2 项/);assert.doesNotMatch(html,/重命名/);assert.match(html,/role="separator"/);
+  s.app.state.selectedIds=new Set(['c']);
+  vm.runInContext('batchPropertiesDialog=async ids=>calls.push(["batch",...ids]);',s.context);
+  await s.app.runMenu('batch-tags',captured);assert.deepEqual(JSON.parse(JSON.stringify(s.calls.at(-1))),['batch','a','b']);
+});
+
+test('blank-area creation order and busy disabled feedback stay consistent',()=>{
+  const s=setup();s.app.state.projectId='p';s.app.showMenu(s.element('unused','unused'),'location',{project_id:'p',category:'scripts'});
+  const html=s.node('#resourceMenu').innerHTML;
+  assert.ok(html.indexOf('新建笔记')<html.indexOf('新建文件夹'));assert.ok(html.indexOf('新建文件夹')<html.indexOf('新建画板'));assert.ok(html.indexOf('新建画板')<html.indexOf('粘贴文件'));
+  s.app.state.uploading=true;s.app.showMenu(s.element('unused','unused'),'location',{project_id:'p',category:'scripts'});assert.match(s.node('#resourceMenu').innerHTML,/disabled aria-disabled="true"/);
+});
+
 test('right click shows an action list and reveals clicked file without replacing the editor',async()=>{
   const s=setup();s.app.state.activeKey='file:editing';s.app.state.tabs=[{key:'file:editing',draft:'unsaved'}];
   const e=s.event(s.element('.resource-card[data-item],.resource-row[data-item]','clicked'));
   s.listeners.get('contextmenu')(e);
   assert.equal(e.prevented,true);assert.equal(s.node('#resourceMenu').hidden,false);
-  assert.match(s.node('#resourceMenu').innerHTML,/打开所在文件夹/);assert.match(s.node('#resourceMenu').innerHTML,/移动到/);
+  assert.match(s.node('#resourceMenu').innerHTML,/在资源管理器中显示/);assert.match(s.node('#resourceMenu').innerHTML,/移动到/);
   await s.app.runMenu('reveal-item',s.app.state.menu);
   assert.equal(s.calls[0][0],'/api/open');assert.deepEqual(JSON.parse(JSON.stringify(s.calls[0][1].body)),{id:'clicked',action:'reveal'});
   assert.equal(s.app.state.activeKey,'file:editing');assert.equal(s.app.state.tabs[0].draft,'unsaved');
@@ -37,7 +53,7 @@ test('right click shows an action list and reveals clicked file without replacin
 test('folder menu distinguishes workbench navigation from Windows folder opening',async()=>{
   const s=setup();s.app.state.projectId='project';
   s.listeners.get('contextmenu')(s.event(s.element('[data-folder-open]','nested','data-folder-open')));
-  assert.match(s.node('#resourceMenu').innerHTML,/在工作台中进入/);assert.match(s.node('#resourceMenu').innerHTML,/打开文件夹/);
+  assert.match(s.node('#resourceMenu').innerHTML,/在映序中进入/);assert.match(s.node('#resourceMenu').innerHTML,/在资源管理器中打开/);
   await s.app.runMenu('reveal-folder',s.app.state.menu);
   assert.equal(s.calls[0][0],'/api/open-folder');assert.equal(s.calls[0][1].body.folder_id,'nested');
 });
@@ -102,7 +118,7 @@ test('search shortcut cannot escape a confirmation dialog or focus a disabled se
 test('SKILL reveal sends its registered id and leaves the active editor untouched',async()=>{
   const s=setup();s.app.state.activeKey='file:draft';s.app.state.skills=[{id:'skill-one',editable:false}];
   s.listeners.get('contextmenu')(s.event(s.element('[data-skill]','skill-one','data-skill')));
-  assert.match(s.node('#resourceMenu').innerHTML,/打开 SKILL 所在位置/);
+  assert.match(s.node('#resourceMenu').innerHTML,/在资源管理器中显示/);
   assert.doesNotMatch(s.node('#resourceMenu').innerHTML,/新建笔记/);
   await s.app.runMenu('reveal-skill',s.app.state.menu);
   assert.equal(s.calls[0][0],'/api/open-folder');

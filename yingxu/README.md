@@ -8,9 +8,13 @@
 
 浅色中文界面，多标签文件工作区，普通目录保存素材。原创代码采用 [MIT](LICENSE)，无需订阅或云账号。
 
-**[下载 Windows x64 完整包 · v0.4.3](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.3/YingXu-v0.4.3-Windows-x64.zip)**
+**[下载 Windows x64 完整包 · v0.4.4](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.4/YingXu-v0.4.4-Windows-x64.zip)**
 
 自带 Python、图片处理组件、FFmpeg 和 WebView2，完整解压后双击即可使用。
+
+[macOS M 系列 0.4.3-mac.1 试用版](https://github.com/turnsolesama/portfolio/releases/tag/yingxu-v0.4.3) 保留原入口；本次 0.4.4 完整包与桌面验证面向 Windows。
+
+0.4.4 修复画板切换后的撤销和离线字体加载，减少缩放时的重复处理。文档内支持 `Ctrl+F` 查找，Word 预览分段显示并可跨页定位；在项目 Markdown 中拖入文件可建立可点击链接。右键菜单按打开、编辑整理、删除分组，多选时明确操作数量。设置中可预览缓存和历史占用，确认后清理选定范围；默认不清理文稿历史。
 
 [功能指南](docs/功能指南.md) · [安装与运行](docs/安装与运行.md) · [开发说明](docs/开发说明.md) · [版本与校验](https://github.com/turnsolesama/portfolio/blob/main/yingxu/releases/README.md)
 

@@ -1,7 +1,7 @@
 """Local project catalogue. Files remain ordinary files; SQLite stores organisation."""
 from __future__ import annotations
 
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -268,13 +268,13 @@ class Store:
                 item['content_preview'] = row['search_content'][:500]
             return item
 
-    def resolve_item_path(self, item):
+    def resolve_item_path(self, item, db=None):
         # Re-evaluate at every file access: a previously indexed path may now be a link.
         p = clean_path(item['path'])
         if p==self.data_root or p.is_relative_to(self.data_root):
             raise UserError('应用备份与缓存不能作为可编辑素材访问。',403)
-        with self.connection() as db:
-            source = db.execute('SELECT * FROM sources WHERE id=? AND project_id=?', (item['source_id'],item['project_id'])).fetchone()
+        with (self.connection() if db is None else nullcontext(db)) as connection:
+            source = connection.execute('SELECT * FROM sources WHERE id=? AND project_id=?', (item['source_id'],item['project_id'])).fetchone()
         if source is None:
             raise UserError('条目没有有效的本地来源。',403)
         root = clean_path(source['path'])

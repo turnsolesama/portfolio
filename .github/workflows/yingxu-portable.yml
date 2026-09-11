@@ -19,6 +19,9 @@ jobs:
         working-directory: yingxu
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - name: Download verified build inputs
         run: |
           $ErrorActionPreference = 'Stop'
@@ -34,6 +37,16 @@ jobs:
           if ($LASTEXITCODE) { throw 'Markdown editor dependency installation failed' }
           npm run build
           if ($LASTEXITCODE) { throw 'Markdown editor bundle build failed' }
+      - name: Build offline canvas editor
+        working-directory: yingxu/tools/canvas-editor
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm install --global pnpm@11.20.0 --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE) { throw 'Pinned canvas package manager failed' }
+          pnpm install --frozen-lockfile --ignore-scripts
+          if ($LASTEXITCODE) { throw 'Canvas dependency installation failed' }
+          node build.mjs
+          if ($LASTEXITCODE) { throw 'Offline canvas build failed' }
       - name: Backend and frontend regression tests
         run: |
           # Synthetic fixtures use canonical paths, including Windows short TEMP paths.
@@ -55,40 +68,49 @@ jobs:
         run: |
           python tools/package_release.py
           if ($LASTEXITCODE) { throw 'Package failed' }
-          python tools/verify_release.py releases/YingXu-v0.4.3-Windows-x64.zip | Tee-Object releases/YingXu-v0.4.3-verification.json
+          python tools/verify_release.py releases/YingXu-v0.4.4-Windows-x64.zip | Tee-Object releases/YingXu-v0.4.4-verification.json
           if ($LASTEXITCODE) { throw 'Release verification failed' }
       - name: Upload draft, fetch and verify assets, then publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = 'yingxu-v0.4.3'
+          $tag = 'yingxu-v0.4.4'
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           $taskExistingDraft = $false
           if ($LASTEXITCODE -eq 0) {
             $taskIsDraft = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
             if ($taskIsDraft -ne 'true') { Write-Output 'Published release preserved'; exit 0 }
+            $taskTagSha = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --jq .object.sha
+            if ($LASTEXITCODE -or $taskTagSha -ne $env:GITHUB_SHA) { throw 'Draft tag differs from this verified source commit; preserve it for review' }
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --title '映序 0.4.4 · 文档查找与画板性能修复'
+            if ($LASTEXITCODE) { throw 'Draft title refresh failed' }
             $taskExistingDraft = $true
           }
           @'
           完整解压后双击 YingXu.exe。自带锁定 Python、Pillow、FFmpeg 和 WebView2，无新增依赖或模型。
           
-          新增 ZIP 导入：选择、拖入或粘贴到当前分类和文件夹，保留目录与中文名称；同名新建目录，原压缩包保留。第一版不支持加密、分卷、RAR 和 7z。
+          修复画板切换撤销、本地字体和隐藏后的后台刷新；缩放不再重复序列化图片。新增文内查找、Word 分页定位、Markdown 文件链接与设置容量预览清理；统一右键菜单，多选操作明确数量。
+          
+          本次附件为 Windows x64 0.4.4；macOS M 系列试用版仍保留在 0.4.3 Release，本次没有宣称完成 macOS 验证。
           
           更新前保存文稿，从托盘退出映序，运行旧目录Stop-YingXu.ps1，再完整解压新版。保留原项目和应用数据目录。发布附件经过完整下载、SHA-256与隔离运行验证；历史版本保留。
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/release-notes.md"
           if ($taskExistingDraft) {
-            gh release upload $tag releases/YingXu-v0.4.3-Windows-x64.zip releases/YingXu-v0.4.3-SHA256.txt releases/YingXu-v0.4.3-manifest.json releases/YingXu-v0.4.3-verification.json --repo $env:GITHUB_REPOSITORY --clobber
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --notes-file "$env:RUNNER_TEMP/release-notes.md"
+            if ($LASTEXITCODE) { throw 'Draft notes refresh failed' }
+            gh release upload $tag releases/YingXu-v0.4.4-Windows-x64.zip releases/YingXu-v0.4.4-SHA256.txt releases/YingXu-v0.4.4-manifest.json releases/YingXu-v0.4.4-verification.json --repo $env:GITHUB_REPOSITORY --clobber
           } else {
-          gh release create $tag releases/YingXu-v0.4.3-Windows-x64.zip releases/YingXu-v0.4.3-SHA256.txt releases/YingXu-v0.4.3-manifest.json releases/YingXu-v0.4.3-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.4.3 · ZIP 压缩包导入' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
+          gh release create $tag releases/YingXu-v0.4.4-Windows-x64.zip releases/YingXu-v0.4.4-SHA256.txt releases/YingXu-v0.4.4-manifest.json releases/YingXu-v0.4.4-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.4.4 · 文档查找与画板性能修复' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
           }
           if ($LASTEXITCODE) { throw 'Draft upload failed' }
           gh release download $tag --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/published-check"
           if ($LASTEXITCODE) { throw 'Draft download failed' }
-          $manifest = Get-Content "$env:RUNNER_TEMP/published-check/YingXu-v0.4.3-manifest.json" -Raw | ConvertFrom-Json
-          $zip = Get-Item "$env:RUNNER_TEMP/published-check/YingXu-v0.4.3-Windows-x64.zip"
+          $manifest = Get-Content "$env:RUNNER_TEMP/published-check/YingXu-v0.4.4-manifest.json" -Raw | ConvertFrom-Json
+          $zip = Get-Item "$env:RUNNER_TEMP/published-check/YingXu-v0.4.4-Windows-x64.zip"
           if ($zip.Length -ne $manifest.bytes -or (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower() -ne $manifest.sha256) { throw 'Downloaded asset differs' }
           python tools/verify_release.py $zip.FullName
           if ($LASTEXITCODE) { throw 'Downloaded asset failed verification' }
-          Write-Output 'Windows draft downloaded and verified; publish after all platform assets are ready.'
-
+          gh release edit $tag --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE) { throw 'Verified Windows release publication failed' }
+          Write-Output 'Windows release downloaded, verified, and published.'

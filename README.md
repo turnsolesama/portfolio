@@ -19,7 +19,7 @@
 | 你现在想做什么 | 对应项目 | 当前版本 | 下载程序包 |
 | --- | --- | --- | --- |
 | 编排提示词与参考图，控制 H3 视频和图片生成，检查本地缺失项 | **[FrameWeave 帧织](frameweave/)** | 0.2.0 | **[下载帧织 · 9.12 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/frameweave/releases/FrameWeave-v0.2.0-Windows-x64.zip)** |
-| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.4.3 | **[Windows x64](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.3/YingXu-v0.4.3-Windows-x64.zip)** · **[macOS M 系列试用版](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.3/YingXu-v0.4.3-mac.1-macOS-arm64.zip)** |
+| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.4.4 Windows / 0.4.3 Mac | **[Windows x64](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.4/YingXu-v0.4.4-Windows-x64.zip)** · **[macOS M 系列试用版](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.3/YingXu-v0.4.3-mac.1-macOS-arm64.zip)** |
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 | 导入 API 示例，管理服务、密钥变量和 Codex 配置切换 | **[Codex Switcher](codex-switcher/)** | 2.4.1 | **[下载切换器 · 327 KiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip)** |
 | 管理已有代理、统一出口，给程序设置专用线路 | **[流向 FlowSwitch](proxy-switch/)** | 3.7.1 | **[下载 FlowSwitch · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-x64.zip)** |
@@ -67,7 +67,7 @@
 
 - **标题改名与删除**：点击项目文件标题打开确认改名弹窗，输入仅名称，保留扩展名与未保存正文；选中素材后按 Delete 移入映序回收站，素材选择框保持焦点时也可使用，沿用删除确认设置。编辑标题、正文或其他输入框时只删除文字。
 
-- **全局搜索**：Ctrl+K 或顶栏入口跨项目查找项目、文件与已注册 SKILL，显示来源、摘要和分页；Ctrl+F 继续搜索当前页面。
+- **全局搜索**：Ctrl+K 或顶栏入口跨项目查找项目、文件与已注册 SKILL，显示来源、摘要和分页；Ctrl+F 按焦点搜索当前文稿或资源范围。
 
 - **截图与素材组**：按需截取鼠标所在屏幕区域，复制图片并保存项目附件；逻辑素材组跨分类整理文件，保留原位置。资源区空白拖框选择本页可见卡片，文稿独立标题仅显示名称、不含扩展名。
 

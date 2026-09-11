@@ -10,7 +10,6 @@
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/project-library.css">
   <link rel="stylesheet" href="/live-markdown.css">
-  <script src="/live-markdown.js" defer></script>
   <script src="/project-library.js" defer></script>
   <link rel="stylesheet" href="/global-search.css">
   <script src="/global-search.js" defer></script>
@@ -26,6 +25,9 @@
   <link rel="stylesheet" href="/svg-preview.css">
   <link rel="stylesheet" href="/html-preview.css">
   <script src="/canvas-bridge.js" defer></script>
+  <link rel="stylesheet" href="/document-search.css">
+  <script src="/document-search.js" defer></script>
+  <script src="/document-links.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -102,7 +104,9 @@
         <section id="editor" class="editor-panel" aria-label="多标签工作区" hidden>
           <div id="editorTabs" class="editor-tabs" role="tablist" aria-label="已打开文件"></div>
           <div id="editorToolbar" class="editor-toolbar"></div>
+          <div id="documentSearchMount"></div>
           <div id="editorContent" class="editor-content"></div>
+          <div id="editorCanvasLayer" class="editor-content canvas-layer" hidden></div>
           <footer id="editorStatus" class="editor-status"></footer>
         </section>
         <aside id="inspector" class="inspector" aria-label="资源信息与关联"></aside>

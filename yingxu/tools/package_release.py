@@ -7,7 +7,7 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.4.3'
+VERSION = '0.4.4'
 FIXED = (
     'README.md', 'RUNNING.md', 'LICENSE', 'AGENTS.md', 'API_CONTRACT.md', '.gitignore',
     'server.py', 'launcher.pyw', 'start.vbs', 'Stop-YingXu.ps1', 'YingXu.exe',
@@ -16,6 +16,7 @@ FIXED = (
     'desktop/Capture.cs', 'desktop/CaptureTests.cs',
     'tools/canvas-editor/Excalidraw-LICENSE.txt', 'tools/canvas-editor/FONT-LICENSES.txt',
     'tools/canvas-editor/package.json', 'tools/canvas-editor/pnpm-lock.yaml', 'tools/canvas-editor/build.mjs', 'tools/canvas-editor/entry.jsx',
+    'tools/canvas-editor/font-url-plugin.mjs', 'tools/canvas-editor/local-assets.js', 'tools/canvas-editor/scene-tracker.js', 'tools/canvas-editor/animation-gate.js',
     'tools/markdown-editor/package.json', 'tools/markdown-editor/package-lock.json', 'tools/markdown-editor/build.mjs',
     'frontend/live-markdown-source.mjs', 'frontend/live-markdown.LICENSE.txt', 'frontend/live-markdown.manifest.json',
     'desktop/make_icon.py', 'desktop/brand.svg', 'desktop/brand.ico',

@@ -1,0 +1,37 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const {test}=require('node:test'),{execFile}=require('node:child_process'),{promisify}=require('node:util'),{pathToFileURL}=require('node:url');
+test('real app DOM routes Ctrl F by focus, searches draft pages and cancels on tab changes',async t=>{
+ const browser=[process.env.YINGXU_TEST_BROWSER,'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe','C:/Program Files/Microsoft/Edge/Application/msedge.exe'].find(p=>p&&fs.existsSync(p));if(!browser){t.skip('Existing Chromium required');return;}
+ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'yingxu-doc-search-app-'));t.after(()=>{const root=path.resolve(tmp);assert.ok(root.startsWith(path.resolve(os.tmpdir())+path.sep)&&path.basename(root).startsWith('yingxu-doc-search-app-'));fs.rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100});});
+ const front=path.join(__dirname,'../frontend');for(const file of ['document-search.js','document-search.css','docx-editor.js','docx-editor.css','docx-preview.js','live-markdown.js','live-markdown.css','styles.css'])fs.copyFileSync(path.join(front,file),path.join(tmp,file));
+ fs.writeFileSync(path.join(tmp,'app.js'),fs.readFileSync(path.join(front,'app.js'),'utf8').replace(/boot\(\);\s*$/,''));
+ fs.writeFileSync(path.join(tmp,'runner.js'),`(async()=>{
+ const checks=[],check=(name,ok)=>checks.push({name,ok}),tick=()=>new Promise(r=>setTimeout(r,150)),errors=[];let globalOpened=0;
+ report=error=>errors.push(String(error));renderInspector=()=>{};persistDrafts=()=>{};guardProperties=async()=>true;
+ window.YingXuGlobalSearch={install:()=>({open:()=>{globalOpened++;return true;},isOpen:()=>false})};
+ const paragraphs=Array.from({length:105},(_,i)=>({id:'p'+i,text:'普通段落 '+i,editable:true}));paragraphs[0].text='草稿雨夜';paragraphs[42].text='跨页雨夜';paragraphs[104].text='结尾雨夜';
+ const p='a'.repeat(32),word={key:'file:word',id:'b'.repeat(32),source:'file',mode:'edit',dirty:true,draft:'',paragraphs,item:{id:'b'.repeat(32),project_id:p,kind:'docx',name:'Word合成',metadata:{}},content:{editable:true,paragraphs,blocks:paragraphs.map(v=>({kind:'paragraph',id:v.id}))}};
+ const mdRaw='第一行\\r\\n第二行雨夜\\r\\n正文'.replace(/\\\\r/g,'\\r').replace(/\\\\n/g,'\\n');
+ const md={key:'file:md',id:'c'.repeat(32),source:'file',mode:'live',dirty:false,draft:mdRaw,item:{id:'c'.repeat(32),project_id:p,kind:'markdown',name:'只在标题出现',metadata:{}},content:{editable:true,content:mdRaw}};
+ const text={key:'file:text',id:'d'.repeat(32),source:'file',mode:'edit',dirty:false,draft:'独立文本',item:{id:'d'.repeat(32),project_id:p,kind:'text',name:'文本',metadata:{}},content:{editable:true,content:'独立文本'}};
+ Object.assign(state,{projects:[{id:p,name:'项目'}],projectId:p,bootstrap:{settings:{},capabilities:{}},tabs:[word,md,text],activeKey:word.key});wireEvents();renderWorkspace();
+ const ctrl=(target,key)=>{target.focus();const event=new KeyboardEvent('keydown',{key,ctrlKey:true,bubbles:true,cancelable:true});target.dispatchEvent(event);return event;};
+ const query=async value=>{const input=document.querySelector('[data-document-query]');input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));await tick();};
+ $('#searchInput').disabled=true;ctrl(document.querySelector('[data-docx-index="0"]'),'f');await tick();check('document Ctrl F works even when resource search is disabled',documentSearchUI?.isOpen()&&document.activeElement.matches('[data-document-query]'));await query('雨夜');check('Word search uses all draft paragraphs',documentSearchUI.getState().count===3);
+ document.querySelector('[data-document-next]').click();await tick();check('next result crosses Word edit page',word.docxEditor.getPage()===1&&document.querySelector('[data-docx-index="42"]').selectionStart===2);
+ document.querySelector('[data-editor-mode="preview"]').click();await tick();documentSearchUI.next();await tick();check('Word preview search reaches final slice without all-page DOM',word.docxPreview.getPage()===2&&document.querySelectorAll('[data-docx-preview-index]').length===25&&!!document.querySelector('[data-docx-preview-index="104"]'));
+ document.querySelector('[data-tab="'+md.key+'"]').click();await tick();check('tab switch closes prior search and clears Word highlight',!documentSearchUI.isOpen()&&!document.querySelector('.docx-search-current'));
+ ctrl(document.querySelector('.cm-content'),'f');await query('雨夜');const selection=md.markdownEditor.getSelection();check('Markdown CRLF offsets locate original draft without edits',selection.from===mdRaw.indexOf('雨夜')&&selection.to===mdRaw.indexOf('雨夜')+2&&md.draft===mdRaw&&!md.dirty);await query('只在标题出现');check('file title is excluded from body search',documentSearchUI.getState().count===0);
+ document.querySelector('[data-tab="'+text.key+'"]').click();await tick();ctrl($('#textEditor'),'f');await query('独立');check('text textarea has selected match',documentSearchUI.getState().count===1&&$('#textEditor').selectionStart===0&&$('#textEditor').selectionEnd===2);
+ $('#textEditor').value='最新草稿鹤鸣';$('#textEditor').dispatchEvent(new Event('input',{bubbles:true}));await query('鹤鸣');check('unsaved textarea input participates in document search',documentSearchUI.getState().count===1&&text.draft==='最新草稿鹤鸣'&&text.dirty);
+ $('#searchInput').disabled=false;ctrl($('#searchInput'),'f');check('resource focused Ctrl F does not steal focus back to the document',document.activeElement===$('#searchInput'));
+ ctrl($('#textEditor'),'k');check('Ctrl K retains separate global search entry',globalOpened===1);
+ documentSearchUI.close(false);ctrl($('#textEditor'),'f');const search=document.querySelector('[data-document-query]');search.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));check('Escape closes current document search',!documentSearchUI.isOpen());
+ check('no integration exceptions',errors.length===0);document.querySelector('#auditResult').textContent=JSON.stringify(checks);
+ })().catch(error=>document.querySelector('#auditResult').textContent=JSON.stringify({error:String(error),stack:error.stack}));`);
+ let html=fs.readFileSync(path.join(front,'index.html'),'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
+ html=html.replace('</head>','<link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="docx-editor.css"><link rel="stylesheet" href="document-search.css"><link rel="stylesheet" href="live-markdown.css"></head>').replace('</body>','<pre id="auditResult"></pre><script src="document-search.js"></script><script src="docx-editor.js"></script><script src="docx-preview.js"></script><script src="live-markdown.js"></script><script src="app.js"></script><script src="runner.js"></script></body>');fs.writeFileSync(path.join(tmp,'fixture.html'),html);
+ const {stdout}=await promisify(execFile)(browser,['--headless','--disable-gpu','--no-first-run','--disable-background-networking',`--user-data-dir=${path.join(tmp,'profile')}`,'--virtual-time-budget=10000','--dump-dom',pathToFileURL(path.join(tmp,'fixture.html')).href],{windowsHide:true,timeout:30000,maxBuffer:3*1024*1024});
+ const match=stdout.match(/<pre id="auditResult">([^<]+)<\/pre>/);assert.ok(match,stdout.slice(-1800));const result=JSON.parse(match[1].replace(/&quot;/g,'"').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>'));assert.ok(Array.isArray(result),JSON.stringify(result));assert.equal(result.length,13);for(const row of result)assert.equal(row.ok,true,row.name);
+});

@@ -6,6 +6,7 @@ import tempfile
 import threading
 import unittest
 import zipfile
+from contextlib import contextmanager
 from unittest.mock import patch
 from urllib.parse import urlencode
 
@@ -191,6 +192,34 @@ class SearchTests(unittest.TestCase):
         self.assertTrue(any('读取上限' in warning for warning in result['warnings']))
         with patch('yingxu.search.MAX_SECONDS', 0):
             self.assertFalse(self.search.search('限量词')['total_exact'])
+
+    def test_long_body_twelve_unicode_substrings_reuse_bounded_connections(self):
+        words=['straße','café','night','场景','角色','镜头','对白','灯光','动作','表情','道具','画面']
+        content=('STRASSE CAFÉ midnight 场景角色镜头对白灯光动作表情道具画面 '*2000)[:50000]
+        expected={self.item(f'长文{index:02}',content=content)['id'] for index in range(12)}
+        original=self.store.connection;connections=[]
+        @contextmanager
+        def counted():
+            connections.append(True)
+            with original() as db:yield db
+        with patch.object(self.store,'connection',counted):
+            result=self.search.search(' '.join(words))
+        self.assertEqual(set(self.ids(result)),expected)
+        self.assertFalse(result['truncated'])
+        self.assertLessEqual(len(connections),5,'candidate checks must not open two databases per result')
+
+    def test_candidate_removed_between_scan_and_validation_cannot_leak(self):
+        item=self.item(content='并发撤销授权词')
+        original=self.store.connection;count=0
+        @contextmanager
+        def changed():
+            nonlocal count
+            count+=1
+            with original() as db:
+                if count==3:db.execute('UPDATE projects SET removed=1 WHERE id=?',(self.a['id'],));db.commit()
+                yield db
+        with patch.object(self.store,'connection',changed):result=self.search.search('并发撤销授权词')
+        self.assertNotIn(item['id'],self.ids(result));self.assertTrue(result['truncated'])
 
 
 class SearchHttpTests(unittest.TestCase):

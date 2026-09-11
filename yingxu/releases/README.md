@@ -1,4 +1,14 @@
-# 映序 Windows 发布包
+# 映序发布包
+
+## 0.4.4：文档查找与画板性能修复
+
+[Windows x64 完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.4/YingXu-v0.4.4-Windows-x64.zip) · [大小与 SHA-256 清单](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.4/YingXu-v0.4.4-manifest.json) · [完整包验证结果](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.4/YingXu-v0.4.4-verification.json)
+
+修复画板撤销、本地字体和隐藏时的后台刷新；新增文内搜索、Word 分页查找、Markdown 文件链接及设置容量预览清理，整理右键菜单。无新增模型或运行依赖。此版 Windows 完整包在 GitHub Actions 构建，上传草稿后重新下载并验证，再正式发布；本地构建摘要不冒充发布附件摘要。
+
+macOS M 系列试用版仍为下方 0.4.3-mac.1，本次不更改其附件。
+
+## 历史版本
 
 ## 0.4.3：ZIP 压缩包导入
 
@@ -20,7 +30,7 @@
 全选或多选后点击资源区空白处取消选择。新增未分类与分类内粘贴，右键新建文件夹/笔记/Excalidraw 画板。画板离线编辑，保留保存备份和冲突检查。Windows 统一处理打开文件夹和定位文件的前置请求。macOS 包未公证，不支持 Intel Mac。
 
 
-当前完整版 **0.4.1**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+以下保留完整版 **0.4.1** 的历史记录，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 

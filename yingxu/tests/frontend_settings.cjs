@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const {test}=require('node:test');
 function setup() {
   const calls=[],messages=[],dialogs=[],nodes=new Map();
-  const context=vm.createContext({setTimeout,localStorage:{getItem:()=>null,setItem:()=>{}},window:{chrome:{webview:{postMessage:value=>messages.push(value)}}},document:{querySelector:key=>{if(!nodes.has(key))nodes.set(key,{open:false,value:'',innerHTML:''});return nodes.get(key);}},
+  const context=vm.createContext({setTimeout,localStorage:{getItem:()=>null,setItem:()=>{}},window:{chrome:{webview:{postMessage:value=>messages.push(value)}}},document:{querySelector:key=>{if(!nodes.has(key))nodes.set(key,{open:false,value:'',innerHTML:'',addEventListener(){}});return nodes.get(key);}},
     FormData:class {constructor(form){this.values=form;}has(key){return !!this.values[key];}get(key){return this.values[key];}},
     fakeApi:async(url,options)=>{calls.push({url,options});return url==='/api/settings' ? (options?.body || {confirm_delete:true,confirm_trash_delete:true,close_to_tray:true,autoplay_media:false,default_view:'grid',default_sort:'updated'}) : {id:'a'.repeat(32),name:'<unsafe>.txt',kind:'text',path:'C:/fixture.txt',content:{editable:true,content:'read only'}};},
     fakeDialog:options=>dialogs.push(options)});

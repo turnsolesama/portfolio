@@ -74,6 +74,7 @@ class GlobalSearch:
 
     def search(self, q='', limit=30, offset=0):
         q, words, limit, offset = self._request(q, limit, offset)
+        folded_words = tuple(word.casefold() for word in words)
         start = time.monotonic()
         results, warnings = [], []
         truncated = False
@@ -127,10 +128,17 @@ class GlobalSearch:
                     limited('本次搜索达到时间上限，结果不完整，请增加关键词重试。')
                     return ''
                 return str(value or '').casefold()
+            def matches(value):
+                # Normalize each indexed body once, regardless of keyword count.
+                # Python's Unicode casefold preserves the existing substring
+                # semantics, including expansions such as Straße -> strasse.
+                value = folded(value)
+                return int(all(word in value for word in folded_words))
             try:
                 with self.store.connection() as db:
                     db.execute('PRAGMA busy_timeout=200')
                     db.create_function('yx_casefold', 1, folded, deterministic=True)
+                    db.create_function('yx_matches', 1, matches, deterministic=True)
                     db.create_function('yx_tags', 1, _tag_text, deterministic=True)
                     db.create_function('yx_excerpt', 1, lambda value: '' if expired() else _snippet(value, words), deterministic=True)
                     db.set_progress_handler(progress, 1000)
@@ -144,8 +152,7 @@ class GlobalSearch:
                 limited('本次搜索达到时间或数据库扫描上限，结果不完整，请增加关键词重试。')
                 return []
 
-        predicates = ' AND '.join('instr(yx_casefold(name||char(10)||description),yx_casefold(?))>0' for _ in words)
-        projects = query('SELECT id,name,description FROM projects WHERE removed=0 AND ' + predicates + ' ORDER BY name COLLATE NOCASE,id LIMIT ?', words)
+        projects = query('SELECT id,name,description FROM projects WHERE removed=0 AND yx_matches(name||char(10)||description) ORDER BY name COLLATE NOCASE,id LIMIT ?')
         for project in projects:
             scanned['projects'] += 1
             results.append({'type': 'project', 'id': project['id'], 'project_id': project['id'],
@@ -156,42 +163,52 @@ class GlobalSearch:
         # substrings, consistently with project and SKILL matching. An FTS
         # token/prefix gate would wrongly drop e.g. night within midnight.
         combined = "i.name||char(10)||yx_tags(i.tags)||char(10)||i.notes||char(10)||CASE WHEN i.kind IN ('markdown','text','docx') THEN i.search_content ELSE '' END"
-        predicates = ' AND '.join('instr(yx_casefold(' + combined + '),yx_casefold(?))>0' for _ in words)
-        args = list(words)
+        predicates = 'yx_matches(' + combined + ')'
         # Extract a bounded excerpt around the first content match inside SQLite;
         # never load all document bodies into Python merely to make result cards.
         excerpt = "yx_excerpt(CASE WHEN i.kind IN ('markdown','text','docx') THEN i.search_content ELSE '' END)"
         item_sql = 'SELECT i.id,i.project_id,p.name AS project_name,i.source_id,i.name,i.kind,i.category,i.folder_id,i.path,i.updated,i.size,i.mtime,i.tags,yx_excerpt(i.notes) AS notes,' + excerpt + ' AS excerpt FROM items i JOIN projects p ON p.id=i.project_id WHERE i.removed=0 AND p.removed=0 AND (i.folder_id IS NULL OR EXISTS(SELECT 1 FROM folders f WHERE f.id=i.folder_id AND f.removed=0)) AND ' + predicates + ' ORDER BY i.name COLLATE NOCASE,i.id LIMIT ?'
-        items = [] if expired() else query(item_sql, args)
-        for item in items:
-            if expired():
-                limited('本次搜索达到时间上限，尚有匹配文件未检查；请增加关键词重试。')
-                break
-            scanned['items'] += 1
-            try:
-                # Do not reveal cached text for a path that has become an unsafe
-                # link, app-data path, absent file, or unregistered source.
-                with bounded_lock(self.store.lock):
-                    fresh = self.store.get_item(item['id'])
-                    path = self.store.resolve_item_path(fresh)
-                    if path.stat().st_nlink > 1:
-                        raise UserError('共享硬链接不参与全文搜索。')
-                if any(str(fresh.get(key)) != str(item.get(key)) for key in ('updated', 'path', 'project_id')):
-                    raise UserError('搜索期间文件记录已变化。')
-            except _BusySearch:
-                limited('项目索引正在变更，本次搜索未检查完全部匹配文件，请稍后重试。')
-                break
-            except (UserError, OSError, ValueError):
-                skipped += 1
-                continue
-            labels = _tag_text(item['tags'])
-            metadata_summary = (item['notes'] + ' ' + labels).strip()
-            summary = item['excerpt'] if any(word.casefold() in item['excerpt'].casefold() for word in words) else metadata_summary or item['excerpt']
-            results.append({'type': 'item', 'id': item['id'], 'project_id': item['project_id'],
-                            'project_name': item['project_name'], 'name': item['name'], 'kind': item['kind'],
-                            'category': item['category'], 'folder_id': item['folder_id'],
-                            'snippet': _snippet(summary, words), '_rank': rank(item['name'])})
-
+        items = [] if expired() else query(item_sql)
+        with self.store.connection() as validation_db:
+            validation_db.execute('PRAGMA busy_timeout=200')
+            for item in items:
+                if expired():
+                    limited('本次搜索达到时间上限，尚有匹配文件未检查；请增加关键词重试。')
+                    break
+                scanned['items'] += 1
+                try:
+                    # Do not reveal cached text for a path that has become an unsafe
+                    # link, app-data path, absent file, or unregistered source.
+                    with bounded_lock(self.store.lock):
+                        fresh = validation_db.execute(
+                            'SELECT i.id,i.project_id,i.source_id,i.path,i.updated FROM items i '
+                            'JOIN projects p ON p.id=i.project_id WHERE i.id=? AND i.removed=0 AND p.removed=0 '
+                            'AND (i.folder_id IS NULL OR EXISTS(SELECT 1 FROM folders f WHERE f.id=i.folder_id AND f.removed=0))',
+                            (item['id'],)).fetchone()
+                        if fresh is None:raise UserError('条目已经移出工作台。',404)
+                        fresh = dict(fresh)
+                        path = self.store.resolve_item_path(fresh, db=validation_db)
+                        if path.stat().st_nlink > 1:
+                            raise UserError('共享硬链接不参与全文搜索。')
+                    if any(str(fresh.get(key)) != str(item.get(key)) for key in ('updated', 'path', 'project_id')):
+                        raise UserError('搜索期间文件记录已变化。')
+                except _BusySearch:
+                    limited('项目索引正在变更，本次搜索未检查完全部匹配文件，请稍后重试。')
+                    break
+                except sqlite3.OperationalError as exc:
+                    if not any(word in str(exc).lower() for word in ('interrupt','locked','busy')):raise
+                    limited('项目索引正在变更，本次搜索未检查完全部匹配文件，请稍后重试。')
+                    break
+                except (UserError, OSError, ValueError):
+                    skipped += 1
+                    continue
+                labels = _tag_text(item['tags'])
+                metadata_summary = (item['notes'] + ' ' + labels).strip()
+                summary = item['excerpt'] if any(word.casefold() in item['excerpt'].casefold() for word in words) else metadata_summary or item['excerpt']
+                results.append({'type': 'item', 'id': item['id'], 'project_id': item['project_id'],
+                                'project_name': item['project_name'], 'name': item['name'], 'kind': item['kind'],
+                                'category': item['category'], 'folder_id': item['folder_id'],
+                                'snippet': _snippet(summary, words), '_rank': rank(item['name'])})
         skills = [] if expired() else query('SELECT * FROM yx_skills WHERE removed=0 AND purged=0 AND available=1 ORDER BY name COLLATE NOCASE,id LIMIT ?', maximum=MAX_SKILL_CANDIDATES)
         for skill in skills:
             if expired():
