@@ -1,11 +1,11 @@
-# 映序 macOS 试用版 · 0.3.7-mac.1
+# 映序 macOS 试用版 · 0.4.1-mac.1
 
 面向 **macOS 14 或更新版本、Apple Silicon（M 系列芯片）**。
 这是独立的 macOS 试用包，Windows 版和既有 Windows 发布包保持不变。
 
 ## 安装
 
-完整解压 `YingXu-v0.3.7-mac.1-macOS-arm64.zip`，将 `YingXu.app` 拖入“应用程序”，双击打开。
+完整解压 `YingXu-v0.4.1-mac.1-macOS-arm64.zip`，将 `YingXu.app` 拖入“应用程序”，双击打开。
 自带 Python、Pillow、FFmpeg 和本地编辑器；窗口使用 macOS 系统 WebKit。
 正常使用无需安装 Python、Node.js 或 Homebrew，也不在启动时下载组件。
 
@@ -15,7 +15,9 @@
 ## 已提供
 
 - 项目分类、素材与素材组、搜索、标签、状态、SKILL 与 AI 交接。
-- Markdown 实时编辑与源码编辑、Word 普通正文、图片及音视频预览。
+- Markdown 实时编辑与源码编辑、Word 普通正文分页编辑（每页最多 40 段，保留跨页草稿）、图片及音视频预览。
+- HTML 只读源码与安全静态预览；SVG 安全静态预览，轻量阴影和虚线可简化显示，原文件不改写。
+- 外部 Markdown、文本和 Word 文稿编辑，保存前检查冲突并保留版本备份。
 - 本机文件/文件夹选择、Finder 定位、调用默认应用。
 - 文件和文件夹安全改名，重名时拒绝覆盖。
 - 应用回收站与恢复；清理原文件时送入 macOS 废纸篓，失败保留记录，无永久删除后备。

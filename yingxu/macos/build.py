@@ -35,7 +35,7 @@ def main():
     import plistlib
     info=app/'Contents/Info.plist'
     values=plistlib.loads(info.read_bytes())
-    values.update(CFBundleShortVersionString='0.3.7',CFBundleVersion='30701',
+    values.update(CFBundleShortVersionString='0.4.1',CFBundleVersion='40101',
                   LSMinimumSystemVersion='14.0',NSHighResolutionCapable=True,
                   NSDocumentsFolderUsageDescription='选择和管理您明确指定的视频创作项目与素材。')
     info.write_bytes(plistlib.dumps(values))

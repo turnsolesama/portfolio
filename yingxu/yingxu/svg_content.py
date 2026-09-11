@@ -1,0 +1,26 @@
+"""Read-only, bounded SVG content for explicitly opened previews."""
+import base64
+
+from .store import UserError
+from .svg_preview import MAX_BYTES, sanitize_svg, preview_svg
+
+
+def read_svg_bytes(opened):
+    raw = opened.read(MAX_BYTES + 1)
+    try:
+        return sanitize_svg(raw)
+    except ValueError as error:
+        raise UserError(str(error), 415) from error
+
+
+def read_svg_content(opened):
+    raw = opened.read(MAX_BYTES + 1)
+    try:
+        preview = preview_svg(raw)
+    except ValueError as error:
+        raise UserError(str(error), 415) from error
+    safe = preview['svg']
+    notices = preview['notices']
+    return {'format': 'svg', 'content': '', 'etag': None, 'editable': False,
+            'preview_url': 'data:image/svg+xml;base64,' + base64.b64encode(safe).decode('ascii'),
+            'notice': ' '.join(notices) + (' ' if notices else '') + 'SVG 静态预览；原文件保持不变。'}

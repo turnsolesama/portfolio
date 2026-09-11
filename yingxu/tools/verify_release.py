@@ -1,5 +1,6 @@
 """Verify ZIP integrity and run only isolated synthetic HTTP checks on free ports."""
 import argparse
+import base64
 import hashlib
 import http.client
 import json
@@ -62,7 +63,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.7'
+    assert health['version'] == '0.4.1'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -80,6 +81,35 @@ def check_server(port, data, projects):
     assert bootstrap['capabilities']['resource_groups'] is True
     project = request(port, 'POST', '/api/projects', {'name': '公开包 隔离验收'}, token)
     assert Path(project['root']).is_relative_to(projects.resolve())
+    renamed = request(port, 'PATCH', '/api/projects/' + project['id'], {'name': '项目改名验收'}, token)
+    assert renamed['name'] == '项目改名验收' and renamed['root'] == project['root']
+    # Exercise persisted classification moves through the packaged HTTP API.
+    parent = request(port, 'POST', '/api/project-folders', {'name': '1111'}, token)
+    branch = request(port, 'POST', '/api/project-folders', {'name': '222'}, token)
+    leaf = request(port, 'POST', '/api/project-folders', {'name': '下级', 'parent_id': branch['id']}, token)
+    request(port, 'PATCH', '/api/project-library/' + project['id'], {'folder_id': branch['id']}, token)
+    library_before = request(port, 'GET', '/api/project-library')
+    moved_branch = request(port, 'PATCH', '/api/project-folders/' + branch['id'], {'parent_id': parent['id']}, token)
+    assert moved_branch['parent_id'] == parent['id'] and moved_branch['name'] == '222'
+    library_after = request(port, 'GET', '/api/project-library')
+    assert library_after['projects'] == library_before['projects']
+    assert next(f for f in library_after['folders'] if f['id'] == leaf['id'])['parent_id'] == branch['id']
+    moved_branch = request(port, 'PATCH', '/api/project-folders/' + branch['id'], {'parent_id': None}, token)
+    assert moved_branch['parent_id'] is None
+    assert request(port, 'GET', '/api/project-library')['projects'] == library_before['projects']
+    external_path = projects.parent / '外部编辑验收.md'
+    original_external = b'\xef\xbb\xbf# External\r\nOriginal\r\n'
+    external_path.write_bytes(original_external)
+    external = request(port, 'POST', '/api/external-open', {'paths': [str(external_path)]}, token)['entries'][0]
+    detail = request(port, 'GET', '/api/external/' + external['id'])
+    assert detail['content']['editable']
+    saved = request(port, 'POST', '/api/external/' + external['id'] + '/content',
+                    {'etag': detail['content']['etag'], 'content': '# External\nEdited\n'}, token)
+    assert saved['content']['content'] == '# External\r\nEdited\r\n'
+    assert external_path.read_bytes() == b'\xef\xbb\xbf# External\r\nEdited\r\n'
+    backups = list((data / 'external-versions').glob('*/*.md'))
+    assert backups and any(p.read_bytes() == original_external for p in backups)
+    assert len(request(port, 'GET', '/api/projects')['projects']) == 1
     folder = request(port, 'POST', '/api/folders', {'project_id': project['id'], 'category': 'characters', 'name': '第 1 集'}, token)
     item = request(port, 'POST', '/api/items', {'project_id': project['id'], 'category': 'characters', 'folder_id': folder['id'], 'name': '角色 测试', 'content': '# 合成角色\n不包含用户数据。'}, token)
     assert item['folder_id'] == folder['id']
@@ -132,7 +162,10 @@ def check_server(port, data, projects):
             'Chinese project/folder/document creation', 'capture settings default to enabled, Ctrl+Alt+Shift+S and annotate; quick/annotate modes persist',
             'cross-category group create/list/atomic transfer/remove/dissolve preserves file paths, bytes and categories',
             'batch tags append without replacing individual tags and batch status preserves original file bytes',
-            'global search finds indexed document content across projects']
+            'global search finds indexed document content across projects',
+            'project rename preserves project root',
+            'project classification subtree moves and returns to root without changing project records',
+            'external Markdown saves original path with BOM/newlines, backup and no project import']
 
 
 def check_media(port, root, base, interpreter, environment):
@@ -209,6 +242,40 @@ def check_media(port, root, base, interpreter, environment):
             'project PNG upload and Markdown link/image routes preserve exact image bytes and original note']
 
 
+def check_static_formats(port, base):
+    token = request(port, 'GET', '/api/bootstrap')['token']
+    samples = {
+        'safe.svg': b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><defs><filter id="s"><feDropShadow stdDeviation="2"/></filter></defs><rect filter="url(#s)" width="40" height="30" fill="#567456" stroke-dasharray="16 8"/></svg>',
+        'safe.html': b'<h1>Heading</h1><table><tr><td>Cell</td></tr></table><script>window.BAD=1</script>',
+    }
+    for name, raw in samples.items():
+        path = base / name
+        path.write_bytes(raw)
+        opened = request(port, 'POST', '/api/external-open', {'paths': [str(path)]}, token)['entries'][0]
+        content = request(port, 'GET', opened['content_url'])['content']
+        assert content['editable'] is False
+        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+        try:
+            connection.request('GET', opened['media_url'])
+            response = connection.getresponse()
+            media = response.read()
+            assert response.status == 200 and response.getheader('X-Content-Type-Options') == 'nosniff'
+            if name.endswith('.svg'):
+                assert media == base64.b64decode(content['preview_url'].split(',', 1)[1])
+                assert 'sandbox' in response.getheader('Content-Security-Policy')
+                assert b'<rect' in media and b'<filter' not in media
+                assert '滤镜' in content['notice'] and '实线' in content['notice']
+            else:
+                assert content['content'] == raw.decode() and '<table>' in content['preview_html']
+                assert '<script' not in content['preview_html'] and 'window.BAD' not in content['preview_html']
+                assert media == raw and response.getheader('Content-Type').startswith('text/plain')
+                assert response.getheader('Content-Disposition') == 'attachment'
+        finally:
+            connection.close()
+        assert path.read_bytes() == raw
+    return ['bundled SVG sanitizer and isolated HTML static/source routes preserve original files']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', type=Path)
@@ -240,7 +307,11 @@ def main():
         assert (root / 'frontend/live-markdown.css').is_file()
         assert (root / 'frontend/global-search.js').is_file() and (root / 'frontend/global-search.css').is_file()
         for relative in ('frontend/capture.js', 'frontend/resource-groups.js', 'frontend/resource-groups.css',
-                         'yingxu/markdown_assets.py', 'yingxu/resource_groups.py'):
+                         'yingxu/markdown_assets.py', 'yingxu/resource_groups.py',
+                         'frontend/docx-editor.js', 'frontend/docx-editor.css',
+                         'frontend/html-preview.js', 'frontend/html-preview.css', 'frontend/svg-preview.css',
+                         'yingxu/svg_preview.py', 'yingxu/svg_content.py',
+                         'yingxu/html_preview.py', 'yingxu/html_content.py'):
             assert (root / relative).is_file()
         assert not any('node_modules' in PurePosixPath(name).parts for name in names)
         checked.append('offline Markdown bundle SHA-256, stylesheet and licenses; no Node runtime')
@@ -274,6 +345,7 @@ def main():
             pid = pid_record['pid']
             checked += check_server(port, data, projects)
             checked += check_media(port, root, base, interpreter, environment)
+            checked += check_static_formats(port, base)
             second = subprocess.run([interpreter, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
                                     cwd=root, env=environment, capture_output=True, timeout=10)
             assert second.returncode == 0 and json.loads(second.stdout)['status'] == 'reused'

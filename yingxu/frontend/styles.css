@@ -167,3 +167,15 @@ kbd{font-family:inherit;font-size:10px;line-height:1.6;border:1px solid var(--li
 
 .image-zoom-percent{font-size:12px;min-width:66px;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)}
 .context-menu{max-height:calc(100vh - 20px);overflow-y:auto}
+
+/* Word structure preview uses local document runs and bounded embedded images. */
+.docx-preview{max-width:900px;margin:0 auto;padding:18px 24px 48px;font-size:15px;line-height:1.8;color:var(--ink)}
+.docx-preview-paragraph{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 .8em;min-height:1em}
+.docx-preview h1{font-size:2em}.docx-preview h2{font-size:1.6em}.docx-preview h3{font-size:1.35em}
+.docx-table-wrap{overflow-x:auto;margin:16px 0}.docx-preview-table{border-collapse:collapse;width:100%;table-layout:auto}
+.docx-preview-table td{border:1px solid var(--line);padding:8px 12px;vertical-align:top;min-width:70px}.docx-preview-table p{margin:0 0 .3em}
+.docx-image{display:block;max-width:100%;height:auto;max-height:1000px;object-fit:contain;margin:12px auto}
+.docx-unavailable{display:block;font-size:12px;color:var(--muted);padding:8px;border:1px dashed var(--line);white-space:normal}
+.docx-paragraph-field{min-width:0;flex:1}.docx-paragraph-field textarea{display:block;overflow:auto}.docx-paragraph-field .field-hint{margin:3px 0 8px}
+
+.docx-image-note{display:block;text-align:center;color:var(--muted);font-size:11px;margin:4px 0 12px}

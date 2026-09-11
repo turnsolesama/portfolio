@@ -70,7 +70,7 @@ namespace YingXu.Desktop
                 "Path('logs/console.txt').write_text(str(ctypes.windll.kernel32.GetConsoleWindow()))\n" +
                 "class Handler(BaseHTTPRequestHandler):\n" +
                 " def do_GET(self):\n" +
-                "  body=json.dumps(dict(app='yingxu',ok=True,version='0.3.7',instance_id=instance_id(default_data_root()))).encode()\n" +
+                "  body=json.dumps(dict(app='yingxu',ok=True,version='0.4.1',instance_id=instance_id(default_data_root()))).encode()\n" +
                 "  self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)\n" +
                 " def log_message(self,*args): pass\n" +
                 "server=HTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),Handler)\n" +
@@ -150,6 +150,15 @@ namespace YingXu.Desktop
             string file = Path.Combine(folder, "合成素材.md");
             File.WriteAllText(file, "Synthetic drag fixture; never user content");
             Check(Hub.ValidateNativeFilePath(file) == file, "native drag accepts ordinary safe file");
+            string svgFile = Path.Combine(folder, "合成矢量.SVG");
+            File.WriteAllText(svgFile, "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M0 0L10 10'/></svg>");
+            Check(Hub.ValidateNativeFilePath(svgFile) == svgFile, "native path accepts case-insensitive SVG extension without interpreting content");
+            Check(LaunchOptions.Parse(new [] {"--open",svgFile},folder).Paths[0] == svgFile, "OpenWith SVG command reaches the existing validated file queue");
+            foreach (string extension in new [] {".html", ".HTM"}) {
+                string htmlFile = Path.Combine(folder, "静态页面"+extension);
+                File.WriteAllText(htmlFile, "<!doctype html><h1>Synthetic page</h1>");
+                Check(LaunchOptions.Parse(new [] {"--open",htmlFile},folder).Paths[0] == htmlFile,"HTML command reaches validated read-only preview queue: "+extension);
+            }
             RejectNativePath("relative.md", "native drag rejects relative path");
             RejectNativePath(@"C:relative.md", "native drag rejects drive-relative path");
             RejectNativePath(@"\\server\share\file.md", "native drag rejects network path");
@@ -206,7 +215,7 @@ namespace YingXu.Desktop
                 Directory.CreateDirectory(Path.Combine(folder, "frontend"));
                 File.WriteAllText(Path.Combine(folder, "frontend", "index.html"), "");
                 Check(Hub.IsAppRoot(folder), "complete app folder recognized");
-                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.3.7\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", true);
+                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.4.1\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", true);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.3.2\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.2.1\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true}", false);
@@ -260,13 +269,21 @@ namespace YingXu.Desktop
                 using (var root = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(testKey))
                 {
                     using (var ext = root.CreateSubKey(".txt")) ext.SetValue("","Other.Default");
+                    using (var ext = root.CreateSubKey(".svg")) ext.SetValue("","Other.Vector");
                     using (var ext = root.CreateSubKey(@".txt\OpenWithProgids")) ext.SetValue("Other.Preview", "keep");
                     OpenWithRegistration.Change(root,Path.Combine(folder,"YingXu.exe"),true);
                     using (var ext = root.OpenSubKey(".txt")) Check((string)ext.GetValue("") == "Other.Default","OpenWith preserves existing default application");
                     using (var ext = root.OpenSubKey(@".txt\OpenWithProgids")) Check(ext.GetValue("YingXu.LocalPreview") != null && (string)ext.GetValue("Other.Preview") == "keep","OpenWith adds its candidate and preserves unrelated candidates");
+                    using (var ext = root.OpenSubKey(@".svg\OpenWithProgids")) Check(ext != null && ext.GetValue("YingXu.LocalPreview") != null,"OpenWith registers an SVG candidate");
+                    using (var ext = root.OpenSubKey(".svg")) Check((string)ext.GetValue("") == "Other.Vector","SVG registration preserves the existing default application");
+                    foreach (string extension in new [] {".html", ".htm"})
+                        using (var ext = root.OpenSubKey(extension+@"\OpenWithProgids")) Check(ext != null && ext.GetValue("YingXu.LocalPreview") != null,"OpenWith registers HTML candidate: "+extension);
                     OpenWithRegistration.Change(root,Path.Combine(folder,"YingXu.exe"),false);
                     Check(root.OpenSubKey("YingXu.LocalPreview") == null,"OpenWith unregister removes its own ProgID");
                     using (var ext = root.OpenSubKey(@".txt\OpenWithProgids")) Check(ext.GetValue("YingXu.LocalPreview") == null && (string)ext.GetValue("Other.Preview") == "keep","OpenWith unregister preserves unrelated values");
+                    using (var ext = root.OpenSubKey(@".svg\OpenWithProgids")) Check(ext == null || ext.GetValue("YingXu.LocalPreview") == null,"SVG unregister removes only its candidate");
+                    foreach (string extension in new [] {".html", ".htm"})
+                        using (var ext = root.OpenSubKey(extension+@"\OpenWithProgids")) Check(ext == null || ext.GetValue("YingXu.LocalPreview") == null,"HTML unregister removes only its candidate: "+extension);
                     using (var existing = root.CreateSubKey("YingXu.LocalPreview")) existing.SetValue("","unowned");
                     rejected = false;
                     try { OpenWithRegistration.Change(root,Path.Combine(folder,"YingXu.exe"),true); } catch (IOException) { rejected = true; }

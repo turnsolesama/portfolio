@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "拾影 VideoCatch · 视频发现",
+  "version": "0.3.0",
+  "icons": {"16":"icon16.png","32":"icon32.png","48":"icon48.png","128":"icon128.png"},
+  "description": "将所选标签页发现的视频发送到本机 VideoCatch，手动选择后保存。",
+  "permissions": ["tabs", "webRequest", "storage", "alarms", "scripting"],
+  "content_scripts": [
+    {"matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_idle"},
+    {"matches": ["https://www.bilibili.com/*", "https://m.bilibili.com/*", "https://bilibili.com/*"], "js": ["bili-observer.js"], "run_at": "document_start", "world": "MAIN"}
+  ],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "拾影 VideoCatch", "default_popup": "popup.html", "default_icon":{"16":"icon16.png","32":"icon32.png"}},
+  "minimum_chrome_version": "120"
+}

@@ -166,8 +166,8 @@ namespace YingXu.Desktop
 
         private static readonly HashSet<string> DragExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".yaml", ".yml",
-            ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif",
+            ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".yaml", ".yml", ".html", ".htm",
+            ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif", ".svg",
             ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v", ".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac",
             ".blend", ".fbx", ".obj", ".glb", ".gltf", ".stl", ".docx", ".pdf", ".doc", ".pptx", ".xlsx", ".rtf"
         };
@@ -251,7 +251,7 @@ namespace YingXu.Desktop
                     return health != null && health.TryGetValue("app", out name) && (name as string) == "yingxu" &&
                            health.TryGetValue("ok", out ok) && ok is bool && (bool)ok &&
                            health.TryGetValue("instance_id", out identity) && (identity as string) == InstanceId() &&
-                           health.TryGetValue("version", out version) && (version as string) == "0.3.7";
+                           health.TryGetValue("version", out version) && (version as string) == "0.4.1";
                 }
             }
             catch { return false; }

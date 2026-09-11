@@ -9,7 +9,7 @@ from yingxu.store import Store, UserError
 class ProjectLibraryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='yingxu-library-test-')
-        self.root = Path(self.tmp.name)
+        self.root = Path(self.tmp.name).resolve()
         self.store = Store(self.root / 'data', self.root / 'projects')
         self.project = self.store.create_project('原有项目')
         self.library = ProjectLibrary(self.store)
@@ -104,6 +104,79 @@ class ProjectLibraryTests(unittest.TestCase):
         with self.assertRaises(UserError): self.library.visit('missing')
         with self.assertRaises(UserError): self.library.assign_project('missing', {'folder_id': None})
         self.assertEqual(self.library.snapshot()['folders'], [])
+
+    def disk_snapshot(self):
+        return {str(path.relative_to(self.root / 'projects')):
+                (path.is_dir(), path.stat().st_mtime_ns,
+                 path.read_bytes() if path.is_file() else None)
+                for path in (self.root / 'projects').rglob('*')}
+
+    def project_rows(self):
+        with self.store.connection() as db:
+            return {table: [tuple(row) for row in db.execute('SELECT * FROM ' + table + ' ORDER BY rowid')]
+                    for table in ('projects', 'items', 'sources', 'project_library_entries')}
+
+    def test_move_populated_subtree_and_return_to_top_keeps_every_project_and_file(self):
+        source = self.library.create_folder({'name': '222'})
+        destination = self.library.create_folder({'name': '1111'})
+        child = self.library.create_folder({'name': '子分类', 'parent_id': source['id']})
+        grandchild = self.library.create_folder({'name': '孙分类', 'parent_id': child['id']})
+        projects = [self.project] + [self.store.create_project('合成项目' + str(index)) for index in range(3)]
+        for index, (project, folder) in enumerate(zip(projects, (source, child, grandchild, destination))):
+            self.store.create_item({'project_id': project['id'], 'name': '合成文稿' + str(index),
+                                    'content': '原始内容\r\n😀\n'})
+            self.library.assign_project(project['id'], {'folder_id': folder['id']})
+            self.library.visit(project['id'])
+        before = self.library.snapshot()
+        files, rows = self.disk_snapshot(), self.project_rows()
+        for parent_id in (destination['id'], None):
+            with self.subTest(parent=parent_id):
+                moved = self.library.update_folder(source['id'], {'parent_id': parent_id})
+                self.assertEqual(moved, {**source, 'parent_id': parent_id})
+                # Reload models to prove hierarchy persistence, not just return values.
+                after = ProjectLibrary(self.store).snapshot()
+                expected = [{**folder, 'parent_id': parent_id} if folder['id'] == source['id'] else folder
+                            for folder in before['folders']]
+                self.assertEqual(after['folders'], expected)
+                self.assertEqual(after['projects'], before['projects'])
+                self.assertEqual(after['recent_ids'], before['recent_ids'])
+                self.assertEqual(self.project_rows(), rows)
+                self.assertEqual(self.disk_snapshot(), files)
+
+    def test_rejected_subtree_moves_do_not_partially_rename_or_reassign(self):
+        source = self.library.create_folder({'name': '222'})
+        child = self.library.create_folder({'name': '子分类', 'parent_id': source['id']})
+        leaf = self.library.create_folder({'name': '孙分类', 'parent_id': child['id']})
+        self.library.assign_project(self.project['id'], {'folder_id': leaf['id']})
+        self.library.visit(self.project['id'])
+        before, rows, files = self.library.snapshot(), self.project_rows(), self.disk_snapshot()
+        for parent in (source['id'], child['id'], leaf['id'], 'missing', [], 123):
+            with self.subTest(parent=parent):
+                with self.assertRaises(UserError):
+                    self.library.update_folder(source['id'], {'parent_id': parent, 'name': '不可局部生效的新名'})
+                self.assertEqual(self.library.snapshot(), before)
+                self.assertEqual(self.project_rows(), rows)
+                self.assertEqual(self.disk_snapshot(), files)
+
+    def test_sibling_collision_on_move_and_top_level_return_is_atomic(self):
+        destination = self.library.create_folder({'name': '1111'})
+        source = self.library.create_folder({'name': '222'})
+        nested = self.library.create_folder({'name': '222', 'parent_id': destination['id']})
+        self.library.create_folder({'name': 'Films', 'parent_id': destination['id']})
+        self.library.assign_project(self.project['id'], {'folder_id': source['id']})
+        self.library.visit(self.project['id'])
+        before, rows, files = self.library.snapshot(), self.project_rows(), self.disk_snapshot()
+        for folder_id, body in (
+                (source['id'], {'parent_id': destination['id']}),
+                (source['id'], {'parent_id': destination['id'], 'name': ' films '}),
+                (nested['id'], {'parent_id': None})):
+            with self.subTest(folder_id=folder_id, body=body):
+                with self.assertRaises(UserError) as error:
+                    self.library.update_folder(folder_id, body)
+                self.assertEqual(error.exception.status, 409)
+                self.assertEqual(self.library.snapshot(), before)
+                self.assertEqual(self.project_rows(), rows)
+                self.assertEqual(self.disk_snapshot(), files)
 
 
 if __name__ == '__main__':

@@ -33,7 +33,7 @@ KINDS = {
     **dict.fromkeys(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'], 'video'),
     **dict.fromkeys(['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.aac'], 'audio'),
     **dict.fromkeys(['.blend', '.fbx', '.obj', '.glb', '.gltf', '.stl'], 'model'),
-    '.docx': 'docx', '.pdf': 'pdf', '.doc': 'file', '.pptx': 'file', '.xlsx': 'file', '.rtf': 'file',
+    '.html': 'html', '.htm': 'html', '.svg': 'svg', '.docx': 'docx', '.pdf': 'pdf', '.doc': 'file', '.pptx': 'file', '.xlsx': 'file', '.rtf': 'file',
 }
 SAFE_EXTENSIONS = frozenset(KINDS)
 TEXT_LIMIT = 2 * 1024 * 1024
@@ -385,7 +385,7 @@ class Store:
         elif kind=='docx' and stat.st_size<=32*1024*1024:
             try:
                 from .docx_io import read_docx
-                content=read_docx(p)['content'][:TEXT_LIMIT]
+                content=read_docx(p,structured=False)['content'][:TEXT_LIMIT]
             except (ValueError,OSError,UserError): pass
         elif kind=='image' and stat.st_size<=100*1024*1024:
             try:
@@ -643,14 +643,23 @@ class Store:
     def read_content(self,iid):
         item=self.get_item(iid);path=self.resolve_item_path(item)
         fmt=item['kind']
+        if fmt == 'html':
+            from .html_content import read_html_content
+            with path.open('rb') as opened:
+                return read_html_content(opened)
+        if fmt == 'svg':
+            from .svg_content import read_svg_content
+            with path.open('rb') as opened:
+                return read_svg_content(opened)
         if fmt not in ('markdown','text','docx'):
             return {'format':'binary','content':'','etag':None,'editable':False}
         limit=32*1024*1024 if fmt=='docx' else TEXT_LIMIT
         if path.stat().st_size>limit:raise UserError('文件较大，请使用系统编辑器打开。')
         raw=path.read_bytes();etag=hashlib.sha256(raw).hexdigest()
         if fmt=='docx':
+            import io
             from .docx_io import read_docx
-            try:result=read_docx(path)
+            try:result=read_docx(path,handle=io.BytesIO(raw))
             except ValueError as e:raise UserError(str(e))
             return {'format':fmt,'etag':etag,'editable':any(p['editable'] for p in result['paragraphs']),**result}
         text,encoding=decode_text(raw)
@@ -666,8 +675,9 @@ class Store:
             before=path.read_bytes();digest=hashlib.sha256(before).hexdigest()
             if not data.get('etag') or digest!=data['etag']:raise UserError('原文件已被其他程序修改。你的编辑仍保留，请先复制草稿并重新打开比较。',409)
             if item['kind']=='docx':
+                import io
                 from .docx_io import edit_docx
-                try:after=edit_docx(path,data.get('paragraphs',[]))
+                try:after=edit_docx(path,data.get('paragraphs',[]),handle=io.BytesIO(before))
                 except ValueError as e:raise UserError(str(e))
             else:
                 content=data.get('content')

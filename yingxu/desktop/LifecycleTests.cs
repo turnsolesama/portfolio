@@ -113,6 +113,20 @@ namespace YingXu.Desktop
             zoom.PerformClick();
             Check(Math.Abs(web.ZoomFactor-1)<0.000001 && zoom.Text=="界面 100%",
                 "real click resets engine and label synchronously without a setter event");
+            var navigation=new TaskCompletionSource<bool>();
+            web.CoreWebView2.NavigationCompleted+=(sender,args)=>navigation.TrySetResult(args.IsSuccess);
+            web.NavigateToString("<!doctype html><meta charset='utf-8'><script>window.pauseMessageCount=0;window.chrome.webview.addEventListener('message',function(event){if(event.data.action==='pause-media')window.pauseMessageCount++;});</script>");
+            for(int i=0;i<100 && !navigation.Task.IsCompleted;i++)await Task.Delay(25);
+            Check(navigation.Task.IsCompleted && navigation.Task.Result,"isolated media lifecycle page loads inside real WebView");
+            Field(window,"pageReady",true);
+            var close=new FormClosingEventArgs(CloseReason.UserClosing,false);
+            Call(window,"OnFormClosing",close);
+            string pauseCount="0";
+            for(int i=0;i<80 && pauseCount!="1";i++) {
+                await Task.Delay(25);pauseCount=await web.CoreWebView2.ExecuteScriptAsync("window.pauseMessageCount");
+            }
+            Check(close.Cancel && !window.IsDisposed && !window.Visible && pauseCount=="1",
+                "close to tray keeps window alive and posts exactly one pause-media message to real WebView");
             Check(!window.Visible,"offline zoom integration keeps the native window hidden");
             web.Dispose();
             for(int i=0;i<100 && !exited.Task.IsCompleted;i++) await Task.Delay(25);

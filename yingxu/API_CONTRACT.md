@@ -72,7 +72,7 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 ## 0.3.1：设置、临时预览与项目库
 
 - `GET /api/settings` 与 `PATCH /api/settings` 读取/更新六项设置：`confirm_delete`、`confirm_trash_delete`、`close_to_tray`、`autoplay_media`（布尔）；`default_view`（grid/list/board）、`default_sort`（updated/name/order）。默认确认删除、关闭到托盘、画廊/最近更新、不自动播放；未知键及类型错误拒绝，原子保存。bootstrap 附带 settings。
-- `POST /api/external-open {paths:[绝对路径]}` 受会话令牌保护，返回 `{entries}`，仅注册会话临时 ID。`GET /api/external/ID` 返回元数据及只读 content；`GET /api/external-media/ID` 通过已验证文件句柄流式读取并支持 Range。仅受支持文件可读，不增加项目或复制文件，不提供写接口。预览 ID 会在后台重启或过期后失效。
+- `POST /api/external-open {paths:[绝对路径]}` 受会话令牌保护，返回 `{entries}`，仅注册会话临时 ID。`GET /api/external/ID` 返回元数据、content 和实际 editable 能力；`GET /api/external-media/ID` 通过已验证文件句柄流式读取并支持 Range。仅受支持文件可读，不增加项目或复制文件，0.3.8 起提供下文的受保护文稿保存接口。预览 ID 会在后台重启或过期后失效。
 - `GET /api/project-library` 返回 `{folders,projects,recent_ids,total}`；项目带 folder_id 和 last_opened。`POST /api/project-folders {name,parent_id?}` 创建逻辑分类；`PATCH /api/project-folders/ID {name?,parent_id?}` 改名或移动，拒绝循环及同级重名；`DELETE /api/project-folders/ID` 仅删除可见项目与子分类均为空的分类，历史归属置为未分类。
 - `PATCH /api/project-library/PROJECT_ID {folder_id}` 归类（null 为未分类）；`POST /api/project-library/PROJECT_ID/visit {}` 记录最近打开，不改写项目磁盘目录。以上写接口沿用同源及会话令牌验证。
 
@@ -136,3 +136,17 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 请求仅接受 `project_id`、`ids`、可选 `tags_add`、可选 `status`。项目与素材 ID 是 32 位小写十六进制；`ids` 为 1–200 个不重复的当前活跃项目素材，至少提供一项修改。`tags_add` 为 1–50 个字符串，去掉首尾空白后每项 1–80 字且不含控制字符；追加时有序去重，保留各素材原标签，合并后超出 50 个则整批拒绝。状态仅接受「待开始、进行中、待审核、已完成」；未提供的字段不修改。
 
 所有素材验证通过后在同一数据库事务内修改标签、状态、更新时间和搜索索引。已删除条目、跨项目条目、标签合并溢出或执行错误不会留下部分更新，不读取或改动素材原文件。返回 `{items:[{id,project_id,tags,status,updated}]}`，按输入 ID 顺序排列；不返回正文或大体积制作参数。
+
+## 0.3.8：外部文稿编辑与 Word 结构预览
+
+POST /api/external/ID/content 接受 {etag,content}（Markdown/文本）或 {etag,paragraphs:[{id,text}]}（DOCX），要求既有同源与会话令牌，ID 必须来自显式打开的有效会话记录，不能传任意路径。返回完整 detail（content 为更新后的内容对象，成功备份有 backup_id）。原路径保存、原编码保留、etag/身份/链接重查、私有 external-versions 备份、原子替换；冲突 409，过期 404，不支持类型 415。GET /api/external/ID 的顶层 editable 与 content.editable 表明实际能力，不再一律只读。
+
+DOCX content 保留 paragraphs/content/notice，并增加 blocks（paragraph/table/unsupported），段落带 heading_level/alignment/runs/images/readonly_reason。图片仅受限内部光栅 data URI，拒绝外链。导入索引使用 read_docx(...,structured=False)，不生成图片预览。
+
+## 0.4.0 静态格式
+
+资源 kind 增加 svg/html。项目 GET /api/content/ID 与外部 GET /api/external/ID.content 返回只读格式内容。SVG preview_url 为经过净化的 data:image/svg+xml;base64；HTML content 为原始解码源码，preview_html 为重建后的静态片段，必须使用无 allow-* 的 sandbox iframe + CSP。保存接口拒绝这两种格式。SVG 媒体直链也经过净化并返回隔离 CSP；HTML 媒体直链按 text/plain 附件提供，禁止同源网页执行。两者不创建缩略图任务。后台不解析超出各自有界限制的文件。
+
+## 0.4.1 SVG兼容
+
+SVG内容notice包含本次静态预览省略的装饰效果提示；内容与媒体均用相同净化结果。filter装饰省略，stroke-dasharray降级实线；不放宽脚本、外链、事件或动画边界。

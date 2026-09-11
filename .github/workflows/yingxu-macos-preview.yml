@@ -40,7 +40,6 @@ jobs:
           python macos/webkit_smoke.py
       - uses: actions/upload-artifact@v4
         with:
-          name: YingXu-0.3.7-mac.1-arm64
+          name: YingXu-0.4.1-mac.1-arm64
           path: yingxu/releases/macos-preview/
           if-no-files-found: error
-

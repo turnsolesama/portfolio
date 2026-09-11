@@ -1,10 +1,14 @@
 .project-library-toolbar{display:flex;gap:12px;align-items:center;margin-bottom:16px}
 .project-library-search{flex:1;min-width:0}.project-library-search input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:var(--panel)}
 .project-library-layout{display:grid;grid-template-columns:180px minmax(0,1fr);min-height:310px;height:min(56vh,550px);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.project-library-folders{overflow:auto;background:var(--panel);padding:8px;border-right:1px solid var(--line)}
+.project-library-folders{position:relative;overflow:auto;background:var(--panel);padding:8px;border-right:1px solid var(--line)}
 .project-library-folders>button{display:block;width:100%;text-align:left;border:0;background:none;border-radius:5px;padding:9px 12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-library-folders>button[aria-current=true]{background:#dce5dd;color:var(--accent)}.project-library-folders>button:hover{background:var(--panel-hover)}
 .project-library-folders>button>span{float:right;color:var(--muted)}
+.project-library-folders>button.project-library-folder-button{display:flex;align-items:center;gap:5px;cursor:grab;touch-action:pan-y}
+.project-library-folder-button>.project-library-folder-grip{float:none;flex:none;display:flex;align-items:center;justify-content:center;width:20px;min-height:24px;cursor:grab;touch-action:none;user-select:none}
+.project-library-folder-button>.project-library-folder-name{float:none;min-width:0;overflow:hidden;text-overflow:ellipsis;color:inherit}
+.project-library-folder-dragging [data-library-folder="*"]{outline:1px dashed var(--accent);outline-offset:-1px}
 .project-library-content{min-width:0;min-height:0;display:flex;flex-direction:column}
 .project-library-section-head{padding:12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
 .project-library-section-head .button{font-size:11px;padding:5px}.project-library-results{overflow:auto;flex:1;padding:4px 12px}
@@ -12,9 +16,9 @@
 .project-library-open{display:flex;flex:1;flex-direction:column;gap:4px;min-width:0;text-align:left;background:none;border:0;color:var(--text);padding:4px;cursor:pointer}
 .project-library-open strong,.project-library-open span,.project-library-open small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-library-open strong{font-size:14px}.project-library-open span,.project-library-open small{color:var(--muted);font-size:11px}.project-library-open:hover strong{color:var(--accent)}
-.project-library-card>.button{font-size:11px;flex-shrink:0}.project-library-empty{padding:28px 12px;color:var(--muted);line-height:1.8}
+.project-library-card-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;flex-shrink:0}.project-library-card-actions>.button{font-size:11px;padding:7px 9px}.project-library-empty{padding:28px 12px;color:var(--muted);line-height:1.8}
 .project-library-pagination{display:flex;gap:12px;justify-content:flex-end;align-items:center;padding:6px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
-@media(max-width:650px){.project-library-layout{grid-template-columns:130px minmax(0,1fr)}.project-library-toolbar{gap:6px}.project-library-toolbar>.button{padding:8px}.project-library-card{gap:4px}}
+@media(max-width:650px){.project-library-layout{grid-template-columns:130px minmax(0,1fr)}.project-library-toolbar{gap:6px}.project-library-toolbar>.button{padding:8px}.project-library-card{gap:4px}.project-library-card-actions{flex-direction:column;gap:4px}}
 
 /* The stable modal owns pointer capture. Fixed hints stay in its top layer. */
 .project-library-card{cursor:grab;touch-action:pan-y}
@@ -28,5 +32,5 @@
 .project-library-outside-hint.is-active{background:#e0efdf;border:2px solid var(--accent);color:var(--accent);font-weight:600}
 .project-library-drop-outside{outline:3px solid var(--accent);outline-offset:5px}
 .app-dialog[aria-busy=true] .project-library-layout{cursor:wait}
-@media(pointer:coarse){.project-library-drag-grip{min-width:30px;padding:10px}.project-library-open{padding:8px}}
+@media(pointer:coarse){.project-library-drag-grip{min-width:30px;padding:10px}.project-library-open{padding:8px}.project-library-folder-button>.project-library-folder-grip{width:30px;min-height:30px}}
 @media(prefers-reduced-motion:reduce){.project-library-drag-ghost,.project-library-outside-hint,.project-library-card{transition:none;animation:none}}
