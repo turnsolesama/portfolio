@@ -62,7 +62,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.8'
+    assert health['version'] == '0.3.9'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -82,6 +82,20 @@ def check_server(port, data, projects):
     assert Path(project['root']).is_relative_to(projects.resolve())
     renamed = request(port, 'PATCH', '/api/projects/' + project['id'], {'name': '项目改名验收'}, token)
     assert renamed['name'] == '项目改名验收' and renamed['root'] == project['root']
+    # Exercise persisted classification moves through the packaged HTTP API.
+    parent = request(port, 'POST', '/api/project-folders', {'name': '1111'}, token)
+    branch = request(port, 'POST', '/api/project-folders', {'name': '222'}, token)
+    leaf = request(port, 'POST', '/api/project-folders', {'name': '下级', 'parent_id': branch['id']}, token)
+    request(port, 'PATCH', '/api/project-library/' + project['id'], {'folder_id': branch['id']}, token)
+    library_before = request(port, 'GET', '/api/project-library')
+    moved_branch = request(port, 'PATCH', '/api/project-folders/' + branch['id'], {'parent_id': parent['id']}, token)
+    assert moved_branch['parent_id'] == parent['id'] and moved_branch['name'] == '222'
+    library_after = request(port, 'GET', '/api/project-library')
+    assert library_after['projects'] == library_before['projects']
+    assert next(f for f in library_after['folders'] if f['id'] == leaf['id'])['parent_id'] == branch['id']
+    moved_branch = request(port, 'PATCH', '/api/project-folders/' + branch['id'], {'parent_id': None}, token)
+    assert moved_branch['parent_id'] is None
+    assert request(port, 'GET', '/api/project-library')['projects'] == library_before['projects']
     external_path = projects.parent / '外部编辑验收.md'
     original_external = b'\xef\xbb\xbf# External\r\nOriginal\r\n'
     external_path.write_bytes(original_external)
@@ -149,6 +163,7 @@ def check_server(port, data, projects):
             'batch tags append without replacing individual tags and batch status preserves original file bytes',
             'global search finds indexed document content across projects',
             'project rename preserves project root',
+            'project classification subtree moves and returns to root without changing project records',
             'external Markdown saves original path with BOM/newlines, backup and no project import']
 
 

@@ -34,7 +34,7 @@
       : folder === '*' || (project.folder_id || '') === folder);
   }
   // Pointer capture stays on the stable dialog, never a row that may be redrawn.
-  function bindProjectDrag({dialog,getProject,getFolders,isBusy,move}) {
+  function bindProjectDrag({dialog,getProject,getFolders,isBusy,move,moveFolder}) {
     const doc = dialog.ownerDocument, win = doc.defaultView;
     let drag = null, ghost = null, outsideHint = null, highlight = null, suppressClick = false, disposed = false;
     const listeners = [];
@@ -44,20 +44,28 @@
       const previous = drag; drag = null;
       clearHighlight(); ghost?.remove(); outsideHint?.remove(); ghost = outsideHint = null;
       previous?.row.classList.remove('project-library-drag-source');
-      dialog.classList.remove('project-library-dragging');
+      dialog.classList.remove('project-library-dragging'); dialog.classList.remove('project-library-folder-dragging');
       if (previous && dialog.hasPointerCapture?.(previous.pointerId)) dialog.releasePointerCapture(previous.pointerId);
     }
     function targetAt(event) {
       const {clientX:x,clientY:y} = event, rect = dialog.getBoundingClientRect();
-      const project = getProject(drag.projectId);
-      if (!project || x < 8 || y < 8 || x > win.innerWidth-8 || y > win.innerHeight-8) return null;
+      const source = drag.kind === 'folder' ? getFolders().find(f => f.id === drag.id) : getProject(drag.id);
+      if (!source || x < 8 || y < 8 || x > win.innerWidth-8 || y > win.innerHeight-8) return null;
       if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) {
-        return project.folder_id ? {id:null,label:'未分类',outside:true} : null;
+        return (drag.kind === 'folder' ? source.parent_id : source.folder_id)
+          ? {id:null,label:drag.kind === 'folder' ? '项目库顶层' : '未分类',outside:true} : null;
       }
-      const button = doc.elementFromPoint(x,y)?.closest('[data-library-folder]');
+      const hit = doc.elementFromPoint(x,y);
+      const button = hit?.closest('[data-library-folder]');
       if (!button || !dialog.contains(button) || button.disabled) return null;
       const id = button.dataset.libraryFolder;
-      if (id === '*' || (project.folder_id || '') === id) return null;
+      if (drag.kind === 'folder') {
+        if (id === '*') return source.parent_id ? {id:null,label:'项目库顶层',button} : null;
+        if (!id || (source.parent_id || '') === id || !drag.parents.has(id)) return null;
+        const candidate = getFolders().find(f => f.id === id);
+        return candidate ? {id,label:drag.parents.get(id),button} : null;
+      }
+      if (id === '*' || (source.folder_id || '') === id) return null;
       const folder = id && getFolders().find(f => f.id === id);
       if (id && !folder) return null;
       return {id:id || null,label:folder ? folder.name : '未分类',button};
@@ -66,16 +74,26 @@
       const target = targetAt(event); clearHighlight();
       if (target?.button) { highlight = target.button; highlight.classList.add('project-library-drop-target'); }
       dialog.classList.toggle('project-library-drop-outside',Boolean(target?.outside));
-      ghost.textContent = `${getProject(drag.projectId)?.name || '项目'} · ${target ? `松手移到“${target.label}”` : '拖到分类；Esc 取消'}`;
+      const isFolder = drag.kind === 'folder';
+      const name = isFolder ? getFolders().find(f => f.id === drag.id)?.name : getProject(drag.id)?.name;
+      ghost.textContent = `${name || (isFolder ? '分类' : '项目')} · ${target ? `松手${isFolder && target.id ? '成为' : '移到'}“${target.label}”${isFolder && target.id ? '的子分类' : ''}` : isFolder ? '拖到其他分类或顶层；Esc 取消' : '拖到分类；Esc 取消'}`;
       ghost.style.left = `${Math.max(8,Math.min(event.clientX+14,win.innerWidth-288))}px`;
       ghost.style.top = `${Math.max(8,Math.min(event.clientY+18,win.innerHeight-72))}px`;
-      outsideHint.textContent = target?.outside ? '松手移到未分类（仅更改归类）' : '拖出弹窗可移到未分类 · Esc 取消';
+      outsideHint.textContent = target?.outside ? `松手移到${isFolder ? '项目库顶层' : '未分类'}（磁盘文件不移动）` : isFolder ? '拖到分类建立层级；拖到“全部项目”或弹窗外移回顶层 · Esc 取消' : '拖出弹窗可移到未分类 · Esc 取消';
       outsideHint.classList.toggle('is-active',Boolean(target?.outside));
       return target;
     }
     listen(dialog,'pointerdown',event => {
       if (disposed || drag || isBusy() || event.button !== 0 || event.isPrimary === false) return;
       suppressClick = false;
+      const folderButton = event.target.closest('[data-library-folder]');
+      if (moveFolder && folderButton && dialog.contains(folderButton) && !folderButton.disabled && getFolders().some(f => f.id === folderButton.dataset.libraryFolder)) {
+        if (event.pointerType === 'touch' && !event.target.closest('[data-library-folder-drag]')) return;
+        event.preventDefault();
+        drag = {kind:'folder',id:folderButton.dataset.libraryFolder,row:folderButton,pointerId:event.pointerId,x:event.clientX,y:event.clientY,started:false,
+          parents:new Map(eligibleParents(getFolders(),folderButton.dataset.libraryFolder).map(f => [f.id,f.label]))};
+        return;
+      }
       const row = event.target.closest('[data-library-project]');
       if (!row || !dialog.contains(row) || event.target.closest('button,input,textarea,select,a,[contenteditable]')) return;
       // Touch users can scroll the body normally; the dedicated grip owns dragging.
@@ -84,7 +102,7 @@
       // Prevent text selection/native text drag before the pointer threshold;
       // buttons and touch scrolling returned above keep their default behavior.
       event.preventDefault();
-      drag = {projectId:row.dataset.libraryProject,row,pointerId:event.pointerId,x:event.clientX,y:event.clientY,started:false};
+      drag = {kind:'project',id:row.dataset.libraryProject,row,pointerId:event.pointerId,x:event.clientX,y:event.clientY,started:false};
     });
     listen(dialog,'dragstart',event => { if (drag) event.preventDefault(); });
     listen(win,'pointermove',event => {
@@ -95,6 +113,7 @@
         try { dialog.setPointerCapture(event.pointerId); } catch (_) { cleanup(); return; }
         drag.started = true; suppressClick = true;
         drag.row.classList.add('project-library-drag-source'); dialog.classList.add('project-library-dragging');
+        if (drag.kind === 'folder') dialog.classList.add('project-library-folder-dragging');
         ghost = doc.createElement('div'); ghost.className = 'project-library-drag-ghost'; ghost.setAttribute('role','status');
         outsideHint = doc.createElement('div'); outsideHint.className = 'project-library-outside-hint';
         dialog.append(ghost,outsideHint);
@@ -103,10 +122,18 @@
     });
     listen(win,'pointerup',event => {
       if (!drag || drag.pointerId !== event.pointerId) return;
-      const projectId = drag.projectId, target = drag.started && !isBusy() && dialog.open ? update(event) : null;
+      const id = drag.id, kind = drag.kind, target = drag.started && !isBusy() && dialog.open ? update(event) : null;
       if (drag.started) event.preventDefault();
       cleanup();
-      if (target) move(projectId,target.id);
+      if (target) {
+        // Re-evaluate the full tree once at drop; the backend rechecks its latest
+        // revision too. Pointer moves use cached legal parents, not tree walks.
+        if (kind === 'folder') {
+          const current = getFolders().find(f => f.id === id);
+          if (current && (current.parent_id || null) !== target.id &&
+              (!target.id || eligibleParents(getFolders(),id).some(f => f.id === target.id))) moveFolder(id,target.id);
+        } else move(id,target.id);
+      }
     });
     const cancel = () => cleanup();
     listen(dialog,'pointercancel',event => { if (drag?.pointerId === event.pointerId) cleanup(); });
@@ -209,6 +236,9 @@
         if (result === 'delete') { await api(`/api/project-folders/${encodeURIComponent(id)}`,{method:'DELETE'}); folder = '*'; await refreshProjects(); toast('空分类已删除。'); }
       } finally { await open(); }
     }
+    function foldersHtml() {
+      return `<button type="button" data-library-folder="*" title="拖动分类到这里可移回项目库顶层">全部项目 <span>${data.projects.length}</span></button><button type="button" data-library-folder="">未分类</button>` + folderRows(data.folders).map(f => `<button type="button" class="project-library-folder-button" data-library-folder="${esc(f.id)}" title="${esc(f.label)} · 拖动到分类可建立上下级" style="padding-left:${8+Math.min(f.depth,12)*12}px"><span class="project-library-folder-grip" data-library-folder-drag aria-hidden="true">⠿</span><span class="project-library-folder-name">▱ ${esc(f.name)}</span></button>`).join('');
+    }
     function projectHtml(project) {
       return `<article class="project-library-card" data-library-project="${esc(project.id)}"><span class="project-library-drag-grip" data-library-drag aria-hidden="true" title="拖动归类">⠿</span><div role="button" tabindex="0" class="project-library-open" data-library-open="${esc(project.id)}"><strong>${esc(project.name)}</strong><span>${esc(folderName(project.folder_id))} · ${Number(project.counts?.total) || 0} 项素材</span>${project.description ? `<small>${esc(project.description)}</small>` : ''}</div><div class="project-library-card-actions"><button type="button" class="button button-ghost" data-library-rename="${esc(project.id)}" aria-label="重命名项目 ${esc(project.name)}">重命名</button><button type="button" class="button button-secondary" data-library-assign="${esc(project.id)}" aria-label="归类 ${esc(project.name)}">归类</button></div></article>`;
     }
@@ -237,9 +267,8 @@
       if (options.projectId) { await assignProject(options.projectId); return; }
       await closeCurrent();
       if (ticket !== sequence) return;
-      const rows = folderRows(data.folders);
-      const dialog = showDialog({title:'项目库',subtitle:'拖动项目到左侧分类，或拖出弹窗移到未分类；只更改归类。触屏可用项目左侧握柄，亦可点击“归类”。',wide:true,
-        body:`<div class="project-library-toolbar"><label class="project-library-search"><span class="sr-only">搜索全部项目</span><input type="search" data-library-search placeholder="搜索全部项目…" value="${esc(query)}"></label><button type="button" class="button button-secondary" data-library-new>＋ 新建分类</button></div><div class="project-library-layout"><nav class="project-library-folders" aria-label="项目分类"><button type="button" data-library-folder="*">全部项目 <span>${data.projects.length}</span></button><button type="button" data-library-folder="">未分类</button>${rows.map(f => `<button type="button" data-library-folder="${esc(f.id)}" title="${esc(f.label)}" style="padding-left:${12+Math.min(f.depth,12)*12}px">▱ ${esc(f.name)}</button>`).join('')}</nav><section class="project-library-content"><div class="project-library-section-head"><strong data-library-heading></strong><div data-library-folder-tools><button type="button" class="button button-ghost" data-library-edit>编辑分类</button><button type="button" class="button button-ghost" data-library-delete>删除空分类</button></div></div><div class="project-library-results" data-library-results></div><div class="project-library-pagination"><button type="button" class="button button-ghost" data-library-prev>上一页</button><span data-library-page></span><button type="button" class="button button-ghost" data-library-next>下一页</button></div></section></div>`,
+      const dialog = showDialog({title:'项目库',subtitle:'分类可拖到其他分类下，或移回顶层；项目可拖动归类。仅整理层级，不移动磁盘文件。触屏用左侧握柄，键盘可在“编辑分类”中选择上级。',wide:true,
+        body:`<div class="project-library-toolbar"><label class="project-library-search"><span class="sr-only">搜索全部项目</span><input type="search" data-library-search placeholder="搜索全部项目…" value="${esc(query)}"></label><button type="button" class="button button-secondary" data-library-new>＋ 新建分类</button></div><div class="project-library-layout"><nav class="project-library-folders" aria-label="项目分类">${foldersHtml()}</nav><section class="project-library-content"><div class="project-library-section-head"><strong data-library-heading></strong><div data-library-folder-tools><button type="button" class="button button-ghost" data-library-edit>编辑分类</button><button type="button" class="button button-ghost" data-library-delete>删除空分类</button></div></div><div class="project-library-results" data-library-results></div><div class="project-library-pagination"><button type="button" class="button button-ghost" data-library-prev>上一页</button><span data-library-page></span><button type="button" class="button button-ghost" data-library-next>下一页</button></div></section></div>`,
         actions:'<button type="button" class="button button-primary" data-dialog-cancel>完成</button>'});
       activeDialog = dialog; dialogGeneration++;
       const search = dialog.querySelector('[data-library-search]');
@@ -247,6 +276,27 @@
       let busy = false;
       const generation = dialogGeneration;
       dragController = bindProjectDrag({dialog,getProject:id => data.projects.find(p => p.id === id),getFolders:() => data.folders,isBusy:() => busy,
+        moveFolder:async (folderId,parentId) => {
+          if (busy || generation !== dialogGeneration) return;
+          busy = true; dialog.setAttribute('aria-busy','true');
+          const controls = [...dialog.querySelectorAll('button,input')].map(node => [node,node.disabled]);
+          controls.forEach(([node]) => { node.disabled = true; });
+          try {
+            await api(`/api/project-folders/${encodeURIComponent(folderId)}`,{method:'PATCH',body:{parent_id:parentId}});
+            const current = data.folders.find(f => f.id === folderId);
+            if (current) current.parent_id = parentId;
+            try { await refreshProjects(); }
+            catch (_) { toast('分类层级已保存，页面刷新未完成；重新打开项目库可查看。','error'); return; }
+            toast('分类层级已保存。磁盘文件位置不变。');
+          } catch (e) { error(e); }
+          finally {
+            busy = false;
+            if (generation === dialogGeneration) {
+              dialog.removeAttribute('aria-busy'); controls.forEach(([node,disabled]) => { node.disabled = disabled; });
+              if (dialog.open) { dialog.querySelector('.project-library-folders').innerHTML = foldersHtml(); drawResults(dialog); }
+            }
+          }
+        },
         move:async (projectId,folderId) => {
           if (busy || generation !== dialogGeneration) return;
           busy = true; dialog.setAttribute('aria-busy','true');

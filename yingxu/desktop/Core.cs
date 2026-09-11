@@ -251,7 +251,7 @@ namespace YingXu.Desktop
                     return health != null && health.TryGetValue("app", out name) && (name as string) == "yingxu" &&
                            health.TryGetValue("ok", out ok) && ok is bool && (bool)ok &&
                            health.TryGetValue("instance_id", out identity) && (identity as string) == InstanceId() &&
-                           health.TryGetValue("version", out version) && (version as string) == "0.3.8";
+                           health.TryGetValue("version", out version) && (version as string) == "0.3.9";
                 }
             }
             catch { return false; }

@@ -1,11 +1,11 @@
 # 映序 Windows 发布包
 
-当前完整版 **0.3.8**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+当前完整版 **0.3.9**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
 
-**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-verification.json)
+**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-verification.json)
 
 0.3.7 截图默认进入标注后确认，支持画笔、箭头、矩形、颜色/粗细与撤销；设置中保留快速完成，取消不写剪贴板或项目。原生状态栏显示实际界面缩放百分比，点击恢复 100%；图片预览另显示图片自身的实际缩放比例。同时增加项目行与素材组成员长条行的拖动归类：拖到其他分类或同项目的组，拖出弹窗到明确空白区域则未分类或移出组，Esc 取消。全部为逻辑整理，磁盘原文件保持不变；修复素材选择框保持焦点时按 Delete 无响应，仍沿用映序回收站、确认开关与草稿保护。
 
@@ -55,3 +55,10 @@ python tools/verify_release.py releases/YingXu-v0.2.3-Windows-x64.zip
 - Windows 双击或“打开方式”打开的 Markdown/文本可直接编辑并按 Ctrl+S 保存原文件，不自动导入项目。原编码/BOM/统一换行保留，保存前备份，冲突不覆盖。重新明确打开同一路径时可恢复本地未保存草稿。
 - Word 默认“文档预览”，显示标题、文字样式、表格与支持的内嵌光栅图片；“编辑文字”保留未改文字的 run 样式和其他 ZIP 资源。精确分页、页眉页脚、浮动排版及旧 .doc 不属于本次编辑范围。
 - Word 图片按需读取：最多 32 张，单张 4 MiB、合计 8 MiB、每张 4000 万像素；预览图最长边 1600 像素，动画显示首帧，原图不改变；外链、不支持格式或超限内容显示提示。无图片常驻任务，索引只读纯文本。
+
+## 0.3.9：拖动整理项目分类
+
+- 在项目库左侧将一个自定义分类拖到另一个分类上，即可成为它的子分类。例如将“222”拖到“1111”，成为“1111 / 222”。分类里的项目和下级分类保持原有归属，磁盘目录不移动。
+- 拖到“全部项目”可将分类移回项目库顶层。松手前显示目标，Esc 取消；不能拖入自身、自己的子分类或当前父级，同一层重名会提示并保持原状。
+- 触屏可用分类握柄；也可以通过“编辑分类 → 上级分类”整理。项目行拖动归类继续保留。“未分类”仍为固定系统分组。
+- 无新增依赖、模型或空闲轮询。完整包保留 0.3.8 的缩放配色、项目重命名、媒体暂停、外部 Markdown 编辑与 Word 结构预览修复。

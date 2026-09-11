@@ -109,7 +109,7 @@ test('queued native close event cannot dismiss a new form on the shared dialog',
   assert.equal(d.spec.title,'移动到项目分类'); assert.equal(d.open,true);
 });
 
-function dragHarness({folderId='b',busy=false}={}) {
+function dragHarness({folderId='b',busy=false,folderData=plain(folders)}={}) {
   function element() {
     const listeners = {},classes=new Set();
     return {listeners,style:{},dataset:{},children:[],disabled:false,
@@ -127,15 +127,16 @@ function dragHarness({folderId='b',busy=false}={}) {
   const row=element();row.dataset.libraryProject='p1';
   let hit=null;
   const doc={defaultView:win,createElement:element,elementFromPoint:()=>hit};dialog.ownerDocument=doc;
-  const targets=['a','b','', '*','missing'].map(id=>{const n=element();n.dataset.libraryFolder=id;n.closest=()=>n;return n;});
+  const targets=[...folderData.map(f=>f.id),'', '*','missing'].map(id=>{const n=element();n.dataset.libraryFolder=id;n.closest=selector=>selector==='[data-library-folder]'?n:null;return n;});
   const project={id:'p1',name:'雨夜<script>',folder_id:folderId};
-  const calls=[];let blocked=busy;
-  const controller=library.bindProjectDrag({dialog,getProject:id=>id==='p1'?project:null,getFolders:()=>folders,isBusy:()=>blocked,move:(...args)=>calls.push(args)});
+  const calls=[],folderCalls=[];let blocked=busy;
+  const controller=library.bindProjectDrag({dialog,getProject:id=>id==='p1'?project:null,getFolders:()=>folderData,isBusy:()=>blocked,move:(...args)=>calls.push(args),moveFolder:(...args)=>folderCalls.push(args)});
   const origin=(kind='body')=>({closest:selector=>selector==='[data-library-project]'?row:selector==='[data-library-drag]'?(kind==='grip'?row:null):selector.startsWith('button,')?(kind==='button'?{}:null):null});
+  const folderOrigin=(id='b',kind='body')=>({closest:selector=>selector==='[data-library-folder]'?targets.find(n=>n.dataset.libraryFolder===id):selector==='[data-library-folder-drag]'?(kind==='grip'?{}:null):selector.startsWith('button,')?{}:null});
   const down=(props={})=>dialog.emit('pointerdown',{target:origin(),...props});
-  const move=(id='a',props={})=>{hit=targets.find(n=>n.dataset.libraryFolder===id)||null;return win.emit('pointermove',{clientX:150,clientY:250,...props});};
+  const move=(id='a',props={})=>{hit=targets.find(n=>n.dataset.libraryFolder===(id==='root'?'*':id))||null;return win.emit('pointermove',{clientX:150,clientY:250,...props});};
   const up=(props={})=>win.emit('pointerup',{clientX:150,clientY:250,...props});
-  return {dialog,win,targets,project,calls,controller,down,move,up,origin,setBusy:v=>blocked=v};
+  return {dialog,win,targets,project,calls,folderCalls,folderData,controller,down,move,up,origin,folderOrigin,setBusy:v=>blocked=v};
 }
 test('drag begins only past threshold and ordinary clicks remain available',()=>{
   const h=dragHarness();h.down();h.move('a',{clientX:403,clientY:204});
@@ -270,6 +271,87 @@ test('integrated drag submits one metadata patch while pending and refreshes ren
   assert.equal(h.opened.length,0);assert.equal(h.toasts.length,1);
   d.close();await new Promise(setImmediate);
 });
+test('classification drag nests under a different branch with a full path hint and no project move',()=>{
+  const h=dragHarness({folderData:[...plain(folders),{id:'d',name:'独立',parent_id:null},{id:'e',name:'子类',parent_id:'d'}]});
+  h.down({target:h.folderOrigin('b')});h.move('e');
+  assert.equal(h.dialog.classList.contains('project-library-folder-dragging'),true);
+  assert.match(h.dialog.children[0].textContent,/成为“独立 \/ 子类”的子分类/);
+  assert.equal(h.folderCalls.length,0);h.up();
+  assert.deepEqual(plain(h.folderCalls),[['b','e']]);assert.equal(h.calls.length,0);
+  assert.equal(h.dialog.classList.contains('project-library-folder-dragging'),false);
+  assert.equal(h.dialog.emit('click').prevented,true);assert.equal(h.dialog.emit('click').prevented,undefined);
+});
+test('classification may return to top level through all-projects or modal exterior',()=>{
+  for(const outside of [false,true]){
+    const h=dragHarness();h.down({target:h.folderOrigin('b')});h.move('root',outside?{clientX:950}:{});
+    assert.match(h.dialog.children[0].textContent,/项目库顶层/);
+    h.up(outside?{clientX:950}:{});assert.deepEqual(plain(h.folderCalls),[['b',null]]);
+  }
+});
+test('classification rejects itself, descendants, current parent, system sections and stale targets',()=>{
+  for(const target of ['b','c','a','','missing','unknown']){
+    const h=dragHarness();h.down({target:h.folderOrigin('b')});h.move(target);h.up();assert.equal(h.folderCalls.length,0,target);
+  }
+  for(const outside of [false,true]){const h=dragHarness();h.down({target:h.folderOrigin('a')});h.move('root',outside?{clientX:950}:{});h.up(outside?{clientX:950}:{});assert.equal(h.folderCalls.length,0);}
+});
+test('system classifications cannot become drag sources and normal category clicks remain available',()=>{
+  for(const id of ['', '*']){const h=dragHarness();assert.equal(h.down({target:h.folderOrigin(id)}).prevented,undefined);h.move('a');h.up();assert.equal(h.folderCalls.length,0);}
+  const h=dragHarness();h.down({target:h.folderOrigin('b')});h.move('a',{clientX:403,clientY:204});h.up({clientX:403,clientY:204});
+  assert.equal(h.dialog.captured,undefined);assert.equal(h.dialog.emit('click').prevented,undefined);
+});
+test('touch category body preserves scrolling, only its grip starts a folder drag',()=>{
+  const h=dragHarness();assert.equal(h.down({target:h.folderOrigin('b'),pointerType:'touch'}).prevented,undefined);h.move('root');h.up();assert.equal(h.folderCalls.length,0);
+  assert.equal(h.down({target:h.folderOrigin('b','grip'),pointerType:'touch'}).prevented,true);h.move('root');h.up();assert.deepEqual(plain(h.folderCalls),[['b',null]]);
+});
+test('folder Esc, pointer cancellation, capture loss, blur and modal close never write',()=>{
+  for(const type of ['pointercancel','lostpointercapture','keydown','blur','close']){
+    const h=dragHarness();h.down({target:h.folderOrigin('b')});h.move('root');
+    const event=(type==='blur'?h.win:h.dialog).emit(type,{key:'Escape'});if(type==='keydown')assert.equal(event.prevented,true);
+    h.up();assert.equal(h.folderCalls.length,0,type);assert.equal(h.dialog.children.length,0,type);
+  }
+});
+test('folder drop revalidates changed hierarchy and removed sources at release',()=>{
+  for(const kind of ['descendant','removed']){
+    const h=dragHarness({folderData:[...plain(folders),{id:'d',name:'另一类',parent_id:null}]});
+    h.down({target:h.folderOrigin('b')});h.move('d');
+    if(kind==='descendant')h.folderData.find(f=>f.id==='d').parent_id='b';else h.folderData.splice(h.folderData.findIndex(f=>f.id==='b'),1);
+    h.up();assert.equal(h.folderCalls.length,0,kind);
+  }
+});
+test('one shared drag controller handles project and folder gestures without stale click suppression',()=>{
+  const h=dragHarness();h.down({target:h.folderOrigin('b')});h.move('root');h.dialog.emit('pointercancel');
+  h.down({target:h.origin('button')});assert.equal(h.dialog.emit('click').prevented,undefined);
+  h.down();h.move('a');h.up();assert.deepEqual(plain(h.calls),[['p1','a']]);assert.equal(h.folderCalls.length,0);
+  h.dialog.emit('click');h.down({target:h.folderOrigin('b')});h.move('root');h.up();assert.deepEqual(plain(h.folderCalls),[['b',null]]);
+});
+test('folder drag blocks concurrent writes and redraws hierarchy and project breadcrumb after success',async()=>{
+  const db={folders:[...plain(folders),{id:'d',name:'另一类',parent_id:null}],projects:plain(projects)};
+  const env=dragHarness({folderData:db.folders});env.controller.destroy();let finish;
+  const h=harness(()=>db,false,env,()=>new Promise(resolve=>{finish=resolve;}));
+  await h.app.open();const d=h.dialogs[0];
+  assert.match(d.spec.body,/data-library-folder-drag/);assert.match(d.spec.body,/拖动分类到这里可移回项目库顶层/);
+  d.emit('pointerdown',{target:env.folderOrigin('b')});env.move('d');env.up();
+  assert.deepEqual(plain(h.calls.find(c=>c.options)),{path:'/api/project-folders/b',options:{method:'PATCH',body:{parent_id:'d'}}});
+  d.emit('pointerdown',{target:env.origin()});env.move('a');env.up();assert.equal(h.calls.filter(c=>c.options).length,1);assert.equal(d.emit('cancel').prevented,true);
+  finish({});await new Promise(setImmediate);
+  assert.equal(db.folders.find(f=>f.id==='b').parent_id,'d');assert.equal(db.projects[0].folder_id,'b');
+  assert.match(d.querySelector('.project-library-folders').innerHTML,/另一类 \/ 第一季/);
+  assert.match(d.querySelector('[data-library-results]').innerHTML,/另一类 \/ 第一季/);assert.equal(h.opened.length,0);
+});
+test('backend folder conflict leaves hierarchy untouched, unlocks and reports the actual error',async()=>{
+  const db={folders:plain(folders),projects:plain(projects)},env=dragHarness({folderData:db.folders});env.controller.destroy();
+  const h=harness(()=>db,false,env,async()=>{throw new Error('同层已有此名称');});await h.app.open();const d=h.dialogs[0];
+  d.emit('pointerdown',{target:env.folderOrigin('b')});env.move('root');env.up();await new Promise(setImmediate);
+  assert.equal(db.folders[1].parent_id,'a');assert.equal(d.emit('cancel').prevented,undefined);assert.deepEqual(h.toasts[0],['同层已有此名称','error']);
+});
+test('keyboard category editing retains parent selector and excludes descendants',async()=>{
+  const h=harness();await h.app.open();const d=h.dialogs[0];await h.click(d,{'data-library-folder':'b'});await h.click(d,{'data-library-edit':''});
+  const form=h.dialogs[1];assert.match(form.spec.body,/name="parent_id"/);assert.match(form.spec.body,/项目库顶层/);
+  assert.doesNotMatch(form.spec.body,/<option value="[bc]"/);
+  await form.spec.onSubmit({elements:{name:{value:'第一季'},parent_id:{value:''}}});
+  assert.deepEqual(plain(h.calls.find(c=>c.options)),{path:'/api/project-folders/b',options:{method:'PATCH',body:{name:'第一季',parent_id:null}}});
+});
+
 test('failed drag write preserves previous classification and unlocks the dialog',async()=>{
   const env=dragHarness();env.controller.destroy();
   const db={folders,projects:plain(projects)};
