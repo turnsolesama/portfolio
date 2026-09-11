@@ -73,8 +73,23 @@ function statusHtml(value) { return `<span class="status-label" data-status="${e
 function optionHtml(options, selected) { return options.map(value => `<option value="${escapeHtml(typeof value === 'object' ? value.key : value)}" ${String(selected) === String(typeof value === 'object' ? value.key : value) ? 'selected' : ''}>${escapeHtml(typeof value === 'object' ? value.label : value)}</option>`).join(''); }
 function debounce(callback, delay = 250) { let timer; return (...args) => { clearTimeout(timer); timer = setTimeout(() => callback(...args), delay); }; }
 function sidebarProjects() {
-  const ids = [state.projectId,...(state.projectLibrary?.recent_ids || [])].filter(Boolean);
-  return [...new Set(ids.map(String))].map(id => state.projects.find(project => String(project.id) === id)).filter(Boolean).slice(0,5);
+  const projects = new Map(state.projects.map(project => [String(project.id),project]));
+  const candidates = [...new Set([state.projectId,...(state.projectLibrary?.recent_ids || [])].filter(Boolean).map(String))].filter(id => projects.has(id)).slice(0,5);
+  if (!state.sidebarProjectIds) {
+    try {
+      const saved = storage.get('yingxu:sidebar-project-order');
+      const ids = saved && saved.length <= 2048 ? JSON.parse(saved) : [];
+      state.sidebarProjectIds = Array.isArray(ids) ? ids.filter(id => typeof id === 'string').slice(0,5) : [];
+    } catch { state.sidebarProjectIds = []; }
+  }
+  // Visits still choose which recent projects are visible. Keep their row
+  // positions stable so selecting a row does not move another under the mouse.
+  const ids = [...new Set([...state.sidebarProjectIds.filter(id => candidates.includes(id)),...candidates])];
+  if (JSON.stringify(ids) !== JSON.stringify(state.sidebarProjectIds)) {
+    state.sidebarProjectIds = ids;
+    storage.set('yingxu:sidebar-project-order',JSON.stringify(ids));
+  }
+  return ids.map(id => projects.get(id));
 }
 let resourceGroups;
 function groupsIsOpen() { return !!resourceGroups?.isOpen(); }
@@ -237,6 +252,12 @@ async function selectProject(id) {
   await recordProjectVisit(id);
   state.projectId = id; state.offset = 0; state.counts = []; state.folderId = null; state.folderPage = 0; state.folders = []; state.selectedIds.clear(); storage.set('yingxu:project',String(id)); renderNavigation(); renderHero();
   if (!activeTab()) renderInspector(); await loadSection();
+}
+async function selectSidebarProject(id) {
+  if (String(id) === String(state.projectId)) return false;
+  if (!state.projects.some(project => String(project.id) === String(id))) return false;
+  await selectProject(id);
+  return String(id) === String(state.projectId);
 }
 async function selectCategory(category) { if ((state.section !== 'assets' || state.category !== category || state.folderId) && !await guardProperties()) return; state.section = 'assets'; state.category = category; state.folderId = null; state.folderPage = 0; state.folderScope = 'current'; state.selectedIds.clear(); state.offset = 0; renderNavigation(); renderHero(); configureSection(); await loadItems(); }
 async function selectSection(section) { if (!await guardProperties()) return; state.section = section; state.offset = 0; state.activeKey = null; state.selectedIds.clear(); renderWorkspace(); renderNavigation(); renderHero(); configureSection(); await loadSection(); }
@@ -1097,7 +1118,7 @@ function wireEvents() {
     const source = event.target.closest('[data-copy-source]'); if (source) { const value = activeTab()?.item.metadata?.[source.dataset.copySource]; copyText(typeof value === 'string' ? value : JSON.stringify(value,null,2),'原文件生成信息已复制。'); return; }
     const close = event.target.closest('[data-close-tab]'); if (close) { event.stopPropagation(); closeTab(close.dataset.closeTab); return; }
     const action = event.target.closest('[data-action]'); if (action) { handleAction(action.dataset.action,action).catch(report); return; }
-    const project = event.target.closest('[data-project]'); if (project) { selectProject(project.dataset.project).catch(report); return; }
+    const project = event.target.closest('[data-project]'); if (project) { selectSidebarProject(project.dataset.project).catch(report); return; }
     const category = event.target.closest('[data-category]'); if (category) { selectCategory(category.dataset.category).catch(report); return; }
     const section = event.target.closest('[data-section]'); if (section) { selectSection(section.dataset.section).catch(report); return; }
     const tab = event.target.closest('[data-tab]'); if (tab) { if (state.activeKey !== tab.dataset.tab && !await guardProperties()) return; state.activeKey = tab.dataset.tab; renderWorkspace(); return; }
