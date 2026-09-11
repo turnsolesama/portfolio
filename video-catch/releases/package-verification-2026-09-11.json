@@ -1,0 +1,58 @@
+[
+  {
+    "file": "FrameWeave-v0.2.0-Windows-x64.zip",
+    "url": "https://raw.githubusercontent.com/turnsolesama/portfolio/main/frameweave/releases/FrameWeave-v0.2.0-Windows-x64.zip",
+    "bytes": 9559352,
+    "sha256": "97e727a269987a7862d113aed6f7077e319f397f1b8cd3dcf5aa243162148237",
+    "zip_integrity": "passed",
+    "root": "FrameWeave-0.2.0"
+  },
+  {
+    "file": "YingXu-v0.3.7-Windows-x64.zip",
+    "url": "https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-Windows-x64.zip",
+    "bytes": 431373895,
+    "sha256": "21919c4d59e199b8798fbbb8139046528921b991ed7f6d197821c77d2fcf2f6a",
+    "zip_integrity": "passed",
+    "root": "YingXu"
+  },
+  {
+    "file": "AI-Hub-v2.5.0-Windows-x64.zip",
+    "url": "https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip",
+    "bytes": 1086784,
+    "sha256": "68c465e3f1f096bfecd20387358748d9536ab2fdadb00f1828cf34681c664906",
+    "zip_integrity": "passed",
+    "root": "AI-Hub"
+  },
+  {
+    "file": "Codex-Switcher-v2.4.1-Windows-x64.zip",
+    "url": "https://raw.githubusercontent.com/turnsolesama/portfolio/main/codex-switcher/releases/Codex-Switcher-v2.4.1-Windows-x64.zip",
+    "bytes": 334554,
+    "sha256": "8d85aa43b3bc0293457c0ccd0397b536a1d3f565fed862641afe22fe58f806b4",
+    "zip_integrity": "passed",
+    "root": "Codex-Switcher"
+  },
+  {
+    "file": "FlowSwitch-v3.7.1-Windows-x64.zip",
+    "url": "https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-x64.zip",
+    "bytes": 71473709,
+    "sha256": "be60541668d157ccc94a0dd8a2527009c3bd0e9d97403a709c1ba6f2d35feca1",
+    "zip_integrity": "passed",
+    "root": "FlowSwitch"
+  },
+  {
+    "file": "VideoCatch-v0.3.0-Windows-x64.zip",
+    "url": "https://github.com/turnsolesama/portfolio/releases/download/videocatch-v0.3.0/VideoCatch-v0.3.0-Windows-x64.zip",
+    "bytes": 100950103,
+    "sha256": "796eb2831f2871b129a3cc708c352323fdc7d5a10def553feb6bec0313cc5024",
+    "zip_integrity": "passed",
+    "root": "VideoCatch"
+  },
+  {
+    "file": "VideoCatch-Extension-v0.3.0.zip",
+    "url": "https://github.com/turnsolesama/portfolio/releases/download/videocatch-v0.3.0/VideoCatch-Extension-v0.3.0.zip",
+    "bytes": 21069,
+    "sha256": "adebb2727b500046dc000b614d528dcacd0b1bf7bb45d7a0e708af802a674430",
+    "zip_integrity": "passed",
+    "root": "VideoCatch-extension"
+  }
+]
