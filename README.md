@@ -1,20 +1,22 @@
-<p align="center"><img src="docs/assets/portfolio.svg" alt="本地创作工具集" width="920"></p>
+<p align="center"><img src="docs/assets/portfolio.svg" alt="本地工具导航" width="920"></p>
 
-# 本地创作工具集
+# 本地工具导航
 
 选择你需要的工具，进入它自己的项目页。每个工具都有独立源码、使用说明与版本页面。
 
-| 方向 | 工具 | 用途 | 版本 |
+| 主要用途 | 工具 | 适合用来做什么 | 版本 |
 | --- | --- | --- | --- |
-| 桌面体验 | [ClassicDesk](https://github.com/turnsolesama/classicdesk) | 紧凑的任务栏、资源管理器与右键菜单设置前端 | [0.6.0 预览版](https://github.com/turnsolesama/classicdesk/releases/tag/v0.6.0-preview) |
-| 视频创作 | [映序 YingXu](https://github.com/turnsolesama/yingxu) | 管理视频项目、素材、文稿与制作进度 | [下载与更新](https://github.com/turnsolesama/yingxu/releases) |
-| 图像创作 | [FrameWeave](https://github.com/turnsolesama/frameweave) | 连接本地 ComfyUI 的轻量工作流画布 | [下载与更新](https://github.com/turnsolesama/frameweave/releases) |
-| 资产管理 | [AI Hub](https://github.com/turnsolesama/ai-hub) | 整理本地模型、LoRA、工作流与素材 | [下载与更新](https://github.com/turnsolesama/ai-hub/releases) |
-| 开发工具 | [Codex Switcher](https://github.com/turnsolesama/codex-switcher) | 管理和切换本地模型与接口配置 | [下载与更新](https://github.com/turnsolesama/codex-switcher/releases) |
-| 网络工具 | [流向 FlowSwitch](https://github.com/turnsolesama/proxy-switch) | Windows 代理管理、程序分流与本地网关 | [下载与更新](https://github.com/turnsolesama/proxy-switch/releases) |
-| 视频工具 | [拾影 VideoCatch](https://github.com/turnsolesama/video-catch) | 视频发现、原文件下载与浏览器扩展 | [下载与更新](https://github.com/turnsolesama/video-catch/releases) |
+| 桌面修改 | [ClassicDesk](https://github.com/turnsolesama/classicdesk) | 编辑 Windows 任务栏、资源管理器与右键菜单的修改方案；当前为预览版 | [0.6.0 预览版](https://github.com/turnsolesama/classicdesk/releases/tag/v0.6.0-preview) |
+| AI 资产 / 项目管理 | [映序 YingXu](https://github.com/turnsolesama/yingxu) | 按创作项目整理素材、文稿、角色与分镜，跟踪制作进度 | [下载与更新](https://github.com/turnsolesama/yingxu/releases) |
+| AI 生成画布 | [FrameWeave](https://github.com/turnsolesama/frameweave) | 在画布中编排图片与视频生成，发现并检查本地 ComfyUI 环境 | [下载与更新](https://github.com/turnsolesama/frameweave/releases) |
+| AI 模型 / 资源管理 | [AI Hub](https://github.com/turnsolesama/ai-hub) | 集中管理本地模型、LoRA、工作流与出图库，关联运行记录 | [下载与更新](https://github.com/turnsolesama/ai-hub/releases) |
+| API 切换 | [Codex Switcher](https://github.com/turnsolesama/codex-switcher) | 切换 Codex 使用的 API 服务、接口地址和模型配置 | [下载与更新](https://github.com/turnsolesama/codex-switcher/releases) |
+| 网络代理管理 | [流向 FlowSwitch](https://github.com/turnsolesama/proxy-switch) | 切换代理出口，管理程序分流与本地网关 | [下载与更新](https://github.com/turnsolesama/proxy-switch/releases) |
+| 网页视频捕获 | [拾影 VideoCatch](https://github.com/turnsolesama/video-catch) | 监听浏览器媒体请求，提取视频地址并下载 | [下载与更新](https://github.com/turnsolesama/video-catch/releases) |
 
-ClassicDesk 当前公开包用于方案编辑与界面预览，真实系统增强组件尚未随包提供；能力边界和第二版计划见其项目页。
+**映序与 AI Hub 怎么选：** 围绕一部作品或一个创作项目整理素材、文稿和进度，选映序；整理跨项目使用的模型、LoRA、工作流与出图库，选 AI Hub。两者有部分重叠，这里按主要使用场景区分。
+
+ClassicDesk 当前公开包用于方案编辑与界面预览，真实系统增强组件尚未随包提供；能力边界和第二版计划见其项目页。FrameWeave 的环境检查面向本地 ComfyUI 及所选工作流依赖，具体范围见其项目页。
 
 详细功能、截图、安装步骤和问题反馈都放在各工具的独立仓库。这里仅作为总入口。
 
