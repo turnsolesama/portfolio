@@ -166,7 +166,7 @@ namespace YingXu.Desktop
 
         private static readonly HashSet<string> DragExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".yaml", ".yml", ".html", ".htm",
+            ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".yaml", ".yml", ".html", ".htm", ".excalidraw",
             ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif", ".svg",
             ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v", ".wav", ".mp3", ".ogg", ".flac", ".m4a", ".aac",
             ".blend", ".fbx", ".obj", ".glb", ".gltf", ".stl", ".docx", ".pdf", ".doc", ".pptx", ".xlsx", ".rtf"
