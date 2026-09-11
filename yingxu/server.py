@@ -368,7 +368,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path.startswith('/api/'):raise UserError('接口不存在。',404)
                 relative=path.lstrip('/') or 'index.html'
                 static=(ROOT/'frontend'/relative).resolve()
-                if not static.is_relative_to(ROOT/'frontend') or not static.is_file() or static.suffix not in ('.html','.js','.css','.svg','.ico','.png','.woff2'):
+                if not static.is_relative_to((ROOT/'frontend').resolve()) or not static.is_file() or static.suffix not in ('.html','.js','.css','.svg','.ico','.png','.woff2'):
                     raise UserError('页面文件不存在。',404)
                 return self.file(static)
             if self.command=='POST' and path=='/api/upload':return self.json(self.app.receive_upload(self,query),201)

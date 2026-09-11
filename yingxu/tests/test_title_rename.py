@@ -1,6 +1,7 @@
 """A document title rename preserves original bytes and the draft's etag."""
 import hashlib
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ import unittest
 from yingxu.store import Store, UserError
 
 
-@unittest.skipUnless(os.name == 'nt', 'Windows non-overwriting rename semantics')
+@unittest.skipUnless(os.name == 'nt' or sys.platform == 'darwin', 'Requires non-overwriting native rename')
 class TitleRenameTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='yingxu-title-rename-')

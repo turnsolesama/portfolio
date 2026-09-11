@@ -5,6 +5,9 @@
   window.yingxuMac = true;
   const listeners = [], pending = [];
   const send = data => {
+    if (data?.action === 'choose-external-files') {
+      window.yingxuMacOpenExternal().catch(report); return;
+    }
     if (!['desktop-ready','exit-response'].includes(data?.action)) return;
     if (!window.pywebview?.api?.post_message) { pending.push(data); return; }
     window.pywebview.api.post_message(data, state.bootstrap?.token || '').catch(console.error);
@@ -18,6 +21,17 @@
   const style = document.createElement('style');
   style.textContent = '[data-action="capture-screen"],[data-drag-file]{display:none!important}';
   document.head.appendChild(style);
+
+  window.yingxuMacOpenExternal = async () => {
+    if (!state.bootstrap || state.modalBusy || $('#appDialog').open) return;
+    state.modalBusy = true;
+    let entries = [];
+    try {
+      const result = await api('/api/pick',{method:'POST',body:{kind:'files'}});
+      if (result.paths?.length) entries = (await api('/api/external-open',{method:'POST',body:{paths:result.paths}})).entries;
+    } finally { state.modalBusy = false; }
+    if (entries.length) await queueExternalFiles(entries);
+  };
 
   window.yingxuMacSettings = () => {
     if (!state.bootstrap) return;
