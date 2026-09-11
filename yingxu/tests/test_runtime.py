@@ -2,6 +2,7 @@
 import importlib.machinery
 import importlib.util
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -28,7 +29,7 @@ class RuntimeTests(unittest.TestCase):
     def test_bundled_ffmpeg_without_path(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary).resolve()
-            exe = root / 'runtime/ffmpeg/bin/ffmpeg.exe'
+            exe = root / 'runtime/ffmpeg/bin' / ('ffmpeg' if sys.platform == 'darwin' else 'ffmpeg.exe')
             exe.parent.mkdir(parents=True)
             exe.write_bytes(b'fixture only')
             with patch.object(runtime, 'APP_ROOT', root), patch.dict(os.environ, {'PATH': ''}):
