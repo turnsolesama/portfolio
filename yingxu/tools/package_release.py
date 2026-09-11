@@ -7,13 +7,15 @@ import re
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = '0.4.1'
+VERSION = '0.4.2'
 FIXED = (
     'README.md', 'RUNNING.md', 'LICENSE', 'AGENTS.md', 'API_CONTRACT.md', '.gitignore',
     'server.py', 'launcher.pyw', 'start.vbs', 'Stop-YingXu.ps1', 'YingXu.exe',
     'desktop/RuntimeCheck.cs', 'desktop/Core.cs', 'desktop/Program.cs', 'desktop/Tests.cs', 'desktop/build.py',
     'desktop/Integration.cs', 'desktop/Set-OpenWith.ps1', 'desktop/LifecycleTests.cs',
     'desktop/Capture.cs', 'desktop/CaptureTests.cs',
+    'tools/canvas-editor/Excalidraw-LICENSE.txt', 'tools/canvas-editor/FONT-LICENSES.txt',
+    'tools/canvas-editor/package.json', 'tools/canvas-editor/pnpm-lock.yaml', 'tools/canvas-editor/build.mjs', 'tools/canvas-editor/entry.jsx',
     'tools/markdown-editor/package.json', 'tools/markdown-editor/package-lock.json', 'tools/markdown-editor/build.mjs',
     'frontend/live-markdown-source.mjs', 'frontend/live-markdown.LICENSE.txt', 'frontend/live-markdown.manifest.json',
     'desktop/make_icon.py', 'desktop/brand.svg', 'desktop/brand.ico',
@@ -23,7 +25,7 @@ FIXED = (
     'docs/完整包验收.md', 'docs/功能指南.md', 'docs/安装与运行.md', 'docs/开发说明.md', 'docs/assets/workspace-map.svg',
 )
 PATTERNS = ('yingxu/*.py', 'frontend/*.html', 'frontend/*.css', 'frontend/*.js',
-            'tests/test_*.py', 'tests/frontend_*.cjs')
+            'tests/test_*.py', 'tests/frontend_*.cjs', 'frontend/canvas/**/*.js', 'frontend/canvas/**/*.css', 'frontend/canvas/**/*.html', 'frontend/canvas/**/*.woff2', 'frontend/canvas/**/*.woff', 'frontend/canvas/**/*.ttf', 'frontend/canvas/**/*.json', 'frontend/canvas/**/*.txt', 'frontend/canvas/**/*.yaml', 'frontend/canvas/**/*.LEGAL.txt')
 TEXT_SUFFIXES = {'.md', '.py', '.pyw', '.js', '.cjs', '.mjs', '.css', '.html', '.cs', '.ps1', '.vbs', '.json', '.txt', '.manifest', '.svg'}
 
 

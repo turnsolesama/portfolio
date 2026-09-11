@@ -13,12 +13,12 @@ import time
 
 from .store import KINDS, TEXT_LIMIT, UserError, clean_path, decode_text, has_link, uid
 
-PREVIEW_KINDS = frozenset(('markdown','text','docx','pdf','image','svg','html','video','audio'))
+PREVIEW_KINDS = frozenset(('markdown','text','docx','excalidraw','pdf','image','svg','html','video','audio'))
 MAX_OPEN = 200
 MAX_SESSION = 256
 TTL = 24 * 60 * 60
 WORD_LIMIT = 32 * 1024 * 1024
-EDIT_KINDS = frozenset(('markdown', 'text', 'docx'))
+EDIT_KINDS = frozenset(('markdown', 'text', 'docx', 'excalidraw'))
 EDIT_NOTICE = '直接编辑原文件；保存前备份，外部修改会触发冲突保护。未加入项目。'
 
 
@@ -112,8 +112,11 @@ class ExternalPreviews:
             writable = bool(path.stat().st_mode & stat_module.S_IWRITE)
             content.update(etag=hashlib.sha256(raw).hexdigest(), editable=writable,
                            notice=EDIT_NOTICE if writable else '文件为只读，请先修改文件权限或使用系统应用另存副本。')
-        if kind in ('markdown','text'):
+        if kind in ('markdown','text','excalidraw'):
             text,encoding=decode_text(raw)
+            if kind == 'excalidraw':
+                from .canvas import validate
+                validate(text)
             content.update(content=text,encoding=encoding)
         elif kind=='docx':
             from .docx_io import read_docx
@@ -201,6 +204,9 @@ class ExternalPreviews:
                 if len(after) > WORD_LIMIT:
                     raise UserError('Word 文件超过 32 MiB，请使用系统应用编辑。', 413)
             else:
+                if kind == 'excalidraw':
+                    from .canvas import validate
+                    validate(data[field])
                 after = self._text_bytes(before, data[field])
             if after == before:
                 return self.detail(iid)

@@ -1,0 +1,14 @@
+Bundled license information:
+
+pica/dist/pica.js:
+  /*!
+  
+  pica
+  https://github.com/nodeca/pica
+  
+  */
+  /*
+  object-assign
+  (c) Sindre Sorhus
+  @license MIT
+  */

@@ -19,3 +19,6 @@
 - `frontend/live-markdown-source.mjs` 与 `tools/markdown-editor/build.mjs` 为可重建入口。Node.js/npm 和 esbuild 仅用于开发构建，不作为终端用户运行环境安装或启动。
 
 编辑器显示层改变排版和装饰，原始 Markdown 文本仍是唯一文稿模型。原始 HTML 不作为编辑器内容执行，格式操作不通过 HTML 回写文稿。
+
+
+Excalidraw 0.18.1 与 React 18.3.1 用于本地画板；依赖锁定、许可证及字体许可证位于 frontend/canvas/，构建输入在 tools/canvas-editor/。
