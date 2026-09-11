@@ -1,5 +1,15 @@
 # 映序 Windows 发布包
 
+## 0.4.3：ZIP 压缩包导入
+
+| 平台 | 下载 | 大小 | SHA-256 |
+| --- | --- | --- | --- |
+| Windows x64 | [完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.3/YingXu-v0.4.3-Windows-x64.zip) | 447774381 字节 | `edbb12b0551bdbfe6d074d5e76297c45ca002f81a4e4777a54abe89cf6705ba3` |
+| macOS 14+ Apple Silicon 试用版 | [0.4.3-mac.1](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.3/YingXu-v0.4.3-mac.1-macOS-arm64.zip) | 76213694 字节 | `7f1ecbaa75e965a20865f0312dbe454f369c56d01b9983e7b10a02c009dca56f` |
+
+支持选择、拖入和粘贴 ZIP 到当前分类或文件夹；保留目录及中文名称，同名创建新目录，原 ZIP 保留。第一版支持普通 ZIP，暂不支持加密、分卷、RAR 和 7z。macOS 包未公证，不支持 Intel Mac。
+
+
 ## 0.4.2：分类粘贴、离线画板与窗口前置
 
 | 平台 | 下载 | 大小 | SHA-256 |
