@@ -219,7 +219,7 @@ function Get-ClientInterference {
 function Assert-ClientCompatibility([string]$Entrance,[bool]$Managed) {
     $client=Get-ClientInterference
     if($script:Profiles.Routing.Adapter -eq 'standalone'){
-        if($client.Tun -or $client.Guard -or $client.SystemProxy){throw '独立模式需要关闭其他客户端的 TUN、代理守卫与系统代理开关；保留上游运行。'}
+        if($client.Tun -or $client.Guard){throw '其他客户端的 TUN 或代理守卫仍在持续接管网络。请先关闭这两项并保留代理服务运行，再切换。'}
         if(-not (Test-Path -LiteralPath (Get-IndependentSessionPath))){throw '独立入口已停止，请先点击启用独立分流。'}
         return
     }
@@ -278,6 +278,10 @@ function Get-ProxyStatus($RoutingStatus=$null,$TcpRows=$null,[bool]$TcpAvailable
     $ready=$key -eq 'Direct'
     if($key -ne 'Direct'){$entry=$listeners | Where-Object {$_.Key -eq $key} | Select-Object -First 1;$ready=$(if($entry){$entry.Ready}else{$null})}
     $live=@(Get-LiveConnections -TcpRows $TcpRows);$warnings=@(Get-ClientWarnings)+@(Get-OverrideWarnings $key);if($TcpAvailable){$warnings+=@(Get-EntryLifecycleWarnings $snapshot $envValues $listeners)}else{$warnings+='Windows 连接列表读取失败，入口监听和连接状态未知；这不代表网络已断开。'}
+    if($script:Profiles.Routing.UnifiedMode -eq 'gateway'){
+        $gatewayListener=$listeners|Where-Object Key -eq (Get-GatewayKey)|Select-Object -First 1
+        if($gatewayListener -and $null -ne $gatewayListener.Ready -and -not $gatewayListener.Ready){$warnings+='固定分流入口未就绪，统一切换依赖该入口。请启动承载该入口的引擎，或在代理管理中明确启用独立分流；不会自动改走其他端口。'}
+    }
     $drift=($null -ne $selection -and $selection.Key -and $selection.Key -ne $key)
     $oldConnections=@($live | Where-Object {$_.Route -ne $key})
     # Historical intent is not evidence of the engine's live route.
@@ -372,18 +376,18 @@ function ConvertTo-RoutingComparableValue($Value) {
     return $Value
 }
 function Test-SameRouting($A,$B) {
-    $aText=[ordered]@{entries=@($A.entries | ForEach-Object {[ordered]@{path=$_.path;route=$_.route;identity=(ConvertTo-RoutingComparableValue $_.identity)}});defaultRoute=$A.defaultRoute;launchEntries=@($A.launchEntries|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_})}|ConvertTo-Json -Depth 16 -Compress
-    $bText=[ordered]@{entries=@($B.entries | ForEach-Object {[ordered]@{path=$_.path;route=$_.route;identity=(ConvertTo-RoutingComparableValue $_.identity)}});defaultRoute=$B.defaultRoute;launchEntries=@($B.launchEntries|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_})}|ConvertTo-Json -Depth 16 -Compress
+    $aText=[ordered]@{entries=@($A.entries | ForEach-Object {[ordered]@{path=$_.path;route=$_.route;identity=(ConvertTo-RoutingComparableValue $_.identity)}});defaultRoute=$A.defaultRoute;programIngresses=@($A.programIngresses|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_});siteRules=@($A.siteRules|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_});launchEntries=@($A.launchEntries|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_})}|ConvertTo-Json -Depth 16 -Compress
+    $bText=[ordered]@{entries=@($B.entries | ForEach-Object {[ordered]@{path=$_.path;route=$_.route;identity=(ConvertTo-RoutingComparableValue $_.identity)}});defaultRoute=$B.defaultRoute;programIngresses=@($B.programIngresses|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_});siteRules=@($B.siteRules|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_});launchEntries=@($B.launchEntries|Where-Object {$_}|ForEach-Object {ConvertTo-RoutingComparableValue $_})}|ConvertTo-Json -Depth 16 -Compress
     return $aText -ceq $bText
 }
 function Set-RoutingSnapshot($Snapshot,$ExpectedBefore=$null) {
     # The semantic snapshot and CAS hashes must come from the SAME bytes, not a later re-read.
     $writeContext=Get-RuleMaintenanceSnapshot ''
-    $current=[pscustomobject]@{entries=@($writeContext.Engine.entries);defaultRoute=$writeContext.Engine.defaultRoute;installed=[bool]$writeContext.Engine.installed;launchEntries=@($writeContext.Launch.entries)}
+    $current=[pscustomobject]@{entries=@($writeContext.Engine.entries);defaultRoute=$writeContext.Engine.defaultRoute;installed=[bool]$writeContext.Engine.installed;programIngresses=@($writeContext.Engine.programIngresses|Where-Object {$_});siteRules=@($writeContext.Engine.siteRules|Where-Object {$_});launchEntries=@($writeContext.Launch.entries)}
     if($null -ne $ExpectedBefore -and -not (Test-SameRouting $current $ExpectedBefore)){throw '程序规则已经被其他窗口改动，保留最新记录；请刷新后重试。'}
     if(-not $current.installed -and (@($current.entries).Count -or $current.defaultRoute)){throw '程序规则状态不一致，未更改任何设置。'}
     $hasLaunch=$null -ne $Snapshot.PSObject.Properties['launchEntries']
-    $needsEngine=$current.installed -or @($current.entries).Count -or $current.defaultRoute -or @($Snapshot.entries).Count -or $Snapshot.defaultRoute
+    $needsEngine=@($current.programIngresses).Count -or @($Snapshot.programIngresses|Where-Object {$_}).Count -or @($Snapshot.siteRules|Where-Object {$_}).Count -or $current.installed -or @($current.entries).Count -or $current.defaultRoute -or @($Snapshot.entries).Count -or $Snapshot.defaultRoute
     if($needsEngine){
         $boundProfiles=Get-RuleMaintenanceProfiles $writeContext
         $boundText=ConvertTo-RoutingComparableValue $boundProfiles|ConvertTo-Json -Depth 16 -Compress
@@ -398,7 +402,9 @@ function Set-RoutingSnapshot($Snapshot,$ExpectedBefore=$null) {
         }
         if($needsEngine){
             $script:Profiles=$boundProfiles
-            Invoke-AppRouter @{action='replace';entries=@($Snapshot.entries);defaultRoute=$Snapshot.defaultRoute;expectedStateHash=$writeContext.Files['app-rules.json'].TextHash;expectedSettingsHash=$writeContext.Files['config.json'].TextHash} | Out-Null
+            $request=@{action='replace';entries=@($Snapshot.entries);defaultRoute=$Snapshot.defaultRoute;resetDefaultSelection=([bool]$Snapshot.resetDefaultSelection);expectedStateHash=$writeContext.Files['app-rules.json'].TextHash;expectedSettingsHash=$writeContext.Files['config.json'].TextHash}
+            foreach($field in @('programIngresses','siteRules','resetIngressSelections')){if($null -ne $Snapshot.PSObject.Properties[$field]){$request[$field]=@($Snapshot.$field)}}
+            Invoke-AppRouter $request | Out-Null
         }
     }catch{
         if($launchWritten){
@@ -409,11 +415,12 @@ function Set-RoutingSnapshot($Snapshot,$ExpectedBefore=$null) {
         throw
     }
 }
-function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSystem,$BeforeEnv,$TargetRouting=$null,$BeforeRouting=$null,[scriptblock]$VerifyAction=$null) {
+function Invoke-ProxyTransaction($TargetSystem,$TargetEnv,$Selection,$BeforeSystem,$BeforeEnv,$TargetRouting=$null,$BeforeRouting=$null,[scriptblock]$VerifyAction=$null,$BackupRouting=$null) {
+    if($null -ne $TargetRouting -and $null -ne $BeforeRouting){foreach($field in @('programIngresses','siteRules')){if($null -eq $TargetRouting.PSObject.Properties[$field]){$TargetRouting|Add-Member NoteProperty $field @($BeforeRouting.$field|Where-Object {$_})}}}
     if(-not (Test-SameSnapshot $BeforeSystem (Get-SystemSnapshot)) -or -not (Test-SameEnv $BeforeEnv (Get-UserProxyEnv))){throw '检测期间其他程序改动了代理，请稍后重试。未写入设置。'}
     if($null -ne $BeforeRouting -and -not (Test-SameRouting $BeforeRouting (Get-RoutingSnapshot))){throw '程序规则被其他窗口改动，请刷新后重试。'}
     $beforeSelection=Get-Selection
-    $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=$BeforeSystem;Environment=$BeforeEnv;Selection=$beforeSelection;Routing=$BeforeRouting})
+    $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=$BeforeSystem;Environment=$BeforeEnv;Selection=$beforeSelection;Routing=$(if($null -ne $BackupRouting){$BackupRouting}else{$BeforeRouting})})
     $routesWritten=$false;$nativeStarted=$false;$systemStarted=$false
     try{
         if($null -ne $TargetRouting){Write-OperationProgress '正在更新程序规则并核对引擎…';Set-RoutingSnapshot $TargetRouting $BeforeRouting;$routesWritten=$true}
@@ -481,12 +488,18 @@ function Get-UnifiedPlan([string]$Key,$BeforeRouting) {
         if($useEngine -and ($Key -eq $gateway -or (Get-Profile $Key).Protocol -ne 'http')){$entrance=$gateway;$default=$Key}
         elseif((Get-Profile $Key).Protocol -ne 'http'){throw 'SOCKS5 统一切换需要本地分流引擎提供 HTTP 入口，请在代理管理设置引擎。'}
     }
-    [pscustomobject]@{Entrance=$entrance;NetworkKey=$Key;Routing=[pscustomobject]@{entries=@();defaultRoute=$default;launchEntries=@($BeforeRouting.launchEntries|Where-Object {$_}|ForEach-Object {[pscustomobject]@{path=$_.path;route='Follow';adapter=$_.adapter}})};ClearedRules=(@($BeforeRouting.entries).Count+@($BeforeRouting.launchEntries|Where-Object {$_ -and $_.route -ne 'Follow'}).Count)}
+    [pscustomobject]@{Entrance=$entrance;NetworkKey=$Key;Routing=[pscustomobject]@{entries=@();defaultRoute=$default;programIngresses=@($BeforeRouting.programIngresses|Where-Object {$_}|ForEach-Object {$next=$_|ConvertTo-Json -Depth 16|ConvertFrom-Json;$next.route='Follow';$next});siteRules=@($BeforeRouting.siteRules|Where-Object {$_});launchEntries=@($BeforeRouting.launchEntries|Where-Object {$_}|ForEach-Object {[pscustomobject]@{path=$_.path;route='Follow';adapter=$_.adapter}})};ClearedRules=(@($BeforeRouting.programIngresses|Where-Object {$_ -and $_.route -ne 'Follow'}).Count+@($BeforeRouting.entries).Count+@($BeforeRouting.launchEntries|Where-Object {$_ -and $_.route -ne 'Follow'}).Count)}
 }
 function Set-SelectedProxy([string]$Key) {
     Use-ChangeLock {
+        if($script:Profiles.Routing.Adapter -eq 'standalone' -and -not (Test-Path -LiteralPath (Get-IndependentSessionPath))){
+            Write-OperationProgress '正在启动已配置的独立入口，再应用所选统一线路…'
+            return Enable-IndependentGateway -OwnerPID $PID -InitialRoute $Key -UnifiedSwitch
+        }
         $before=Get-SystemSnapshot;$beforeEnv=Get-UserProxyEnv;$beforeRules=Get-RoutingSnapshot
         $plan=Get-UnifiedPlan $Key $beforeRules
+        # Explicit selection can return to a recovered preferred upstream. Routine sync cannot.
+        if($script:Profiles.Routing.Adapter -eq 'standalone'){$plan.Routing|Add-Member NoteProperty resetDefaultSelection $true}
         Write-OperationProgress '正在检查目标入口（并行检测，单项最多 5 秒）…'
         $overrides=@(Get-OverrideWarnings $plan.Entrance);if($overrides.Count){throw ($overrides -join "`n")}
         $test=$null
@@ -498,12 +511,19 @@ function Set-SelectedProxy([string]$Key) {
         $selection=[pscustomobject]@{Key=$plan.Entrance;NetworkKey=$Key;Unified=$true;ChangedAt=(Get-Date).ToString('o')}
         $rules=$plan.Routing
         if(-not $beforeRules.installed -and -not $rules.defaultRoute -and -not @($beforeRules.launchEntries|Where-Object {$_}).Count){$rules=$null}
+        $verifiedScope=[pscustomobject]@{Unavailable=0}
         $verify={
             if($Key -ne 'Direct' -and $rules.defaultRoute -and -not (Test-ProxyRoute $plan.Entrance -Fast).Usable){throw '统一线路的实际检测未通过。'}
             if($plan.Entrance -ne 'Direct' -and -not (Get-Listener (Get-Profile $plan.Entrance) -ProbeRemote)){throw '提交前入口已退出，未写入失效端口。'}
+            if($rules.defaultRoute){
+                $live=Invoke-AppRouter @{action='status'}
+                $verifiedScope.Unavailable=@($live.programIngresses|Where-Object {$_ -and $_.ready -ne $true}).Count
+                if(-not $live.available -or -not $live.defaultLoaded -or $live.defaultRoute -ne $Key){throw '目标规则尚未通过实读校验，不能确认已切换。'}
+                if($script:Profiles.Routing.Adapter -eq 'standalone' -and $live.effectiveDefaultRoute -ne $Key){throw ('实际出口没有到达所选线路，当前为「'+(Get-RouteName $live.effectiveDefaultRoute)+'」，不能确认切换成功。')}
+            }
         }
         $backup=Invoke-ProxyTransaction $target (New-EnvTarget $beforeEnv $plan.Entrance) $selection $before $beforeEnv $rules $beforeRules $verify
-        [pscustomobject]@{Key=$Key;Backup=$backup;Test=$test;Message=('已将新连接的统一线路设为「'+(Get-RouteName $Key)+'」，撤销 '+$plan.ClearedRules+' 条程序专用规则。'+$(if($script:Profiles.Routing.UnifiedMode -eq 'gateway'){'本地入口保持 '+$server+'；旧连接可在程序右键菜单中单独重连。'}else{'系统入口与命令行变量已同步，现有连接需刷新。'}))}
+        [pscustomobject]@{Key=$Key;Backup=$backup;Test=$test;Message=('已将新连接的统一线路设为「'+(Get-RouteName $Key)+'」，撤销 '+$plan.ClearedRules+' 条程序专用规则。'+$(if($script:Profiles.Routing.UnifiedMode -eq 'gateway'){'本地入口保持 '+$server+'；旧连接可在程序右键菜单中单独重连。'}else{'系统入口与命令行变量已同步，现有连接需刷新。'})+$(if($verifiedScope.Unavailable){' 另有 '+$verifiedScope.Unavailable+' 个程序固定入口未就绪，请修复对应入口；这些程序尚未恢复。'}))}
     }
 }
 
@@ -541,3 +561,4 @@ function Assert-RestorableEnvironment($Values) {
 
 
 . (Join-Path $PSScriptRoot 'RuleMaintenance.ps1')
+. (Join-Path $PSScriptRoot 'ManagedRouting.ps1')

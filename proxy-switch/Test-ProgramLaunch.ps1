@@ -84,6 +84,19 @@ try{
     $owned=Get-Process -Id $started.PID -ErrorAction SilentlyContinue;if($owned){[void]$owned.WaitForExit(6000);$owned.Dispose()}
 }finally{$env:HTTP_PROXY=$oldHttp;$env:HTTPS_PROXY=$oldHttps;$env:NO_PROXY=$oldBypass}
 
+
+# A route edit preserves launch mode; only a new process can inherit new environment.
+$script:Profiles.Profiles+=@([pscustomobject]@{Id='second';Name='Second fixture';Protocol='http';Host='127.0.0.1';Port=18084;CorePath='';AppPath='';AutoPort=$false})
+Set-ProgramLaunchRoute $exe 'second'|Out-Null
+Check ((Get-ProgramLaunchEntries).route -eq 'second' -and @((Get-RoutingSnapshot).entries).Count -eq 0) 'Changing launch route never silently creates single-EXE engine rules'
+$env:PROXY_SWITCH_FIXTURE_OUTPUT=Join-Path $qa 'second-child-environment.txt'
+$started=Start-ManagedProgram $exe
+$clock=[Diagnostics.Stopwatch]::StartNew();while(-not [IO.File]::Exists($env:PROXY_SWITCH_FIXTURE_OUTPUT) -and $clock.Elapsed.TotalSeconds -lt 8){Start-Sleep -Milliseconds 50}
+$actual=@(Get-Content -LiteralPath $env:PROXY_SWITCH_FIXTURE_OUTPUT)
+Check ($actual[0] -eq 'http://127.0.0.1:18084' -and $actual[1] -eq $actual[0] -and $actual[4] -match '--proxy-server=http://127.0.0.1:18084') 'Actual second parent and child inherit B after changing A to B'
+$owned=Get-Process -Id $started.PID -ErrorAction SilentlyContinue;if($owned){[void]$owned.WaitForExit(6000);$owned.Dispose()}
+Set-ProgramLaunchRoute $exe 'upstream'|Out-Null
+
 $birth=[DateTime]::UtcNow
 function Get-ProcessInventory {param($Id)
     @([pscustomobject]@{Id=10;ParentId=0;ProcessName='FixtureApp';Path=$exe;MainWindowHandle=[IntPtr]1;StartTime=$birth},[pscustomobject]@{Id=11;ParentId=10;ProcessName='worker';Path=$child;MainWindowHandle=[IntPtr]::Zero;StartTime=$birth})

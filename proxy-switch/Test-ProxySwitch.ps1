@@ -95,10 +95,15 @@ Invoke-ProxyTransaction $target $targetEnv $selection $before $beforeEnv $nextRu
 Assert ($script:SavedRules.entries.Count -eq 0 -and $script:SavedRules.defaultRoute -eq 'alpha') 'Unified write changes rules and system as one operation'
 $script:SavedSystem=$before;$script:SavedEnv=$beforeEnv;$script:SavedRules=$beforeRules;$script:SavedSelection=$null
 function Test-ProxyRoute([string]$Key){[pscustomobject]@{Name=$Key;Usable=$true}}
+function Invoke-AppRouter($Request){[pscustomobject]@{available=$true;defaultLoaded=$true;defaultRoute=$script:SavedRules.defaultRoute}}
 $result=Set-SelectedProxy 'alpha'
 Assert ($script:SavedSelection.Unified -and $script:SavedRules.defaultRoute -eq 'alpha' -and $script:SavedRules.entries.Count -eq 0) 'Full unified action clears exceptions and records intended network'
 Assert ((Get-SystemKey $script:SavedSystem) -eq 'alpha' -and (Test-SameEnv $script:SavedEnv $targetEnv)) 'Full unified action synchronizes Windows and environment'
 $script:SavedSystem=$before;$script:SavedEnv=$beforeEnv;$script:SavedRules=$beforeRules;$script:SavedSelection=$null
+function Invoke-AppRouter($Request){[pscustomobject]@{available=$true;defaultLoaded=$true;defaultRoute='wrong-route'}}
+Assert-Throws {Set-SelectedProxy 'alpha'} '目标规则尚未通过实读校验'
+Assert ((Test-SameSnapshot $script:SavedSystem $before) -and (Test-SameRouting $script:SavedRules $beforeRules)) 'Wrong actual route cannot be reported successful or committed to Windows'
+function Invoke-AppRouter($Request){[pscustomobject]@{available=$true;defaultLoaded=$true;defaultRoute=$script:SavedRules.defaultRoute}}
 function Test-ProxyRoute([string]$Key){[pscustomobject]@{Name=$Key;Usable=$false}}
 Assert-Throws {Set-SelectedProxy 'alpha'} '实际检测未通过'
 Assert ((Test-SameRouting $script:SavedRules $beforeRules) -and (Test-SameSnapshot $script:SavedSystem $before) -and (Test-SameEnv $script:SavedEnv $beforeEnv)) 'Failed post-application probe restores full original network'

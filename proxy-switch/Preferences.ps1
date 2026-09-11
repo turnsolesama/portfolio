@@ -1,5 +1,5 @@
 ﻿param([string]$DataDirectory='')
-$script:ProductVersion='3.7.1'
+$script:ProductVersion='3.8.0'
 . (Join-Path $PSScriptRoot 'Storage.ps1')
 $script:LegacyDataRoot=Join-Path $env:LOCALAPPDATA 'ProxySwitch'
 $script:DataRoot=Resolve-ProxyDataDirectory $DataDirectory $env:PROXY_SWITCH_DATA_DIR ([Environment]::GetFolderPath('UserProfile')) $env:LOCALAPPDATA
@@ -75,17 +75,17 @@ function Write-LocalJson([string]$Path,$Value) {
 }
 function Get-RoutingSnapshot {
     $path=Join-Path $script:DataRoot 'app-rules.json'
-    if(-not (Test-Path -LiteralPath $path)){return [pscustomobject]@{entries=@();defaultRoute=$null;installed=$false;launchEntries=@(Get-ProgramLaunchEntries)}}
+    if(-not (Test-Path -LiteralPath $path)){return [pscustomobject]@{entries=@();defaultRoute=$null;installed=$false;programIngresses=@();siteRules=@();launchEntries=@(Get-ProgramLaunchEntries)}}
     try{$state=Get-Content -LiteralPath $path -Raw -Encoding UTF8 | ConvertFrom-Json}catch{throw '程序规则文件无法读取，已停止更改。'}
-    if($state.version -notin @(1,2)){throw '程序规则版本不兼容。'}
-    if(-not $state.installed -and (@($state.entries).Count -gt 0 -or $state.defaultRoute)){throw '程序规则状态不一致，请先从备份恢复规则文件。'}
-    [pscustomobject]@{entries=@($state.entries);defaultRoute=$state.defaultRoute;installed=[bool]$state.installed;launchEntries=@(Get-ProgramLaunchEntries)}
+    if($state.version -notin @(1,2,3)){throw '程序规则版本不兼容。'}
+    if(-not $state.installed -and (@($state.entries).Count -gt 0 -or @($state.programIngresses|Where-Object {$_}).Count -gt 0 -or @($state.siteRules|Where-Object {$_}).Count -gt 0 -or $state.defaultRoute)){throw '程序规则状态不一致，请先从备份恢复规则文件。'}
+    [pscustomobject]@{entries=@($state.entries);defaultRoute=$state.defaultRoute;installed=[bool]$state.installed;programIngresses=@($state.programIngresses|Where-Object {$_});siteRules=@($state.siteRules|Where-Object {$_});launchEntries=@(Get-ProgramLaunchEntries)}
 }
 function Save-ProfileSettings($Value) {
     $clean=ConvertTo-ValidProfileSettings $Value
     Use-ChangeLock {
         $saved=Get-RoutingSnapshot;$selection=Get-Selection
-        $inUse=@($saved.entries | ForEach-Object route)+@($saved.launchEntries | ForEach-Object route)+@($saved.defaultRoute,$selection.Key,$selection.NetworkKey,(Get-SystemKey (Get-SystemSnapshot)))
+        $inUse=@($saved.programIngresses|ForEach-Object route)+@($saved.siteRules|ForEach-Object route)+@($saved.entries | ForEach-Object route)+@($saved.launchEntries | ForEach-Object route)+@($saved.defaultRoute,$selection.Key,$selection.NetworkKey,(Get-SystemKey (Get-SystemSnapshot)))
         foreach($id in $inUse){if($id -and $id -notin @('Direct','Other','Follow') -and $id -notin @($clean.Profiles | ForEach-Object Id)){throw '该代理仍被当前入口或程序规则使用，请先统一切换到其他线路再删除。'}}
         if($saved.installed -and ($clean.Routing.Adapter -ne $script:Profiles.Routing.Adapter -or $clean.Routing.ProfileId -ne $script:Profiles.Routing.ProfileId)){throw '请先取消固定入口模式并保存，再统一切换到直连以撤除规则，然后更换分流引擎。'}
         if(Test-Path -LiteralPath $script:ConfigPath){[void][IO.Directory]::CreateDirectory($script:BackupDir);Copy-Item -LiteralPath $script:ConfigPath -Destination (Join-Path $script:BackupDir ('settings-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')+'.json'))}
@@ -116,7 +116,7 @@ function Resolve-ProgramTarget([string]$Path) {
 }
 function Select-ApplicationRows($Rows,[string]$Query,[bool]$SavedOnly) {
     foreach($row in $Rows){
-        if($SavedOnly -and $row.Policy -eq 'Follow'){continue}
+        if($SavedOnly -and (($null -ne $row.PSObject.Properties['HasSavedRule'] -and -not $row.HasSavedRule) -or ($null -eq $row.PSObject.Properties['HasSavedRule'] -and $row.Policy -eq 'Follow'))){continue}
         if($Query -and ($row.Name+' '+$row.Path).IndexOf($Query,[StringComparison]::OrdinalIgnoreCase) -lt 0){continue}
         $row
     }

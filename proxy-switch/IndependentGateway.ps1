@@ -139,9 +139,10 @@ function Start-IndependentProtection([int]$OwnerPID,$BeforeSystem,$BeforeEnv,$Ta
     for($i=0;$i -lt 50;$i++){if(Test-Path -LiteralPath $ready){$r=Get-Content -LiteralPath $ready -Raw -Encoding UTF8 | ConvertFrom-Json;if($r.Session -eq $session.Started -and (Test-SessionProcess $r.PID $r.StartTicks)){return}};Start-Sleep -Milliseconds 100}
     throw '退出恢复保护未启动，尚未更改 Windows 代理。'
 }
-function Enable-IndependentGateway([int]$OwnerPID=0) {
+function Enable-IndependentGateway([int]$OwnerPID=0,[string]$InitialRoute='',[switch]$UnifiedSwitch,[switch]$AllowMigration) {
     Use-ChangeLock {
         $script:Profiles=Read-ProfileSettings
+        if($UnifiedSwitch -and -not $AllowMigration -and $script:Profiles.Routing.Adapter -ne 'standalone'){throw '入口配置已经变化，请刷新后重试；未自动迁移其他引擎。'}
         if($script:Profiles.Routing.Adapter -eq 'standalone'){
             $sessionPath=Get-IndependentSessionPath
             if(Test-Path -LiteralPath $sessionPath){$session=Get-Content -LiteralPath $sessionPath -Raw -Encoding UTF8 | ConvertFrom-Json;if(Test-SessionProcess $session.OwnerPID $session.OwnerStart){
@@ -151,11 +152,28 @@ function Enable-IndependentGateway([int]$OwnerPID=0) {
                 throw '已有会话的入口未就绪，不能报告已启用。请先通过托盘停止代理服务；若恢复失败，请按提示处理并保留会话日志。'
             };Restore-IndependentSession}
         }
-        $old=$script:Profiles;$before=Get-SystemSnapshot;$beforeEnv=Get-UserProxyEnv;$rules=Get-RoutingSnapshot;$selection=Get-Selection
+        # Derive the migration plan and its CAS/rollback images from the same bytes.
+        # A fresh hash captured after probing must never authorize a plan made from older records.
+        $migration=Get-RuleMaintenanceSnapshot
+        $old=Get-RuleMaintenanceProfiles $migration;$script:Profiles=$old
+        if($UnifiedSwitch -and -not $AllowMigration -and $old.Routing.Adapter -ne 'standalone'){throw '入口配置已经变化，请刷新后重试；未自动迁移其他引擎。'}
+        $engine=$migration.Engine
+        if(-not $engine.installed -and (@($engine.entries).Count -gt 0 -or @($engine.programIngresses|Where-Object {$_}).Count -gt 0 -or @($engine.siteRules|Where-Object {$_}).Count -gt 0 -or $engine.defaultRoute)){throw '程序规则状态不一致，请先从备份恢复规则文件。'}
+        foreach($entry in @($migration.Launch.entries)){
+            if(-not [IO.Path]::IsPathRooted($entry.path) -or $entry.path -notmatch '(?i)\.exe$' -or $entry.path -match '["\r\n\x00]' -or $entry.adapter -ne 'chromium' -or $entry.route -notin (@('Direct','Follow')+(Get-ProfileKeys))){throw '程序启动代理配置无效，请从备份恢复。'}
+        }
+        $rules=[pscustomobject]@{entries=@($engine.entries);defaultRoute=$engine.defaultRoute;installed=[bool]$engine.installed;programIngresses=@($engine.programIngresses|Where-Object {$_});siteRules=@($engine.siteRules|Where-Object {$_});launchEntries=@($migration.Launch.entries)}
+        $originalConfig=$migration.Files['config.json'];$originalState=$migration.Files['app-rules.json'];$originalLaunch=$migration.Files['program-proxies.json']
+        $statePath=$originalState.Path
+        $before=Get-SystemSnapshot;$beforeEnv=Get-UserProxyEnv;$selection=Get-Selection
         $client=Get-ClientInterference
-        if($client.Tun -or $client.Guard -or $client.SystemProxy){throw '启用独立入口前，请关闭 Clash 的 TUN 和代理守卫，并关闭各上游的系统代理开关；保留上游客户端运行。这样退出某个上游不会覆盖独立入口。'}
+        if($client.Tun -or $client.Guard){throw '启用独立入口前，请关闭其他客户端的 TUN 和代理守卫；保留上游代理服务运行。'}
         $upstreams=@($old.Profiles | Where-Object {$_.Id -ne $old.Routing.ProfileId -or $old.Routing.Adapter -ne 'standalone'})
         if(-not $upstreams.Count){throw '请先添加至少一个上游代理入口。'}
+        if($UnifiedSwitch){
+            if($InitialRoute -notin (@('Direct')+@($upstreams|ForEach-Object Id))){throw '请选择一个有效上游或直连，未启动独立入口。'}
+            if($InitialRoute -ne 'Direct' -and -not (Test-ProxyRoute $InitialRoute -Fast).Usable){throw '所选代理检测未通过，保留原配置，未启动独立入口。'}
+        }
         $node=Get-NodeRuntimePath
         $core=Get-IndependentCoreSource $old
         $directory=Join-Path $script:DataRoot 'gateway';$runtime=Join-Path $directory 'runtime';[void][IO.Directory]::CreateDirectory($runtime)
@@ -170,28 +188,88 @@ function Enable-IndependentGateway([int]$OwnerPID=0) {
         if($old.Routing.Adapter -eq 'standalone'){$new.Routing.Failover=$old.Routing.Failover}
         $new=ConvertTo-ValidProfileSettings $new
         $route=$rules.defaultRoute;if(-not $route){$route=Get-SystemKey $before};if($route -notin (@('Direct')+@($upstreams|ForEach-Object Id))){$route=$upstreams[0].Id}
+        $nextIngresses=@($rules.programIngresses|Where-Object {$_});$nextSites=@($rules.siteRules|Where-Object {$_});$nextEntries=@($rules.entries);$nextLaunch=@($rules.launchEntries)
+        if($InitialRoute){$route=$InitialRoute}
+        if($UnifiedSwitch){$nextIngresses=@($nextIngresses|ForEach-Object {$copy=$_|ConvertTo-Json -Depth 16|ConvertFrom-Json;$copy.route='Follow';$copy});$route=$InitialRoute;$nextEntries=@();$nextLaunch=@($rules.launchEntries|Where-Object {$_}|ForEach-Object {[pscustomobject]@{path=$_.path;route='Follow';adapter=$_.adapter;identity=$_.identity}})}
+        foreach($original in @($originalConfig,$originalState,$originalLaunch)){
+            if((Read-RuleMaintenanceFile $original.Path).Hash -cne $original.Hash){throw '代理配置或程序记录在预检期间已改变，保留最新内容；请刷新后重试。'}
+        }
         $stash=Join-Path $script:BackupDir ('independent-migration-'+(Get-Date -Format 'yyyyMMdd-HHmmss-fff')+'.json')
         Write-LocalJson $stash ([pscustomobject]@{Profiles=$old;Rules=$rules;System=$before;Environment=$beforeEnv;Selection=$selection})
-        $switched=$false;$removed=$false
+        $switched=$false;$removed=$false;$started=$false;$offlineDetach=$null
+        $ownedConfigHash='';$ownedStateHash='';$ownedLaunchHash=''
         try{
-            if($old.Routing.Adapter -ne 'standalone' -and $rules.installed){Invoke-AppRouter @{action='replace';entries=@();defaultRoute=$null} | Out-Null;$removed=$true}
-            Write-LocalJson $script:ConfigPath $new;$script:Profiles=$new
-            if($old.Routing.Adapter -ne 'standalone'){Write-LocalJson (Join-Path $script:DataRoot 'app-rules.json') ([pscustomobject]@{version=2;installed=$false;entries=@();defaultRoute=$null})}
-            Invoke-AppRouter @{action='start'} | Out-Null
-            Invoke-AppRouter @{action='replace';entries=@($rules.entries);defaultRoute=$route} | Out-Null
+            if($old.Routing.Adapter -ne 'standalone' -and $rules.installed){
+                $external=Invoke-AppRouter @{action='status'} -TimeoutMilliseconds 9000
+                if($external.available){
+                    $detached=Invoke-AppRouter @{action='replace';entries=@();defaultRoute=$null;expectedStateHash=$originalState.TextHash;expectedSettingsHash=$originalConfig.TextHash}
+                }else{
+                    Write-OperationProgress '原分流引擎已离线，正在核对并备份本工具拥有的旧规则…'
+                    $detached=Invoke-AppRouter @{action='detach-offline';expectedStateHash=$originalState.TextHash;expectedSettingsHash=$originalConfig.TextHash}
+                    $offlineDetach=$detached
+                }
+                if(-not $detached.stateHash){throw '旧规则撤离未返回写入归属，未继续改变入口。'}
+                $ownedStateHash=[string]$detached.stateHash;$removed=$true
+            }
+            $ownedConfigHash=Set-MigrationJson $script:ConfigPath $new $originalConfig.TextHash;$script:Profiles=$new
+            if($old.Routing.Adapter -ne 'standalone'){
+                $priorStateHash=$originalState.TextHash;if($ownedStateHash){$priorStateHash=$ownedStateHash}
+                $ownedStateHash=Set-MigrationJson $statePath ([pscustomobject]@{version=3;installed=$false;entries=@();defaultRoute=$null;programIngresses=@();siteRules=@()}) $priorStateHash
+            }else{$ownedStateHash=$originalState.TextHash}
+            $started=$true;Invoke-AppRouter @{action='start'} | Out-Null
+            # The file CAS uses a literal missing sentinel; the controller protocol hashes that sentinel.
+            $controllerStateHash=$ownedStateHash
+            if($controllerStateHash -ceq '<missing>'){$controllerStateHash=Get-RuleMaintenanceHash ([Text.Encoding]::UTF8.GetBytes('<missing>'))}
+            $applied=Invoke-AppRouter @{action='replace';entries=$nextEntries;defaultRoute=$route;programIngresses=$nextIngresses;siteRules=$nextSites;resetDefaultSelection=([bool]$UnifiedSwitch);expectedStateHash=$controllerStateHash;expectedSettingsHash=$ownedConfigHash}
+            if(-not $applied.stateHash){throw '新入口未返回规则写入归属，尚未更改 Windows 入口。'}
+            $ownedStateHash=[string]$applied.stateHash
+            if($UnifiedSwitch){
+                $live=Invoke-AppRouter @{action='status'}
+                if(-not $live.available -or -not $live.defaultLoaded -or $live.effectiveDefaultRoute -ne $route){throw '启动后的实际出口未通过核验，尚未切换系统入口。'}
+                if($route -ne 'Direct' -and -not (Test-ProxyRoute $gateway.Id -Fast).Usable){throw '启动后的实际代理请求未通过，尚未切换系统入口。'}
+                # Unified switching retains every saved path; no shortcut removal is needed here.
+                $nextLaunchState=$migration.Launch|ConvertTo-Json -Depth 16|ConvertFrom-Json;$nextLaunchState.entries=@($nextLaunch)
+                $ownedLaunchHash=Set-MigrationJson $originalLaunch.Path $nextLaunchState $originalLaunch.TextHash
+            }
             $target=[pscustomobject]@{Flags=3;Server=(Get-EndpointAddress $gateway);Bypass=$before.Bypass};$targetEnv=New-EnvTarget $beforeEnv $gateway.Id
             Start-IndependentProtection $OwnerPID $before $beforeEnv $target $targetEnv
             $switched=$true
-            Invoke-ProxyTransaction $target $targetEnv ([pscustomobject]@{Key=$gateway.Id;NetworkKey=$route;Unified=$true;ChangedAt=(Get-Date).ToString('o')}) $before $beforeEnv | Out-Null
+            $transactionBackup=Invoke-ProxyTransaction $target $targetEnv ([pscustomobject]@{Key=$gateway.Id;NetworkKey=$route;Unified=$true;ChangedAt=(Get-Date).ToString('o')}) $before $beforeEnv -BackupRouting $(if($UnifiedSwitch){$rules}else{$null})
+            if($UnifiedSwitch){return [pscustomobject]@{Key=$route;Backup=$transactionBackup;Message=('独立入口已启动，新连接的统一线路已核验为「'+(Get-RouteName $route)+'」。已有程序可能保留旧代理地址；首次接入的程序需从代理入口重新打开。'+$(if($live.partialIngressFailure){' 另有程序固定入口未就绪，请修复对应入口；这些程序尚未恢复。'})+$(if($client.SystemProxy){' 上游客户端仍开启系统代理，随后启动或退出它可能改写入口；建议关闭其系统代理开关并保留服务。'}))}}
             [pscustomobject]@{Message='独立分流已启用。代理失效会自动接替；关闭窗口将驻留托盘；通过托盘「停止代理服务并退出」恢复网络并关闭内核。';Backup=$stash}
         }catch{
             $failure=$_.Exception.Message
-            if($switched -or (Test-Path -LiteralPath (Get-IndependentSessionPath))){Restore-IndependentSession}
-            [IO.File]::WriteAllText((Join-Path $directory 'stop'),'stop')
-            Write-LocalJson $script:ConfigPath $old;$script:Profiles=$old
-            Write-LocalJson (Join-Path $script:DataRoot 'app-rules.json') ([pscustomobject]@{version=2;installed=$false;entries=@();defaultRoute=$null})
-            if($removed){Invoke-AppRouter @{action='replace';entries=@($rules.entries);defaultRoute=$rules.defaultRoute} | Out-Null}
-            elseif($old.Routing.Adapter -eq 'standalone'){Write-LocalJson (Join-Path $script:DataRoot 'app-rules.json') ([pscustomobject]@{version=2;installed=$rules.installed;entries=@($rules.entries);defaultRoute=$rules.defaultRoute})}
+            $rollbackFailures=@()
+            if($ownedLaunchHash){
+                try{Restore-MigrationFile $originalLaunch $ownedLaunchHash}
+                catch{$rollbackFailures+='程序启动记录未能回滚，已保留当前内容'}
+            }
+            try{
+                if($switched -or (Test-Path -LiteralPath (Get-IndependentSessionPath))){Restore-IndependentSession}
+                if($started){
+                    [IO.File]::WriteAllText((Join-Path $directory 'stop'),'stop')
+                    $ownedProcessFile=Join-Path $directory 'process.json'
+                    if(Test-Path -LiteralPath $ownedProcessFile){
+                        $ownedProcessState=Get-Content -LiteralPath $ownedProcessFile -Raw -Encoding UTF8|ConvertFrom-Json
+                        $stopDeadline=[DateTime]::UtcNow.AddSeconds(12)
+                        while((Test-SessionProcess $ownedProcessState.supervisor $ownedProcessState.supervisorStartTicks) -and [DateTime]::UtcNow -lt $stopDeadline){Start-Sleep -Milliseconds 100}
+                        if(Test-SessionProcess $ownedProcessState.supervisor $ownedProcessState.supervisorStartTicks){throw '本次自有内核停止尚未确认，保留迁移配置以便恢复'}
+                    }
+                }
+                if($ownedStateHash -and (Read-RuleMaintenanceFile $statePath).TextHash -cne $ownedStateHash){throw '程序规则已被外部改动，未覆盖关联配置'}
+                if($ownedConfigHash){Restore-MigrationFile $originalConfig $ownedConfigHash}
+                $script:Profiles=$old
+                if($offlineDetach){
+                    # Restore only our exact detached state image before restoring the paired external files.
+                    $current=Read-RuleMaintenanceFile $statePath
+                    if($current.TextHash -cne $ownedStateHash){throw '程序规则已被外部改动，未覆盖最新规则'}
+                    Set-RuleMaintenanceFile $current ([Text.Encoding]::UTF8.GetBytes([string]$offlineDetach.stateText)) $false
+                    Invoke-AppRouter @{action='restore-offline-detach';backup=$offlineDetach.backup;expectedSettingsHash=$originalConfig.TextHash}|Out-Null
+                }elseif($removed){
+                    Invoke-AppRouter @{action='replace';entries=@($rules.entries);defaultRoute=$rules.defaultRoute;expectedStateHash=$ownedStateHash;expectedSettingsHash=$originalConfig.TextHash}|Out-Null
+                }elseif($ownedStateHash){Restore-MigrationFile $originalState $ownedStateHash}
+            }catch{$rollbackFailures+='入口或关联配置未能完全恢复'}
+            if($rollbackFailures.Count){throw ($failure+'；迁移回滚未完成（'+($rollbackFailures -join '；')+'），保留外部最新设置和本机备份：'+$stash+'。请检查原引擎和入口状态。')}
             throw ($failure+'；已恢复启用前设置。')
         }
     }

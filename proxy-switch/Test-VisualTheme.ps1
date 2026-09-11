@@ -15,7 +15,7 @@ public static class FlowVisualInput {
 '@
 $qa=Join-Path $env:TEMP ('FlowSwitch-visual-'+[Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($qa)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','ProgramIdentity.ps1','ApplicationObservation.ps1','RuleMaintenance.ps1','Preferences.ps1','Storage.ps1','RuntimeSupport.ps1','IndependentGateway.ps1','GatewayWatchdog.ps1','IndependentRouter.cjs','DesktopBranding.cs','FlowTheme.cs','ProgramLaunch.ps1','ProcessInventory.ps1','ProxyDiscovery.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $qa}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','ProxyBackend.ps1','ProgramIdentity.ps1','ManagedRouting.ps1','ProgramFamilyTracking.ps1','ApplicationObservation.ps1','RuleMaintenance.ps1','Preferences.ps1','Storage.ps1','RuntimeSupport.ps1','IndependentGateway.ps1','GatewayWatchdog.ps1','IndependentRouter.cjs','RoutePolicy.cjs','GatewayPortOwnership.ps1','DesktopBranding.cs','FlowTheme.cs','ProgramLaunch.ps1','ProcessInventory.ps1','ProxyDiscovery.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination $qa}
 [void][IO.Directory]::CreateDirectory((Join-Path $qa 'assets'))
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'assets/FlowSwitch.ico') -Destination (Join-Path $qa 'assets/FlowSwitch.ico')
 $scriptFile=Join-Path $qa 'ProxyWindow.ps1';$source=[IO.File]::ReadAllText($scriptFile)

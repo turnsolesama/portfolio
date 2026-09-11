@@ -1,3 +1,23 @@
+# 3.8.0 核心重构约定（优先于下方历史模式约定）
+
+- 明确切换不因第三方仅开启普通系统代理而一律阻止；实读/CAS写入流向入口，并提示第三方随后启动/退出可能改写。TUN或持续代理守卫仍需先关闭；不代用户改第三方开关，不后台抢回入口。外部分流引擎已退出时，先经detach-offline证明并移除本工具旧规则，再转入自有网关；不能被已退出引擎的reload要求永久卡死。
+
+- 普通统一切换使用 Set-UniversalProxy，明确选线时接入自有固定入口；普通程序选线使用 Set-ManagedApplicationRoute。支持的 Chromium/Electron 使用稳定的独立 mixed listener，主程序参数和子进程环境均不再绑定上游端口；不要求用户选择 launch/engine 模式。被动打开、刷新仍不接管网络。
+- app-rules.json version 3 在同一 CAS 事务中保存 entries、defaultRoute、programIngresses、siteRules。旧请求缺失新增字段时保留现值，显式空数组才清除。每个程序入口使用独立 selector；只有显式改该程序线路才重置它，无关规则同步保留备用。Follow 保留 id/port 并跟随默认；统一切换撤销程序专用选择，保留网站规则。
+- 网站优先级：指定程序范围优先于全局范围；同范围内更具体的域名优先，同域精确匹配优先于子域规则。配置生成与观察/重连的规则解释必须一致。不采集完整登录 URL、授权码或令牌。
+- 启动请求必须交给持有托盘生命周期的主 UI。IPC 仅同用户、路径参数、30 秒有效期、最多 4 条；执行前复核已保存程序，未就绪不启动。Process.Start 成功后的观察/记录失败不得报告为启动失败。
+- 当前宿主会话内可以缓存已验证父子关系，但每轮必须重新核验 PID、创建 ticks、规范路径和文件身份，不缓存存活结论，不持久化私人进程关系；未知不猜测。宿主重启丢失孤儿关系不影响其固定入口转发，观察仍需明确未知。
+- 移除入口前核验 family、控制器和当前 TCP；活跃或未知拒绝，先用 Follow 取消专用线路。引擎写锁内复核活跃入口。端口所有权使用 GatewayPortOwnership.ps1 的 GetExtendedTcpTable 与精确自有核心 startTicks，禁止读目标进程内存。
+- 新验证：Test-ManagedRouting、Test-ProgramFamilyTracking、Test-ManagedObservation、Test-ManagedRemoval、Test-ManagedLaunchEvidence、Test-RoutePolicy 纳入 Test-All；Test-ManagedSwitchChain.ps1 -RuntimeDirectory 和 Test-ProgramIngressIntegration.cjs <CorePath> 使用真实隔离内核/父子程序/HTTP。UI 使用 Test-RoutingWorkbenchUI、Test-LaunchDispatch。不得用本地夹具通过代替真实 OAuth 登录验收。
+
+# 3.7.2 维护约定
+
+- 手动 Set-SelectedProxy 通过一次性 resetDefaultSelection 区分用户重选和普通同步；不持久化该标记。普通规则变更、路径修复、后台刷新必须保留有效备用。
+- 已配置 standalone 且没有活动会话时，用户点击统一切换可启动并核验其固定入口；打开／刷新仍为只读，不自动迁移第三方引擎。冷启动切换快照须包含原程序规则。
+- 旧启动代理记录在 UI 改线时保持 launch 模式。主程序及子进程适配需明确选择；已有 engine 规则必须先明确移除，禁止静默混用。
+- Test-EntryMaintenance.ps1 纳入 Test-All；Test-SwitchChain.ps1 -RuntimeDirectory <现有锁定组件目录> 使用真实隔离内核与本地 HTTP A/B/D 应答，覆盖冷启动、来回切换、手动返回首选、实际出口不一致时回滚及状态显示；Windows 和 RunOnce 写入使用桩。
+- Test-ObservationUI.ps1 验证实际右键菜单与诊断按钮；Test-ProgramLaunch.ps1 用实际临时父子程序验证下一次启动的 A→B 环境继承。以上不能代替真实 IDE OAuth 验收。
+
 # 网络代理切换器
 
 - Windows PowerShell 5.1 / WinForms。Windows 程序包自带锁定版本 Node.js 与 mihomo；源码开发也可使用已安装的组件。本目录 vendor/js-yaml 5.4.1 保留 MIT 许可证。不自动更新依赖。

@@ -40,4 +40,6 @@ const migratedSelection=r.retainedSelections(o,oldPathRule,migratedPathRule,{'PS
 check(migratedSelection['PSW-App-route-a']==='FS-Up-b','Repairing a program path preserves its shared route group current backup');
 const addedSelection=r.retainedSelections(o,before,{entries:[{path:'C:\\Apps\\Added.exe',route:'a'}],defaultRoute:'a'},{'PSW-App-route-a':{now:'FS-Up-b'}});
 check(addedSelection['PSW-App-route-a']==='FS-Up-b','Adding another program to an existing policy does not reset other programs or the default route');
+const explicitSelection=r.retainedSelections(o,before,before,{'PSW-App-route-a':{now:'FS-Up-b'}},true);
+check(!Object.hasOwn(explicitSelection,'PSW-App-route-a'),'Explicit default reselection resets preferred route even when saved policy is unchanged');
 console.log('PASS: '+checks+' independent gateway unit assertions');

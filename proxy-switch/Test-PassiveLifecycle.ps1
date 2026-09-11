@@ -1,10 +1,11 @@
-﻿$ErrorActionPreference='Stop'
+﻿param([ValidateRange(3,90)][int]$ObserveSeconds=72,[switch]$Standalone)
+$ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Windows.Forms
 [Windows.Forms.Application]::SetUnhandledExceptionMode([Windows.Forms.UnhandledExceptionMode]::ThrowException)
 $qaSource=$PSScriptRoot
 $qaRoot=Join-Path $env:TEMP ('passive-ui-'+[Guid]::NewGuid().ToString('N').Substring(0,8))
 [void][IO.Directory]::CreateDirectory($qaRoot)
-foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','FlowTheme.cs','ProxyBackend.ps1','ProgramIdentity.ps1','ApplicationObservation.ps1','RuleMaintenance.ps1','Preferences.ps1','Storage.ps1','RuntimeSupport.ps1','IndependentGateway.ps1','GatewayWatchdog.ps1','IndependentRouter.cjs','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
+foreach($name in @('ProxySwitch.ps1','ProxyWindow.ps1','DesktopBranding.cs','FlowTheme.cs','ProxyBackend.ps1','ProgramIdentity.ps1','ManagedRouting.ps1','ProgramFamilyTracking.ps1','ApplicationObservation.ps1','RuleMaintenance.ps1','Preferences.ps1','Storage.ps1','RuntimeSupport.ps1','IndependentGateway.ps1','GatewayWatchdog.ps1','IndependentRouter.cjs','RoutePolicy.cjs','GatewayPortOwnership.ps1','ProxyDiscovery.ps1','ProcessInventory.ps1','ProgramLaunch.ps1','AppRouting.ps1','AppRouter.cjs','config.defaults.json')){Copy-Item -LiteralPath (Join-Path $qaSource $name) -Destination $qaRoot}
 [void][IO.Directory]::CreateDirectory((Join-Path $qaRoot 'assets'))
 Copy-Item -LiteralPath (Join-Path $qaSource 'assets/FlowSwitch.ico') -Destination (Join-Path $qaRoot 'assets/FlowSwitch.ico')
 # Isolated Windows fixtures must not contend with the real manager or other test windows.
@@ -18,6 +19,7 @@ $config=[pscustomobject]@{Version=3;Routing=@{Adapter='none';ProfileId=''};Profi
     @{Id='beta';Name='QA Beta';Protocol='http';Host='127.0.0.1';Port=18082;CorePath='';AppPath='';AutoPort=$false},
     @{Id='remote';Name='QA Canary';Protocol='http';Host='127.0.0.2';Port=$canary.LocalEndpoint.Port;CorePath='';AppPath='';AutoPort=$false}
 )}
+if($Standalone){$config.Profiles[0].CorePath=Join-Path $qaRoot 'unused-fixture-core.exe';[IO.File]::WriteAllText($config.Profiles[0].CorePath,'inert never executed');$config.Routing=@{Adapter='standalone';ProfileId='alpha';UnifiedMode='gateway';Failover=@{Enabled=$false;Order=@('beta');AllowDirect=$false}}}
 $encoding=New-Object Text.UTF8Encoding($true)
 [IO.File]::WriteAllText((Join-Path $env:PROXY_SWITCH_DATA_DIR 'config.json'),($config|ConvertTo-Json -Depth 8),$encoding)
 $global:qaSystemPath=Join-Path $qaRoot 'system.json'
@@ -37,6 +39,9 @@ function Set-SystemSnapshot {Deny-QAWrite}
 function Set-UserProxyEnv {Deny-QAWrite}
 function Save-Selection {Deny-QAWrite}
 function Set-RoutingSnapshot {Deny-QAWrite}
+function Enable-IndependentGateway {Deny-QAWrite}
+function Start-ManagedProgram {Deny-QAWrite}
+function Set-UniversalProxy {Deny-QAWrite}
 function Test-LocalProxyProtocol {[IO.File]::AppendAllText((Join-Path $PSScriptRoot 'probes.log'),"probe`n");throw 'Unexpected protocol probe'}
 '@,$encoding)
 $windowPath=Join-Path $qaRoot 'ProxyWindow.ps1';$window=[IO.File]::ReadAllText($windowPath)
@@ -45,11 +50,11 @@ $window=$window.Replace('$timer.Start();[Windows.Forms.Application]::Run($form)'
 $configHash=(Get-FileHash -LiteralPath (Join-Path $env:PROXY_SWITCH_DATA_DIR 'config.json')).Hash
 function Find-Control($Parent,[string]$Text){foreach($c in $Parent.Controls){if($c.Text -eq $Text){return $c};$found=Find-Control $c $Text;if($found){return $found}}}
 function Find-Type($Parent,[type]$Type){foreach($c in $Parent.Controls){if($c -is $Type){$c};Find-Type $c $Type}}
-$global:qaStep=0;$global:qaFailure=$null;$clock=[Diagnostics.Stopwatch]::StartNew()
+$global:qaDesiredChoice=$(if($Standalone){'remote'}else{'alpha'});$global:qaStep=0;$global:qaFailure=$null;$clock=[Diagnostics.Stopwatch]::StartNew()
 $qaTimer=New-Object Windows.Forms.Timer;$qaTimer.Interval=300
 $qaTimer.Add_Tick({
     try{
-        if($clock.Elapsed.TotalSeconds -gt 95){throw 'Lifecycle test timed out'}
+        if($clock.Elapsed.TotalSeconds -gt ($ObserveSeconds+23)){throw 'Lifecycle test timed out'}
         $main=[Windows.Forms.Application]::OpenForms | Where-Object {$_.Text -like '*FlowSwitch*'} | Select-Object -First 1
         if(-not $main){return}
         if($canary.Pending()){throw 'Passive status opened a socket'}
@@ -62,16 +67,16 @@ $qaTimer.Add_Tick({
             (Find-Control $main '刷新').PerformClick();$global:qaStep=1
         }elseif($global:qaStep -eq 1 -and $combo.SelectedItem.Id -eq 'Direct'){
             if(-not (Find-Control $main '直连')){throw 'Disabled stale server misreported as active proxy'}
-            $combo.SelectedIndex=1
+            for($choice=0;$choice -lt $combo.Items.Count;$choice++){if($combo.Items[$choice].Id -eq $global:qaDesiredChoice){$combo.SelectedIndex=$choice;break}}
             $method=$combo.GetType().GetMethod('OnSelectionChangeCommitted',[Reflection.BindingFlags]'Instance,NonPublic')
             [void]$method.Invoke($combo,@([EventArgs]::Empty))
             [IO.File]::WriteAllText($global:qaSystemPath,'{"Flags":3,"Server":"127.0.0.1:18082","Bypass":""}')
             (Find-Control $main '刷新').PerformClick();$global:qaStep=2
         }elseif($global:qaStep -eq 2 -and (Find-Control $main 'QA Beta')){
-            if($combo.SelectedItem.Id -ne 'alpha'){throw 'Refresh overwrote unsubmitted user choice'}
+            if($combo.SelectedItem.Id -ne $global:qaDesiredChoice){throw 'Refresh overwrote unsubmitted user choice'}
             $global:qaStep=3
-        }elseif($global:qaStep -eq 3 -and $clock.Elapsed.TotalSeconds -ge 72){
-            if($combo.SelectedItem.Id -ne 'alpha'){throw 'Timer overwrote unsubmitted user choice'}
+        }elseif($global:qaStep -eq 3 -and $clock.Elapsed.TotalSeconds -ge $ObserveSeconds){
+            if($combo.SelectedItem.Id -ne $global:qaDesiredChoice){throw 'Timer overwrote unsubmitted user choice'}
             $global:qaStep=4;$qaTimer.Stop();$main.Close()
         }
     }catch{$global:qaFailure=$_.Exception.Message;$qaTimer.Stop();foreach($form in @([Windows.Forms.Application]::OpenForms)){$form.Close()}}
@@ -83,5 +88,5 @@ if($global:qaStep -ne 4){throw 'Lifecycle test incomplete'}
 if((Test-Path -LiteralPath (Join-Path $qaRoot 'writes.log')) -or (Test-Path -LiteralPath (Join-Path $qaRoot 'probes.log'))){throw 'Exit attempted a write or probe'}
 if((Get-FileHash -LiteralPath (Join-Path $env:PROXY_SWITCH_DATA_DIR 'config.json')).Hash -ne $configHash){throw 'Passive lifecycle modified profiles'}
 $reads=@(Get-Content -LiteralPath (Join-Path $qaRoot 'reads.log')).Count
-if($reads -lt 8){throw 'Insufficient automatic refresh cycles'}
-'PASS: startup, manual refresh, '+$reads+' passive reads over 72 seconds, external choices, unsaved dropdown choice, exit; no socket probes or network/config writes.'
+if($reads -lt $(if($ObserveSeconds -ge 60){8}else{2})){throw 'Insufficient automatic refresh cycles'}
+'PASS: startup, manual refresh, '+$reads+' passive reads over '+$ObserveSeconds+' seconds, external choices, unsaved dropdown choice, exit; no socket probes or network/config writes.'

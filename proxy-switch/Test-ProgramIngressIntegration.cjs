@@ -1,0 +1,92 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),http=require('node:http'),net=require('node:net'),assert=require('node:assert/strict');
+const {spawn,spawnSync}=require('node:child_process');
+const sourceCore=process.argv[2];if(!sourceCore||!path.isAbsolute(sourceCore)||!fs.existsSync(sourceCore))throw Error('Pass the installed pinned core executable');
+const data=fs.mkdtempSync(path.join(os.tmpdir(),'FlowSwitch-ProgramIngress-'));process.env.PROXY_SWITCH_DATA_DIR=data;
+const core=path.join(data,'FlowSwitch-TestEngine.exe');fs.copyFileSync(sourceCore,core);
+const r=require('./IndependentRouter.cjs'),policy=require('./RoutePolicy.cjs'),router=require('./AppRouter.cjs');
+const servers=[],clients=[],sockets=new Set();let checks=0,workerPid;
+const pause=ms=>new Promise(done=>setTimeout(done,ms));
+const check=(b,label)=>{assert.ok(b,label);checks++;console.log('PASS: '+label);};
+async function until(fn,label,ms=40000){const end=Date.now()+ms;while(Date.now()<end){try{if(await fn()){check(true,label);return;}}catch{}await pause(200);}throw Error('Timed out: '+label);}
+async function freePort(){const s=net.createServer();await new Promise(done=>s.listen(0,'127.0.0.1',done));const p=s.address().port;await new Promise(done=>s.close(done));return p;}
+async function upstream(marker,port=0){const x={server:http.createServer((req,res)=>{if(req.url==='/held')return;res.writeHead(200,{'Content-Length':1});res.end(marker);}),sockets:new Set()};
+ x.server.on('connect',(req,s)=>{s.write('HTTP/1.1 200 Connection Established\r\n\r\n');s.once('data',b=>{if(b.toString().includes('/held'))return;s.end('HTTP/1.1 200 OK\r\nContent-Length: 1\r\nConnection: close\r\n\r\n'+marker);});});
+ x.server.on('connection',s=>{sockets.add(s);x.sockets.add(s);s.on('close',()=>{sockets.delete(s);x.sockets.delete(s);});});
+ await new Promise(done=>x.server.listen(port,'127.0.0.1',done));x.port=x.server.address().port;servers.push(x);return x;
+}
+async function closeServer(x){for(const s of x.sockets)s.destroy();if(x.server.listening)await new Promise(done=>x.server.close(done));}
+function request(port,url){return new Promise((resolve,reject)=>{const req=http.get({host:'127.0.0.1',port,path:url,headers:{Host:new URL(url).host},agent:false,timeout:2000},res=>{let b='';res.on('data',c=>b+=c);res.on('end',()=>res.statusCode===200?resolve(b):reject(Error('HTTP '+res.statusCode)));});req.on('error',reject);req.on('timeout',()=>req.destroy(Error('timeout')));});}
+async function hold(port,host,targetPort){const s=net.connect({host:'127.0.0.1',port});sockets.add(s);s.on('close',()=>sockets.delete(s));await new Promise((done,reject)=>{s.once('connect',()=>s.write('CONNECT '+host+':'+targetPort+' HTTP/1.1\r\nHost: '+host+':'+targetPort+'\r\n\r\n'));s.once('data',b=>b.toString().startsWith('HTTP/1.1 200')?done():reject(Error('CONNECT rejected')));s.once('error',reject);s.setTimeout(3000,()=>s.destroy(Error('timeout')));});s.setTimeout(0);s.write('GET /held HTTP/1.1\r\nHost: '+host+'\r\n\r\n');await pause(200);return s;}
+const last=file=>{try{return fs.readFileSync(file,'utf8').trim().split('\n').at(-1);}catch{return '';}};
+function compileClient(){
+ const code=String.raw`using System;using System.IO;using System.Net.Sockets;using System.Text;using System.Threading;using System.Diagnostics;
+class Client{static string Fetch(string endpoint,string target){try{var proxy=new Uri(endpoint);var u=new Uri(target);using(var tcp=new TcpClient(proxy.Host,proxy.Port)){tcp.ReceiveTimeout=2000;var stream=tcp.GetStream();var reader=new StreamReader(stream);var bytes=Encoding.ASCII.GetBytes("CONNECT "+u.Host+":"+u.Port+" HTTP/1.1\r\nHost: "+u.Host+":"+u.Port+"\r\n\r\n");stream.Write(bytes,0,bytes.Length);string line;line=reader.ReadLine();if(line==null||!line.Contains("200"))return "E";while((line=reader.ReadLine())!=null&&line.Length>0){}bytes=Encoding.ASCII.GetBytes("GET /fixture HTTP/1.1\r\nHost: "+u.Host+":"+u.Port+"\r\nConnection: close\r\n\r\n");stream.Write(bytes,0,bytes.Length);line=reader.ReadLine();if(line==null||!line.Contains("200"))return "E";while((line=reader.ReadLine())!=null&&line.Length>0){}var body=reader.ReadToEnd();return body.Trim();}}catch{return "E";}}
+static void Main(string[] a){string endpoint=Environment.GetEnvironmentVariable("HTTP_PROXY");if(a.Length>5){var si=new ProcessStartInfo(a[5],"\""+a[0]+"\" \""+a[1]+"\" \""+a[2]+".worker\" \""+a[3]+"\" \""+a[3]+"\"");si.UseShellExecute=false;si.CreateNoWindow=true;var child=Process.Start(si);File.WriteAllText(a[2]+".pid",child.Id.ToString());}while(!File.Exists(a[3])&&!File.Exists(a[4])){File.AppendAllText(a[2],Process.GetCurrentProcess().Id+"|"+endpoint+"|"+Fetch(endpoint,a[0])+Fetch(endpoint,a[1])+"\n");Thread.Sleep(150);}}}`;
+ const cs=path.join(data,'client.cs'),parent=path.join(data,'Parent.exe'),childDir=path.join(data,'external-worker');fs.mkdirSync(childDir);const child=path.join(childDir,'Worker.exe'),other=path.join(data,'Other.exe');fs.writeFileSync(cs,code);
+ const build=spawnSync(path.join(process.env.SystemRoot,'Microsoft.NET/Framework64/v4.0.30319/csc.exe'),['/nologo','/target:winexe','/out:'+parent,cs],{windowsHide:true,encoding:'utf8'});assert.equal(build.status,0,build.stdout+build.stderr);fs.copyFileSync(parent,child);fs.copyFileSync(parent,other);return {parent,child,other};
+}
+async function main(){
+ let a=await upstream('A');const b=await upstream('B'),direct=await upstream('D'),port=await freePort(),p1=await freePort(),p2=await freePort();
+ const url='http://network.invalid:'+direct.port+'/probe',local='http://localhost:'+direct.port+'/probe';process.env.PROXY_SWITCH_TEST_HEALTH_URL='http://127.0.0.1:'+direct.port+'/health';
+ const exe=compileClient(),id='1'.repeat(32),id2='2'.repeat(32),sid='3'.repeat(32),sid2='4'.repeat(32);
+ const o={Version:3,Profiles:[{Id:'gateway',Name:'own',Protocol:'http',Host:'127.0.0.1',Port:port,CorePath:core},{Id:'a',Name:'A',Protocol:'http',Host:'127.0.0.1',Port:a.port},{Id:'b',Name:'B',Protocol:'http',Host:'127.0.0.1',Port:b.port}],Routing:{Adapter:'standalone',ProfileId:'gateway',UnifiedMode:'gateway',Failover:{Enabled:true,Order:['a','b'],AllowDirect:false}}};
+ let ingresses=[{id,path:exe.parent,port:p1,route:'a'},{id:id2,path:exe.other,port:p2,route:'b'}],sites=[{id:'6'.repeat(32),scope:'global',type:'suffix',domain:'localhost',route:'b'},{id:sid,scope:'global',type:'domain',domain:'localhost',route:'Direct'}];
+ fs.writeFileSync(path.join(data,'config.json'),JSON.stringify(o));fs.writeFileSync(path.join(data,'app-rules.json'),JSON.stringify({version:3,installed:true,entries:[],defaultRoute:'b',programIngresses:ingresses,siteRules:sites}));
+ await r.start();check((await r.status()).programIngresses.every(e=>e.loaded===true&&e.ready===true),'Real core validates rules and owns both fixed ingress ports');
+ check(await request(p1,url)==='A'&&await request(p1,local)==='D','Same ingress reaches proxy-only and direct-only websites; later exact Direct overrides earlier broad proxy suffix');
+ check(await request(p2,url)==='B'&&await request(p2,local)==='D','Second program uses its independent route and same global direct website');
+ const originalCore=JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core,stop=path.join(data,'stop-clients'),parentStop=path.join(data,'stop-parent'),log=path.join(data,'parent.txt'),otherLog=path.join(data,'other.txt');
+ const baseEnv={...process.env};for(const k of Object.keys(baseEnv))if(/^(http|https|all)_proxy$/i.test(k))delete baseEnv[k];
+ clients.push(spawn(exe.parent,[url,local,log,stop,parentStop,exe.child],{windowsHide:true,stdio:'ignore',env:{...baseEnv,HTTP_PROXY:'http://127.0.0.1:'+p1}}));
+ clients.push(spawn(exe.other,[url,local,otherLog,stop,stop],{windowsHide:true,stdio:'ignore',env:{...baseEnv,HTTP_PROXY:'http://127.0.0.1:'+p2}}));
+ await until(()=>last(log).endsWith('|AD')&&last(log+'.worker').endsWith('|AD')&&last(otherLog).endsWith('|BD'),'Actual parent plus different worker EXE inherit one ingress; second program remains independent');workerPid=Number(fs.readFileSync(log+'.pid','utf8'));
+ const observed=await hold(p1,'network.invalid',direct.port);const view=await r.status();const conn=view.connections.find(c=>c.sourcePort===observed.localPort);check(conn?.ingressId===id&&conn.expectedRoute==='a'&&conn.policyMatches===true,'Controller reports actual child-family ingress and expected route without collecting URLs');
+ const initialState=fs.readFileSync(path.join(data,'app-rules.json'),'utf8');
+ await assert.rejects(()=>r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses.filter(e=>e.id!==id)}),/活动连接/);checks++;
+ check(fs.readFileSync(path.join(data,'app-rules.json'),'utf8')===initialState&&await request(p1,url)==='A','Deleting a live family ingress is refused inside the engine mutation lock without stopping it');
+ await assert.rejects(()=>r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses.map(e=>e.id===id?{...e,port:p1===65535?65534:65535}:e)}),/端口不能/);checks++;
+ observed.destroy();
+ await closeServer(a);await until(()=>last(log).endsWith('|BD')&&last(log+'.worker').endsWith('|BD'),'A exits: parent and existing worker automatically recover via B with unchanged ingress');
+ fs.writeFileSync(parentStop,'stop');await until(()=>clients[0].exitCode!==null,'Fixture parent exits gracefully while worker stays alive');const childSize=fs.statSync(log+'.worker').size;await until(()=>fs.statSync(log+'.worker').size>childSize,'Orphaned worker continues using the same managed ingress');
+ a=await upstream('A',a.port);await pause(5000);check(await request(p1,url)==='B','Recovered A does not steal an existing healthy B fallback');
+ sites=[...sites,{id:sid2,scope:id2,type:'suffix',domain:'localhost',route:'a'}];await r.replace([],'b',undefined,undefined,false,{siteRules:sites});
+ check(await request(p1,url)==='B'&&await request(p1,local)==='D'&&await request(p2,local)==='A','Unrelated scoped website edit retains fallback and overrides global rule only for the selected program');
+ await r.replace([],'b',undefined,undefined,false,{resetIngressSelections:[id]});await until(()=>last(log+'.worker').endsWith('|AD'),'Explicit same-route reselection returns existing worker to A without restarting it');check(await request(p2,url)==='B','Resetting one ingress does not disturb the second program selector');
+ ingresses=ingresses.map(e=>e.id===id?{...e,route:'b'}:e);await r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses,resetIngressSelections:[id]});await until(()=>last(log+'.worker').endsWith('|BD'),'Running orphan worker switches A to B through its unchanged local proxy URL');
+ const heldDirect=await hold(p1,'localhost',direct.port),heldProxy=await hold(p1,'network.invalid',direct.port);const plan=await r.main({action:'reconnect-plan',path:exe.parent});check(plan.connections.length===0,'Reconnect preview preserves valid simultaneous direct and proxy website connections');
+ ingresses=ingresses.map(e=>e.id===id?{...e,route:'a'}:e);await r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses,resetIngressSelections:[id]});
+ const moved=await r.main({action:'reconnect-plan',path:exe.parent}),beforeReconnect=await r.status(),oldConnection=beforeReconnect.connections.find(c=>c.sourcePort===heldProxy.localPort),directConnection=beforeReconnect.connections.find(c=>c.sourcePort===heldDirect.localPort);
+ check(moved.connections.some(c=>c.id===oldConnection?.id&&c.route==='b'&&c.expectedRoute==='a')&&!moved.connections.some(c=>c.id===directConnection?.id),'Family reconnect preview selects only outdated proxy connection and retains direct website connection');
+ const reconnected=await r.main({action:'reconnect',plan:moved}),afterReconnect=await r.status();check(reconnected.closed>=1&&afterReconnect.connections.some(c=>c.id===directConnection.id)&&!afterReconnect.connections.some(c=>c.id===oldConnection.id),'Confirmed family reconnect closes only previewed old route connections');
+ heldDirect.destroy();heldProxy.destroy();ingresses=ingresses.map(e=>e.id===id?{...e,route:'b'}:e);await r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses,resetIngressSelections:[id]});
+ const occupied=await upstream('E'),before=fs.readFileSync(path.join(data,'app-rules.json'),'utf8');
+ await assert.rejects(()=>r.replace([],'b',undefined,undefined,false,{programIngresses:[...ingresses,{id:'5'.repeat(32),path:path.join(data,'Unused.exe'),port:occupied.port,route:'a'}]}),/恢复修改前/);checks++;
+ check(fs.readFileSync(path.join(data,'app-rules.json'),'utf8')===before&&await request(p1,url)==='B'&&await request(occupied.port,url)==='E','Occupied new port rolls back actual old listeners and preserves foreign listener');
+ await assert.rejects(()=>r.replace([],'a','0'.repeat(64)),/预览后改变/);checks++;check(fs.readFileSync(path.join(data,'app-rules.json'),'utf8')===before,'Stale state CAS cannot overwrite working ingress/site policies');
+ await closeServer(a);await closeServer(b);await until(async()=>{const s=await r.status();return s.programIngresses.every(e=>e.effectiveRoute==='Blocked'&&e.ready===true);},'All upstreams failed: entry stays alive and routes report Blocked rather than fake health');check(await request(p1,local)==='D','Direct website remains usable even when all proxy upstreams are offline');
+ check(JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core===originalCore,'Route changes and upstream loss never restart the owned core');
+ await r.main({action:'stop'});await until(()=>!fs.existsSync(path.join(r.ROOT,'supervisor.lock')),'Owned supervisor stops cleanly');
+ await upstream('B',b.port);await r.start();await until(async()=>await request(p1,url)==='B','Owned service restart restores persistent program ingress port and website policy');
+ ingresses=ingresses.map(e=>e.id===id?{...e,route:'a'}:e);await r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses,resetIngressSelections:[id]});
+ await until(async()=>{const s=await r.status();return s.programIngresses.find(e=>e.id===id).effectiveRoute==='b'&&s.failover.policies?.['ingress-'+id]?.current==='b';},'Program-specific A policy journals its current B fallback before a simulated core crash');
+ const crashCore=JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core;process.kill(crashCore);
+ await until(async()=>{const s=await r.status();const currentCore=JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core;return currentCore!==crashCore&&s.programIngresses.find(e=>e.id===id).ready===true&&s.programIngresses.find(e=>e.id===id).effectiveRoute==='b'&&await request(p1,url)==='B';},'Actual core crash restores the same program port and independent B fallback');
+ check(JSON.parse(fs.readFileSync(path.join(data,'app-rules.json'))).programIngresses[0].port===p1,'Persisted program ingress port is unchanged throughout all scenarios');
+ fs.writeFileSync(stop,'stop');await until(()=>clients.every(c=>c.exitCode!==null),'All fixture applications finish before explicit ingress maintenance');
+ await r.main({action:'stop'});await until(()=>!fs.existsSync(path.join(r.ROOT,'supervisor.lock')),'Core stops before testing persisted private-port occupation');
+ const foreign=await upstream('E',p1);await r.start();const partial=await r.status();
+ check(partial.available&&partial.defaultLoaded&&partial.partialIngressFailure&&partial.programIngresses.find(e=>e.id===id).ready===false&&partial.programIngresses.find(e=>e.id===id).loaded===false&&partial.programIngresses.find(e=>e.id===id2).loaded===true,'Occupied saved private port is isolated; common gateway and another program stay verified');
+ check(await request(port,url)==='B'&&await request(p2,url)==='B'&&await request(p1,url)==='E','Cold start keeps working routes usable and never adopts the foreign private-port listener');
+ const partialCore=JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core;
+ const partialChange=await r.replace([],'Direct');check(partialChange.unavailableIngresses.includes(id)&&await request(port,'http://127.0.0.1:'+direct.port+'/probe')==='D','Default route can switch while an unchanged previously failed private ingress is retained with an explicit warning');
+ ingresses=ingresses.map(e=>({...e,route:'Follow'}));await r.replace([],'b',undefined,undefined,true,{programIngresses:ingresses});check(await request(port,url)==='B'&&await request(p2,url)==='B','Unified Follow transition does not let one bad private port block other route switches');
+ await assert.rejects(()=>r.replace([],'b',undefined,undefined,false,{resetIngressSelections:[id]}),/恢复修改前/);checks++;
+ check((await r.status()).programIngresses.find(e=>e.id===id2).ready&&await request(p1,url)==='E','Explicit retry of the failed program is rejected and rollback preserves working entries and foreign ownership');
+ await pause(11000);check(JSON.parse(fs.readFileSync(path.join(r.ROOT,'process.json'))).core===partialCore&&JSON.parse(fs.readFileSync(path.join(r.ROOT,'lifecycle-state.json'))).attempt===0,'A saved private-port conflict never restarts the healthy common core in a loop');
+ ingresses=ingresses.filter(e=>e.id!==id);await r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses});check(!(await r.status()).programIngresses.some(e=>e.id===id)&&await request(p1,url)==='E','An idle broken ingress can be explicitly removed without stopping the foreign listener');
+ const repaired={id:'7'.repeat(32),path:exe.parent,port:await freePort(),route:'b'};ingresses.push(repaired);await r.replace([],'b',undefined,undefined,false,{programIngresses:ingresses});check((await r.status()).programIngresses.find(e=>e.id===repaired.id).ready&&await request(repaired.port,url)==='B'&&await request(p1,url)==='E','Explicit maintenance can create a new free program ingress after safely removing the unusable record');
+ console.log('PASS: '+checks+' real-core general program ingress and website routing scenarios. '+data);
+}
+main().catch(e=>{console.error(e.stack);process.exitCode=1;}).finally(async()=>{fs.writeFileSync(path.join(data,'stop-clients'),'stop');for(const c of clients)if(c.exitCode===null)c.kill();// The worker observes our stop file; never kill a stale numeric PID after it exits.
+fs.mkdirSync(r.ROOT,{recursive:true});fs.writeFileSync(path.join(r.ROOT,'stop'),'stop');for(const s of sockets)s.destroy();for(const x of servers)if(x.server.listening)x.server.close();await pause(3000);});

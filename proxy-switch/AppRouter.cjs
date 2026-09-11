@@ -80,7 +80,8 @@ function normalizeSavedEntry(entry,options){
 function readState(options=readOptions()){
   const raw=read(STATE);if(!raw)return {version:2,entries:[],defaultRoute:null,installed:false};
   const state=JSON.parse(raw);
-  if(![1,2].includes(state.version)||!Array.isArray(state.entries))throw new Error('程序规则文件格式错误。');
+  if((state.programIngresses?.length||state.siteRules?.length)&&options.Routing.Adapter!=='standalone')throw new Error('独立程序入口和网站规则仍存在，不能使用外部分流适配器覆盖它们。请恢复独立入口配置。');
+  if(![1,2,3].includes(state.version)||!Array.isArray(state.entries))throw new Error('程序规则文件格式错误。');
   const entries=state.entries.map(e=>normalizeSavedEntry(e,options));
   for(const e of entries)if(e.route==='Follow')throw new Error('程序规则文件含无效默认项。');
   if(state.defaultRoute&&!validRoute(state.defaultRoute,options))throw new Error('统一线路已不在代理列表中。');
@@ -201,14 +202,15 @@ async function status(){
     const gateway=options.Profiles.find(p=>p.Id===options.Routing.ProfileId);
     if(!config||(Number(config['mixed-port'])!==gateway.Port&&Number(config.port)!==gateway.Port))throw new Error('所选引擎端口与控制接口不一致，未接管该入口。');
     const [connectionRead,ruleRead]=await Promise.allSettled([api('GET','/connections'),api('GET','/rules')]);
-    const connectionsAvailable=connectionRead.status==='fulfilled'&&Array.isArray(connectionRead.value?.connections);
+    const observedConnections=connectionRead.status==='fulfilled'?require('./RoutePolicy.cjs').connectionRows(connectionRead.value):null;
+    const connectionsAvailable=observedConnections!==null;
     const rulesAvailable=ruleRead.status==='fulfilled'&&Array.isArray(ruleRead.value?.rules);
     const guards=state.entries.length||state.defaultRoute?makeSpec(state.entries,state.defaultRoute,options,'',null).guardPaths:[];
     const loaded=rulesAvailable?current&&config.mode==='rule'&&verifyRoutingRules(ruleRead.value.rules,state.entries,state.defaultRoute,guards):null;
     return {available:true,rulesAvailable,connectionsAvailable,ruleError:rulesAvailable?null:'无法核对内核规则，当前载入状态未知。',connectionError:connectionsAvailable?null:'无法读取内核连接，当前连接状态未知。',
       mode:config.mode,tunEnabled:!!config.tun?.enable,defaultRoute:state.defaultRoute,defaultLoaded:rulesAvailable?(!state.defaultRoute||loaded):null,
       entries:state.entries.map(e=>({...e,loaded,loadState:loaded===null?'unknown':loaded?'loaded':'not-loaded'})),
-      connections:(connectionsAvailable?connectionRead.value.connections:[]).map(c=>({id:c.id,start:c.start,path:c.metadata?.processPath||'',sourcePort:Number(c.metadata?.sourcePort),sourceAddress:c.metadata?.sourceIP||'',destinationAddress:c.metadata?.destinationIP||'',destinationPort:Number(c.metadata?.destinationPort),network:c.metadata?.network||'',inbound:c.metadata?.type||'',route:routeOfChains(c.chains||[],options),managed:ownedName(c.chains?.at(-1)),rule:c.rule||''}))};
+      connections:(observedConnections||[]).map(c=>({id:c.id,start:c.start,path:c.metadata?.processPath||'',sourcePort:Number(c.metadata?.sourcePort),sourceAddress:c.metadata?.sourceIP||'',destinationAddress:c.metadata?.destinationIP||'',destinationPort:Number(c.metadata?.destinationPort),network:c.metadata?.network||'',inbound:c.metadata?.type||'',route:routeOfChains(c.chains||[],options),managed:ownedName(c.chains?.at(-1)),rule:c.rule||''}))};
   }catch(e){return {available:false,rulesAvailable:false,connectionsAvailable:false,error:e.message,defaultRoute:state.defaultRoute,defaultLoaded:null,entries:state.entries.map(e=>({...e,loaded:null,loadState:'unknown'})),connections:[]};}
 }
 async function transaction(entries,defaultRoute=null,expectedStateHash,expectedSettingsHash){
@@ -258,6 +260,130 @@ async function transaction(entries,defaultRoute=null,expectedStateHash,expectedS
     throw new Error('规则应用失败，已恢复修改前配置。');
   }
 }
+function stableJson(value){if(Array.isArray(value))return '['+value.map(stableJson).join(',')+']';if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableJson(value[k])).join(',')+'}';return JSON.stringify(value);}
+function planOfflineDetach(runtime,script,state,options){
+  if(options.Routing.Adapter!=='clash-verge'||!state.installed)throw Error('没有可核验归属的外部分流安装记录，未静态移除第三方配置。');
+  const entries=state.entries||[],defaultRoute=state.defaultRoute||null;
+  if(state.fingerprint!==fingerprint(entries,defaultRoute,options))throw Error('外部分流保存指纹与当前设置不一致，无法安全静态分离。请保留备份并核对旧引擎。');
+  const begins=script.split(BEGIN).length-1,ends=script.split(END).length-1;
+  let nextScript=script;
+  if(begins||ends){
+    if(begins!==1||ends!==1||script.indexOf(END)<script.indexOf(BEGIN))throw Error('外部分流脚本标记异常，未移除未知内容。');
+    const base=stripScript(script),expected=makeScript(base,entries,defaultRoute,options,state.primary,state.originalFind);
+    if(expected!==script)throw Error('外部分流托管脚本已改变，无法核验其归属，未覆盖外部修改。');
+    nextScript=base;new vm.Script(nextScript);
+  }else if(script.includes(PREFIX)){throw Error('外部脚本包含无法归属的分流名称，未自动移除。');}
+  const base=yaml.load(runtime);
+  if(!base||typeof base!=='object'||Array.isArray(base))throw Error('外部运行配置格式无效，未进行静态分离。');
+  for(const field of ['proxies','proxy-groups','rules'])if(base[field]!==undefined&&!Array.isArray(base[field]))throw Error('外部运行配置列表格式无效，未进行静态分离。');
+  const clean=structuredClone(base);
+  clean.proxies=(base.proxies||[]).filter(x=>!ownedName(x?.name));
+  clean['proxy-groups']=(base['proxy-groups']||[]).filter(x=>!ownedName(x?.name));
+  clean.rules=(base.rules||[]).filter(x=>!ownedRule(x));
+  if(clean['proxy-groups'].some(g=>(g.proxies||[]).some(ownedName))||clean.rules.some(rule=>typeof rule==='string'&&rule.includes(PREFIX)))throw Error('外部自定义规则仍引用本工具出口，无法安全静态分离。');
+  const actualOwned={proxies:(base.proxies||[]).filter(x=>ownedName(x?.name)),groups:(base['proxy-groups']||[]).filter(x=>ownedName(x?.name)),rules:(base.rules||[]).filter(ownedRule)};
+  const hasOwned=Object.values(actualOwned).some(x=>x.length);
+  let nextRuntime=runtime;
+  if(hasOwned){
+    const generated=makeConfig(clean,entries,defaultRoute,options,state.primary,state.originalFind);
+    const expectedOwned={proxies:generated.proxies.filter(x=>ownedName(x?.name)),groups:generated['proxy-groups'].filter(x=>ownedName(x?.name)),rules:generated.rules.filter(ownedRule)};
+    if(stableJson(actualOwned)!==stableJson(expectedOwned))throw Error('外部运行配置中的分流对象与保存记录不符，未删除未知规则或节点。');
+    const spec=makeSpec(entries,defaultRoute,options,state.primary,state.originalFind);
+    if((entries.length||spec.guardPaths.length)&&base['find-process-mode']==='always'){
+      if(state.originalFind?.present)clean['find-process-mode']=state.originalFind.value;else delete clean['find-process-mode'];
+    }
+    nextRuntime=yaml.dump(clean,{lineWidth:-1,noRefs:true});
+    if(stableJson(yaml.load(nextRuntime))!==stableJson(clean))throw Error('静态分离候选无法保持原配置语义，未写入。');
+  }
+  return {runtime:nextRuntime,script:nextScript,state:JSON.stringify({version:2,installed:false,entries:[],defaultRoute:null,offlineDetachedAt:new Date().toISOString()},null,2)};
+}
+function runPrivatePowerShell(command){
+  const binary=path.join(process.env.SystemRoot||process.env.WINDIR||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
+  const env={...process.env};for(const key of Object.keys(env))if(key.toLowerCase()==='psmodulepath')delete env[key];
+  const result=spawnSync(binary,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-EncodedCommand',Buffer.from(command,'utf16le').toString('base64')],{windowsHide:true,timeout:45000,encoding:'utf8',maxBuffer:16384,env});
+  try{const parsed=JSON.parse(result.stdout.trim());if(result.status===0&&parsed?.ok)return parsed;}catch{}
+  throw Error('本机文件或离线状态核验未完成，未确认静态分离；请保留本机备份并重试。');
+}
+async function assertExternalOffline(options){
+  let reachable=false;try{await api('GET','/configs');reachable=true;}catch{}
+  if(reachable)throw Error('外部分流控制接口仍在线，请使用正常撤回；未静态改写运行中的引擎。');
+  const gateway=options.Profiles.find(p=>p.Id===options.Routing.ProfileId);
+  const payload=Buffer.from(JSON.stringify({inventory:path.join(ROOT,'ProcessInventory.ps1'),core:gateway.CorePath,port:gateway.Port})).toString('base64');
+  const result=runPrivatePowerShell(`$ErrorActionPreference='Stop';try{$q=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}'))|ConvertFrom-Json;. $q.inventory;$ps=@(Get-ProcessInventory);$name=[IO.Path]::GetFileNameWithoutExtension($q.core);$suspect=@($ps|Where-Object {$_.Path -ieq $q.core -or (-not $_.Path -and $_.ProcessName -ieq $name)});$tcp=@();try{$tcp=@(Get-NetTCPConnection -ErrorAction Stop)}catch{if($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound*'){throw}};@{ok=$true;offline=($suspect.Count -eq 0 -and @($tcp|Where-Object {[string]$_.State -eq 'Listen' -and [int]$_.LocalPort -eq [int]$q.port}).Count -eq 0)}|ConvertTo-Json -Compress}catch{@{ok=$false}|ConvertTo-Json -Compress;exit 1}`);
+  if(!result.offline)throw Error('旧代理内核仍运行、身份未知或入口仍监听，未静态分离。请先正常退出旧代理客户端。');
+}
+function captureDetachFiles(){
+  const files={runtime:RUNTIME,script:SCRIPT,state:STATE,settings:path.join(DATA,'config.json')},values={};
+  for(const [key,file] of Object.entries(files)){
+    const stat=fs.lstatSync(file);if(!stat.isFile()||stat.isSymbolicLink()||stat.size>16*1024*1024)throw Error('静态分离所需文件缺失、为链接或过大，未改写外部配置。');
+    const root=fs.realpathSync(key==='runtime'||key==='script'?CLASH:DATA),actual=fs.realpathSync(file);
+    if(!actual.toLowerCase().startsWith((root+path.sep).toLowerCase()))throw Error('静态分离文件不在已配置目录内，未跟随外部链接。');
+    values[key]=fs.readFileSync(file);
+  }
+  return {files,values};
+}
+function exclusiveDetachExchange(requestFile){
+  const encoded=Buffer.from(requestFile).toString('base64');
+  return runPrivatePowerShell(`$ErrorActionPreference='Stop';$handles=@();$written=@();try{
+$request=Get-Content -LiteralPath ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))) -Raw -Encoding UTF8|ConvertFrom-Json
+foreach($item in @($request.guard)+@($request.changes)){
+ $access=[IO.FileAccess]::Read;if($item.PSObject.Properties['content']){$access=[IO.FileAccess]::ReadWrite}
+ $file=[IO.File]::Open($item.path,[IO.FileMode]::Open,$access,[IO.FileShare]::None);$record=[pscustomobject]@{file=$file;before=$null;after=$null};$handles+=@($record)
+ if($file.Length -gt 16777216){throw 'size'};$bytes=New-Object byte[] ([int]$file.Length);$offset=0;while($offset -lt $bytes.Length){$count=$file.Read($bytes,$offset,$bytes.Length-$offset);if($count -eq 0){throw 'read'};$offset+=$count};$record.before=$bytes
+ $sha=[Security.Cryptography.SHA256]::Create();try{$hash=[BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()};if($hash -cne $item.expected){throw 'changed'}
+ if($item.PSObject.Properties['content']){$record.after=[Convert]::FromBase64String($item.content)}
+}
+foreach($record in $handles){if($null -ne $record.after){$written+=@($record);$record.file.Position=0;$record.file.Write($record.after,0,$record.after.Length);$record.file.SetLength($record.after.Length);$record.file.Flush($true)}}
+@{ok=$true}|ConvertTo-Json -Compress
+}catch{$restored=$true;for($i=$written.Count-1;$i -ge 0;$i--){try{$r=$written[$i];$r.file.Position=0;$r.file.Write($r.before,0,$r.before.Length);$r.file.SetLength($r.before.Length);$r.file.Flush($true)}catch{$restored=$false}};@{ok=$false;restored=$restored}|ConvertTo-Json -Compress;exit 1}finally{foreach($r in $handles){$r.file.Dispose()}}`);
+}
+function detachPaths(id){
+  if(!/^[a-f0-9]{32}$/.test(id))throw Error('离线分离备份标识无效。');
+  return {manifest:path.join(DATA,'offline-detach-backups',id+'.json'),store:path.join(CLASH,'proxy-switch-backups','offline-detach-'+id)};
+}
+async function detachOffline(input,deps={}){
+  if(Object.keys(deps).length&&!TEST_ENGINE)throw Error('测试替身只能用于隔离引擎目录。');
+  if(!input.expectedStateHash||!input.expectedSettingsHash)throw Error('离线分离需要当前规则与设置的精确校验。');
+  const options=readOptions();if(options.Routing.Adapter!=='clash-verge')throw Error('离线分离只适用于外部 Clash 分流。');
+  const before=captureDetachFiles();assertExpectedStateHash(input.expectedStateHash,before.values.state.toString('utf8'));assertExpectedSettingsHash(input.expectedSettingsHash,before.values.settings.toString('utf8'));
+  const state=readState(options);
+  const planned=planOfflineDetach(before.values.runtime.toString('utf8').replace(/^\uFEFF/,''),before.values.script.toString('utf8').replace(/^\uFEFF/,''),state,options);
+  await (deps.offline||assertExternalOffline)(options);
+  const id=crypto.randomUUID().replace(/-/g,''),locations=detachPaths(id),manifest={version:1,id,phase:'prepared',createdAt:new Date().toISOString(),before:{},after:{},settingsHash:hash(before.values.settings)};
+  fs.mkdirSync(locations.store,{recursive:true});fs.mkdirSync(path.dirname(locations.manifest),{recursive:true});
+  const next={};for(const key of ['runtime','script','state']){
+    const beforeText=before.values[key].toString('utf8'),preservedBom=key!=='state'&&beforeText.startsWith('\uFEFF')?'\uFEFF':'';
+    next[key]=planned[key]===beforeText.replace(/^\uFEFF/,'')?before.values[key]:Buffer.from(preservedBom+planned[key]);
+    manifest.before[key]=hash(before.values[key]);manifest.after[key]=hash(next[key]);fs.writeFileSync(path.join(locations.store,key+'.before'),before.values[key],{mode:0o600,flag:'wx'});
+  }
+  fs.writeFileSync(locations.manifest,JSON.stringify(manifest,null,2),{mode:0o600,flag:'wx'});
+  const request={guard:[{path:before.files.settings,expected:hash(before.values.settings)}],changes:['runtime','script','state'].map(key=>({path:before.files[key],expected:manifest.before[key],content:next[key].toString('base64')}))};
+  const requestFile=path.join(locations.store,'detach-request.json');fs.writeFileSync(requestFile,JSON.stringify(request),{mode:0o600,flag:'wx'});
+  try{await (deps.offline||assertExternalOffline)(options);(deps.exchange||exclusiveDetachExchange)(requestFile);manifest.phase='detached';atomicWrite(locations.manifest,JSON.stringify(manifest,null,2));}
+  catch{throw Error('外部分流静态分离未完成；原文件若被其他程序修改将予以保留。请核对本机备份：'+locations.manifest);}
+  return {ok:true,detached:true,backup:locations.manifest,stateHash:stateHash(next.state.toString('utf8')),stateText:next.state.toString('utf8'),afterFileHashes:manifest.after,pendingExternalCleanup:false,Message:'已离线撤下可核验的外部分流托管段与规则；未启动、重载或结束第三方程序。'};
+}
+async function restoreOfflineDetach(input,deps={}){
+  if(Object.keys(deps).length&&!TEST_ENGINE)throw Error('测试替身只能用于隔离引擎目录。');
+  const id=typeof input.backup==='string'?path.basename(input.backup,'.json'):'';const locations=detachPaths(id);
+  if(path.resolve(input.backup)!==path.resolve(locations.manifest))throw Error('只接受当前数据目录中的离线分离备份。');
+  for(const file of [path.dirname(locations.manifest),locations.manifest,path.dirname(locations.store),locations.store]){const stat=fs.lstatSync(file);if(stat.isSymbolicLink())throw Error('离线分离备份路径为链接，未恢复。');}
+  const manifest=JSON.parse(fs.readFileSync(locations.manifest,'utf8'));
+  if(manifest.version!==1||manifest.id!==id||!['detached','prepared','restored'].includes(manifest.phase))throw Error('离线分离备份格式无效。');
+  const current=captureDetachFiles();assertExpectedSettingsHash(input.expectedSettingsHash,current.values.settings.toString('utf8'));
+  if(!input.expectedSettingsHash||hash(current.values.settings)!==manifest.settingsHash)throw Error('设置已改变，不能按旧离线备份恢复外部分流。');
+  const options=readOptions();if(options.Routing.Adapter!=='clash-verge')throw Error('请先恢复原外部适配器设置，再恢复离线分离备份。');
+  const originals={};for(const key of ['runtime','script','state']){
+    const file=path.join(locations.store,key+'.before');if(fs.lstatSync(file).isSymbolicLink())throw Error('备份内容为链接，未恢复。');originals[key]=fs.readFileSync(file);
+    if(hash(originals[key])!==manifest.before[key]||hash(current.values[key])!==(manifest.phase==='restored'?manifest.before[key]:manifest.after[key]))throw Error('外部文件已改变或备份不完整，保留最新内容；离线分离回滚未完成。');
+  }
+  if(manifest.phase==='restored')return {ok:true,restored:true,stateHash:stateHash(originals.state.toString('utf8')),backup:locations.manifest};
+  await (deps.offline||assertExternalOffline)(options);
+  const request={guard:[{path:current.files.settings,expected:manifest.settingsHash}],changes:['runtime','script','state'].map(key=>({path:current.files[key],expected:manifest.after[key],content:originals[key].toString('base64')}))};
+  const requestFile=path.join(locations.store,'restore-'+crypto.randomUUID()+'.json');fs.writeFileSync(requestFile,JSON.stringify(request),{mode:0o600,flag:'wx'});
+  (deps.exchange||exclusiveDetachExchange)(requestFile);manifest.phase='restored';atomicWrite(locations.manifest,JSON.stringify(manifest,null,2));
+  return {ok:true,restored:true,stateHash:stateHash(originals.state.toString('utf8')),backup:locations.manifest,Message:'已恢复仍归本次离线分离的原文件字节，未启动或重载第三方引擎。'};
+}
 function selectReconnectConnections(connections, executable, wanted, options){
   return connections.filter(c=>samePath(c.metadata?.processPath,executable)&&typeof c.id==='string'&&/^[a-zA-Z0-9-]{1,100}$/.test(c.id)&&c.start&&routeOfChains(c.chains||[],options)!==wanted)
     .map(c=>({id:c.id,start:c.start,route:routeOfChains(c.chains||[],options)}));
@@ -283,7 +409,10 @@ async function reconnect(plan){
 async function main(){
   let raw='';for await(const chunk of process.stdin)raw+=chunk;const input=JSON.parse(raw.replace(/^\uFEFF/,''));
   if(readOptions().Routing.Adapter==='standalone')return require('./IndependentRouter.cjs').main(input);
+  if(input.programIngresses?.length||input.siteRules?.length)throw new Error('程序固定入口和网站规则需要流向独立入口，外部分流适配器不支持。');
   if(input.action==='status')return status();
+  if(input.action==='detach-offline')return withMutationLock(()=>detachOffline(input));
+  if(input.action==='restore-offline-detach')return withMutationLock(()=>restoreOfflineDetach(input));
   if(input.action==='reconnect-plan')return reconnectPlan(input.path);
   if(input.action==='reconnect')return withMutationLock(()=>reconnect(input.plan));
   if(input.action==='replace')return withMutationLock(()=>transaction(input.entries,input.defaultRoute||null,input.expectedStateHash,input.expectedSettingsHash));
@@ -310,4 +439,4 @@ if(require.main===module)main().then(value=>process.stdout.write(JSON.stringify(
   const message=['YAMLException','SyntaxError'].includes(error.name)?'配置格式校验失败，未应用更改。':error.message;
   process.stdout.write(JSON.stringify({ok:false,error:message}));process.exitCode=1;
 });
-module.exports={api,normalizeOptions,normalizeEntry,normalizeIdentity,assertExpectedStateHash,assertExpectedSettingsHash,stateHash,routeName,makeConfig,makeScript,stripScript,ownedRule,routeOfChains,ruleMatches,verifyRoutingRules,status,fingerprint,makeSpec,selectReconnectConnections,reconnectPlan,reconnect,transaction,withMutationLock};
+module.exports={api,normalizeOptions,normalizeEntry,normalizeIdentity,assertExpectedStateHash,assertExpectedSettingsHash,stateHash,routeName,makeConfig,makeScript,stripScript,ownedRule,routeOfChains,ruleMatches,verifyRoutingRules,status,fingerprint,makeSpec,selectReconnectConnections,reconnectPlan,reconnect,transaction,withMutationLock,planOfflineDetach,detachOffline,restoreOfflineDetach,assertExternalOffline,exclusiveDetachExchange};

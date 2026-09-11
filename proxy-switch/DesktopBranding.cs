@@ -99,6 +99,14 @@ public static class FlowSwitchDesktop
 public sealed class FlowSwitchWindowLease : System.IDisposable {
     private System.Threading.Mutex mutex;
     private System.Threading.EventWaitHandle wake;
+    private readonly string launchPipeName;
+    private readonly System.Collections.Generic.Queue<LaunchRequest> launches=new System.Collections.Generic.Queue<LaunchRequest>();
+    private readonly object pipeLock=new object();
+    private System.IO.Pipes.NamedPipeServerStream activePipe;
+    private System.Threading.Thread launchThread;
+    private volatile bool disposed;
+    private int expiredLaunches;
+    private sealed class LaunchRequest { public string Path; public long Expires; }
     public bool IsPrimary { get; private set; }
     public FlowSwitchWindowLease(string directory) {
         string id;
@@ -107,8 +115,81 @@ public sealed class FlowSwitchWindowLease : System.IDisposable {
         mutex=new System.Threading.Mutex(false,@"Local\FlowSwitch.UI."+id);
         try { IsPrimary=mutex.WaitOne(0); } catch(System.Threading.AbandonedMutexException) { IsPrimary=true; }
         wake=new System.Threading.EventWaitHandle(false,System.Threading.EventResetMode.AutoReset,@"Local\FlowSwitch.Wake."+id);
+        launchPipeName="FlowSwitch.Launch."+id;
+        if(IsPrimary){launchThread=new System.Threading.Thread(ServeLaunches);launchThread.IsBackground=true;launchThread.Start();}
         if(!IsPrimary)wake.Set();
     }
     public bool ConsumeWake() { return wake.WaitOne(0); }
-    public void Dispose() { if(IsPrimary){mutex.ReleaseMutex();IsPrimary=false;}wake.Dispose();mutex.Dispose(); }
+    private static bool ValidPath(string value) {
+        return !System.String.IsNullOrWhiteSpace(value) && value.Length<=2048 && value.IndexOfAny(new char[]{'\r','\n','\0'})<0 && System.IO.Path.IsPathRooted(value) && System.String.Equals(System.IO.Path.GetExtension(value),".exe",System.StringComparison.OrdinalIgnoreCase);
+    }
+    private bool EnqueueLaunch(string value,long created) {
+        long now=System.DateTime.UtcNow.Ticks;
+        if(!ValidPath(value) || created>now+System.TimeSpan.FromSeconds(5).Ticks || created<now-System.TimeSpan.FromSeconds(30).Ticks)return false;
+        lock(launches){
+            while(launches.Count>0 && launches.Peek().Expires<now){launches.Dequeue();expiredLaunches++;}
+            foreach(var item in launches)if(System.String.Equals(item.Path,value,System.StringComparison.OrdinalIgnoreCase))return true;
+            if(launches.Count>=4)return false;
+            launches.Enqueue(new LaunchRequest{Path=value,Expires=created+System.TimeSpan.FromSeconds(30).Ticks});return true;
+        }
+    }
+    private static byte[] ReadBounded(System.IO.Stream stream,int count) {
+        byte[] data=new byte[count];int offset=0;long deadline=System.DateTime.UtcNow.AddMilliseconds(1500).Ticks;
+        while(offset<count){
+            int remaining=(int)System.Math.Ceiling(System.TimeSpan.FromTicks(deadline-System.DateTime.UtcNow.Ticks).TotalMilliseconds);
+            if(remaining<=0)throw new System.IO.IOException("Launch request timed out.");
+            var read=stream.BeginRead(data,offset,count-offset,null,null);
+            try{if(!read.AsyncWaitHandle.WaitOne(remaining))throw new System.IO.IOException("Launch request timed out.");int received=stream.EndRead(read);if(received<=0)throw new System.IO.EndOfStreamException();offset+=received;}
+            finally{read.AsyncWaitHandle.Close();}
+        }
+        return data;
+    }
+    private void ServeLaunches() {
+        while(!disposed){
+            System.IO.Pipes.NamedPipeServerStream pipe=null;
+            try{
+                var security=new System.IO.Pipes.PipeSecurity();security.SetAccessRuleProtection(true,false);
+                security.AddAccessRule(new System.IO.Pipes.PipeAccessRule(System.Security.Principal.WindowsIdentity.GetCurrent().User,System.IO.Pipes.PipeAccessRights.FullControl,System.Security.AccessControl.AccessControlType.Allow));
+                pipe=new System.IO.Pipes.NamedPipeServerStream(launchPipeName,System.IO.Pipes.PipeDirection.InOut,1,System.IO.Pipes.PipeTransmissionMode.Byte,System.IO.Pipes.PipeOptions.Asynchronous,4096,4096,security);
+                lock(pipeLock){if(disposed){pipe.Dispose();return;}activePipe=pipe;}
+                var connection=pipe.BeginWaitForConnection(null,null);
+                try{while(!disposed && !connection.AsyncWaitHandle.WaitOne(200)){}if(disposed)return;pipe.EndWaitForConnection(connection);}finally{connection.AsyncWaitHandle.Close();}
+                byte[] header=ReadBounded(pipe,16);
+                int version=System.BitConverter.ToInt32(header,0),size=System.BitConverter.ToInt32(header,12);
+                if(version!=1 || size<1 || size>8192)throw new System.IO.IOException("Invalid launch request.");
+                string path=new System.Text.UTF8Encoding(false,true).GetString(ReadBounded(pipe,size));
+                bool accepted=EnqueueLaunch(path,System.BitConverter.ToInt64(header,4));
+                pipe.WriteByte(accepted?(byte)1:(byte)0);pipe.Flush();if(accepted)wake.Set();
+            }catch(System.Exception){if(!disposed)System.Threading.Thread.Sleep(50);}
+            finally{lock(pipeLock){if(activePipe==pipe)activePipe=null;}if(pipe!=null)pipe.Dispose();}
+        }
+    }
+    public bool RequestLaunch(string executable) {
+        if(disposed || !ValidPath(executable))return false;
+        long created=System.DateTime.UtcNow.Ticks;
+        if(IsPrimary)return EnqueueLaunch(executable,created);
+        using(var client=new System.IO.Pipes.NamedPipeClientStream(".",launchPipeName,System.IO.Pipes.PipeDirection.InOut,System.IO.Pipes.PipeOptions.Asynchronous)){
+            client.Connect(3000);byte[] path=System.Text.Encoding.UTF8.GetBytes(executable);
+            using(var data=new System.IO.MemoryStream()){
+                byte[] version=System.BitConverter.GetBytes(1),time=System.BitConverter.GetBytes(created),size=System.BitConverter.GetBytes(path.Length);
+                data.Write(version,0,version.Length);data.Write(time,0,time.Length);data.Write(size,0,size.Length);data.Write(path,0,path.Length);
+                byte[] message=data.ToArray();client.Write(message,0,message.Length);client.Flush();
+            }
+            return ReadBounded(client,1)[0]==1;
+        }
+    }
+    public string ConsumeLaunch() {
+        if(!IsPrimary)return null;long now=System.DateTime.UtcNow.Ticks;
+        lock(launches){while(launches.Count>0){var next=launches.Dequeue();if(next.Expires>=now)return next.Path;expiredLaunches++;}}return null;
+    }
+    public int ConsumeExpiredLaunchCount() {
+        long now=System.DateTime.UtcNow.Ticks;
+        lock(launches){while(launches.Count>0 && launches.Peek().Expires<now){launches.Dequeue();expiredLaunches++;}int count=expiredLaunches;expiredLaunches=0;return count;}
+    }
+    public void Dispose() {
+        if(disposed)return;disposed=true;
+        lock(pipeLock){if(activePipe!=null)activePipe.Dispose();}
+        if(launchThread!=null)launchThread.Join(500);
+        if(IsPrimary){mutex.ReleaseMutex();IsPrimary=false;}wake.Dispose();mutex.Dispose();
+    }
 }

@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const {spawn,spawnSync,execFile}=require('node:child_process');
 const systemCurl=path.join(process.env.SystemRoot||'C:\\Windows','System32','curl.exe');
 const systemPowerShell=path.join(process.env.SystemRoot||'C:\\Windows','System32','WindowsPowerShell','v1.0','powershell.exe');
-const yaml=require('./vendor/js-yaml');
+const yaml=require('./vendor/js-yaml'),routes=require('./RoutePolicy.cjs');
 const DATA=process.env.PROXY_SWITCH_DATA_DIR||path.join(process.env.USERPROFILE,'.proxyswitch');
 const ROOT=path.join(DATA,'gateway'),STATE=path.join(DATA,'app-rules.json'),CONFIG=path.join(ROOT,'runtime.yaml');
 const PIPE='\\\\.\\pipe\\FlowSwitch-'+crypto.createHash('sha256').update(path.resolve(DATA).toLowerCase()).digest('hex').slice(0,20);
@@ -32,12 +32,12 @@ function validate(entries,defaultRoute,o){
  for(const raw of entries){const e=require('./AppRouter.cjs').normalizeEntry(raw.path,raw.route,o);if(e.route==='Follow'||seen.has(e.path.toLowerCase())||guard.includes(e.path.toLowerCase()))throw Error('无效或重复的程序规则');seen.add(e.path.toLowerCase());candidates(e.route,o);}
  if(defaultRoute)candidates(defaultRoute,o);
 }
-function makeConfig(o,s,selections={}){validate(s.entries,s.defaultRoute,o);const entrance=o.Profiles.find(p=>p.Id===o.Routing.ProfileId);if(!entrance)throw Error('缺少独立入口');
- const used=[...new Set([...s.entries.map(e=>e.route),s.defaultRoute].filter(Boolean))];
+function makeConfig(o,s,selections={}){validate(s.entries,s.defaultRoute,o);s={...s,...routes.normalize(s,o)};const entrance=o.Profiles.find(p=>p.Id===o.Routing.ProfileId);if(!entrance)throw Error('缺少独立入口');
+ for(const id of routes.routeIds(s))candidates(id,o);
  const proxies=o.Profiles.filter(p=>p.Id!==entrance.Id).map(p=>({name:upstream(p.Id),type:p.Protocol,server:p.Host,port:p.Port}));
  proxies.push({name:group('Direct'),type:'direct'});
- const groups=used.filter(id=>id!=='Direct').map(id=>{const list=[...candidates(id,o).map(x=>x==='Direct'?group(x):upstream(x)),'REJECT'];const selected=selections[group(id)];return {name:group(id),type:'select',proxies:list.includes(selected)?[selected,...list.filter(x=>x!==selected)]:list};});
- return {'mixed-port':entrance.Port,'bind-address':'127.0.0.1','allow-lan':false,'external-controller-pipe':PIPE,mode:'rule',ipv6:false,'log-level':'warning','find-process-mode':'always',profile:{'store-selected':false},dns:{enable:false},tun:{enable:false},proxies,'proxy-groups':groups,rules:[...s.entries.map(e=>'PROCESS-PATH,'+path.win32.normalize(e.path)+','+group(e.route)),'MATCH,'+(s.defaultRoute?group(s.defaultRoute):'REJECT')]};
+ const groups=routes.selectors(s,group).map(selector=>{const list=[...candidates(selector.preferred,o).map(x=>x==='Direct'?group(x):upstream(x)),'REJECT'];const selected=selections[selector.name];return {name:selector.name,type:'select',proxies:list.includes(selected)?[selected,...list.filter(x=>x!==selected)]:list};});
+ return {'mixed-port':entrance.Port,'bind-address':'127.0.0.1','allow-lan':false,'external-controller-pipe':PIPE,mode:'rule',ipv6:false,'log-level':'warning','find-process-mode':'always',profile:{'store-selected':false},dns:{enable:false},tun:{enable:false},proxies,'proxy-groups':groups,listeners:routes.listeners(s),rules:routes.rules(s,group).map(r=>r.line)};
 }
 function actualRoute(chains,o){for(const c of chains){const p=o.Profiles.find(p=>c===upstream(p.Id));if(p)return p.Id;if(c===group('Direct')||c==='DIRECT')return 'Direct';if(c==='REJECT'||c==='REJECT-DROP')return 'Blocked';}return 'Unknown';}
 function decide(previous,list,health,now,settings,details={}){
@@ -70,23 +70,34 @@ async function healthCheck(id,o){const p=o.Profiles.find(p=>p.Id===id);if(!p)ret
  if(r.some(x=>x.unavailable))return {healthy:null,reason:'probe-unavailable'};
  return {healthy:false,reason:r.every(x=>x.timeout)?'probe-timeout':'probe-failed'};
 }
-function retainedSelections(o,old,next,proxies){
+function retainedSelections(o,old,next,proxies,resetDefaultSelection=false,resetIngressSelections=[]){
  // A group is shared by every program choosing the same policy. Adding a
  // program or repairing its EXE path must not reset everybody's active backup.
  const reset=new Set();
- if(next.defaultRoute!==old.defaultRoute)reset.add(next.defaultRoute);
- return Object.fromEntries([...new Set([...next.entries.map(e=>e.route),next.defaultRoute])].filter(id=>id&&id!=='Direct'&&!reset.has(id)).map(id=>[group(id),proxies[group(id)]?.now]));
+ if(resetDefaultSelection||next.defaultRoute!==old.defaultRoute)reset.add(next.defaultRoute);
+ const retained=Object.fromEntries(routes.sharedRouteIds(next).filter(id=>id&&id!=='Direct'&&!reset.has(id)).map(id=>[group(id),proxies[group(id)]?.now]));
+ for(const e of next.programIngresses||[]){if(['Direct','Follow'].includes(e.route)||resetIngressSelections.includes(e.id))continue;const previous=(old.programIngresses||[]).find(x=>x.id===e.id);if(previous?.route===e.route)retained[routes.ingressGroup(e.id)]=proxies[routes.ingressGroup(e.id)]?.now;}return retained;
 }
 function resumeSelections(o,s,health,now=Date.now()){
  const updated=Date.parse(health.updated);const changed=Date.parse(s.changedAt||0);
  if(!Number.isFinite(updated)||now-updated>120000||updated>now||!Number.isFinite(changed)||changed>updated)return {};
- const result={};for(const id of [...new Set([...s.entries.map(e=>e.route),s.defaultRoute])].filter(id=>id&&id!=='Direct')){
-  const current=health.policies?.[id]?.current;
-  if(candidates(id,o).includes(current)&&(current==='Direct'||health.health?.[current]===true))result[group(id)]=current==='Direct'?group(current):upstream(current);
+ const result={};for(const selector of routes.selectors(s,group)){
+  const current=health.policies?.[selector.key]?.current;
+  if(candidates(selector.preferred,o).includes(current)&&(current==='Direct'||health.health?.[current]===true))result[selector.name]=current==='Direct'?group(current):upstream(current);
  }return result;
 }
 function recordEvent(event){const file=path.join(ROOT,'failover-events.json');const events=json(file,[]);events.push({id:crypto.randomUUID(),at:new Date().toISOString(),...event});write(file,events.slice(-100));}
 function listening(host,port){return new Promise(resolve=>{const s=net.connect({host,port});let done=false;const end=b=>{if(!done){done=true;s.destroy();resolve(b);}};s.setTimeout(400,()=>end(false));s.on('connect',()=>end(true));s.on('error',()=>end(false));});}
+async function ingressReadiness(s){
+ const entries=s.programIngresses||[];if(!entries.length)return {};
+ const unknown=Object.fromEntries(entries.map(e=>[e.id,null])),owner=json(path.join(ROOT,'process.json'),{});
+ if(!Number.isSafeInteger(owner.core)||!owner.coreStartTicks)return unknown;
+ const env={...process.env};for(const key of Object.keys(env))if(key.toLowerCase()==='psmodulepath')delete env[key];
+ const snapshot=await new Promise(resolve=>execFile(systemPowerShell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'GatewayPortOwnership.ps1'),'-CorePID',String(owner.core)],{windowsHide:true,timeout:5000,maxBuffer:16384,env},(error,out)=>{try{resolve(error?null:JSON.parse(out.trim()));}catch{resolve(null);}}));
+ if(!snapshot||snapshot.ticks!==owner.coreStartTicks)return unknown;
+ return Object.fromEntries(entries.map(e=>[e.id,Array.isArray(snapshot.ports)&&snapshot.ports.includes(e.port)]));
+}
+async function ingressesReady(s){const ready=await ingressReadiness(s);return (s.programIngresses||[]).every(e=>ready[e.id]===true);}
 function processStartTicks(pid){return new Promise(resolve=>{
  if(!Number.isSafeInteger(pid)||pid<=0)return resolve(null);
  execFile(systemPowerShell,['-NoProfile','-NonInteractive','-Command',"$ErrorActionPreference='Stop';$p=[Diagnostics.Process]::GetProcessById("+pid+");try{$p.StartTime.ToUniversalTime().Ticks.ToString()}finally{$p.Dispose()}"],{windowsHide:true,timeout:3000,maxBuffer:1024},(error,out)=>resolve(!error&&/^\d+$/.test(out.trim())?out.trim():null));
@@ -129,15 +140,22 @@ async function releaseLock(file,owner){
   catch(e){if(e.code==='ENOENT')return;if(!['EACCES','EPERM','EBUSY'].includes(e.code)||Date.now()>=deadline)throw e;await new Promise(r=>setTimeout(r,50));}}
 }
 async function lock(action,name='mutation.lock'){fs.mkdirSync(ROOT,{recursive:true});const file=path.join(ROOT,name),owner=await claimLock(file);try{return await action();}finally{await releaseLock(file,owner);}}
-async function replace(entries,defaultRoute,expectedStateHash,expectedSettingsHash){return lock(async()=>{
+async function replace(entries,defaultRoute,expectedStateHash,expectedSettingsHash,resetDefaultSelection=false,policyChanges={}){return lock(async()=>{
  const o=options(),old=state(),before=read(CONFIG),beforeState=read(STATE),settingsPath=path.join(DATA,'config.json'),beforeSettings=read(settingsPath),router=require('./AppRouter.cjs');
  router.assertExpectedStateHash(expectedStateHash,beforeState);
  router.assertExpectedSettingsHash(expectedSettingsHash,beforeSettings);
  entries=entries.map(e=>{const normalized=router.normalizeEntry(e.path,e.route,o),identity=router.normalizeIdentity(e.identity);if(identity)normalized.identity=identity;return normalized;});
- const next={version:2,installed:!!defaultRoute||entries.length>0,entries,defaultRoute:defaultRoute||null,changedAt:new Date().toISOString()};
+ const extra=routes.normalize({entries,programIngresses:policyChanges.programIngresses===undefined?old.programIngresses:policyChanges.programIngresses,siteRules:policyChanges.siteRules===undefined?old.siteRules:policyChanges.siteRules},o);
+ const next={version:3,installed:!!defaultRoute||entries.length>0||extra.programIngresses.length>0||extra.siteRules.length>0,entries,defaultRoute:defaultRoute||null,...extra,changedAt:new Date().toISOString()};
+ for(const e of old.programIngresses||[]){const retained=next.programIngresses.find(x=>x.id===e.id);if(retained&&retained.port!==e.port)throw Error('程序固定入口端口不能在保留记录时更改；请先确认相关进程已退出后移除旧入口');}
+ const priorReadiness=await ingressReadiness(old);
+ const removed=(old.programIngresses||[]).filter(e=>!next.programIngresses.some(x=>x.id===e.id));
+ const assertRemovedIdle=async()=>{if(!removed.length)return;const connections=routes.connectionRows(await api('GET','/connections'));if(connections===null)throw Error('程序入口连接状态不可读，未移除入口');if(connections.some(c=>removed.some(e=>c.metadata?.inboundName===routes.ingressName(e.id)||(Number(c.metadata?.inboundPort)===e.port&&c.metadata?.inboundIP==='127.0.0.1'))))throw Error('程序固定入口仍有活动连接；请保存任务并完整退出相关程序后再移除，未停止入口');};
+ await assertRemovedIdle();
  const liveProxies=(await api('GET','/proxies')).proxies;
  const previousRules=ruleSnapshot((await api('GET','/rules')).rules);
- const selections=retainedSelections(o,old,next,liveProxies);
+ if(policyChanges.resetIngressSelections!==undefined&&(!Array.isArray(policyChanges.resetIngressSelections)||policyChanges.resetIngressSelections.some(id=>!next.programIngresses.some(e=>e.id===id))))throw Error('程序入口重选标识无效');
+ const selections=retainedSelections(o,old,next,liveProxies,resetDefaultSelection,policyChanges.resetIngressSelections||[]);
  const rollbackConfig=before===null?null:yaml.load(before);
  for(const g of rollbackConfig?.['proxy-groups']||[]){const selected=liveProxies[g.name]?.now;if(g.proxies.includes(selected))g.proxies=[selected,...g.proxies.filter(x=>x!==selected)];}
  const rollback=rollbackConfig===null?null:yaml.dump(rollbackConfig,{lineWidth:-1,noRefs:true});
@@ -146,36 +164,45 @@ async function replace(entries,defaultRoute,expectedStateHash,expectedSettingsHa
  if(check.status!==0){fs.unlinkSync(candidate);throw Error('独立内核配置验证失败');}
  let wroteConfig=false,wroteState=false;const nextState=JSON.stringify(next,null,2);
  try{
+  await assertRemovedIdle();
   if(read(CONFIG)!==before||read(STATE)!==beforeState||read(settingsPath)!==beforeSettings)throw Error('配置验证期间发生外部更改');
   write(CONFIG,output);wroteConfig=true;await api('PUT','/configs?force=true',{path:CONFIG});
   const live=await api('GET','/rules');if(!rulesMatch(next,live.rules))throw Error('独立规则实读或顺序不一致');
+  const readiness=await ingressReadiness(next);
+  const required=next.programIngresses.filter(e=>{const previous=(old.programIngresses||[]).find(x=>x.id===e.id);return !previous||previous.path.toLowerCase()!==e.path.toLowerCase()||priorReadiness[e.id]!==false||(policyChanges.resetIngressSelections||[]).includes(e.id);});
+  if(required.some(e=>readiness[e.id]!==true))throw Error('新增、更改或原先可用的程序固定入口未就绪，或端口由其他进程占用');
   if(read(CONFIG)!==output||read(STATE)!==beforeState||read(settingsPath)!==beforeSettings)throw Error('配置核对期间发生外部更改');
   write(STATE,nextState);wroteState=true;write(path.join(ROOT,'generation.json'),{generation:crypto.randomUUID()});
-  return {ok:true,Message:'独立入口规则已载入；上游失效后按备用顺序接替。',entries,defaultRoute,stateHash:router.stateHash(nextState)};
+  const unavailable=next.programIngresses.filter(e=>readiness[e.id]!==true).map(e=>e.id);
+  return {ok:true,Message:'公共入口与路由规则已载入并核验；新连接使用所选线路。'+(unavailable.length?' '+unavailable.length+' 个先前已失效的程序入口仍不可用，未接管占用端口；请检查对应程序入口。':''),unavailableIngresses:unavailable,entries,defaultRoute,...extra,stateHash:router.stateHash(nextState)};
  }catch(e){
   if(read(CONFIG)!==(wroteConfig?output:before)||read(STATE)!==(wroteState?nextState:beforeState)||read(settingsPath)!==beforeSettings)throw Error('规则应用未完成，检测到其他程序修改配置；已保留外部更改，请刷新并检查独立入口状态');
   if(!wroteConfig)throw e;
-  try{if(before===null)throw Error('missing-rollback');write(CONFIG,rollback);await api('PUT','/configs?force=true',{path:CONFIG});if(ruleSnapshot((await api('GET','/rules')).rules)!==previousRules)throw Error('rollback-unverified');write(STATE,beforeState===null?old:beforeState);write(path.join(ROOT,'generation.json'),{generation:crypto.randomUUID()});}
+  try{if(before===null)throw Error('missing-rollback');write(CONFIG,rollback);await api('PUT','/configs?force=true',{path:CONFIG});const restoredReadiness=await ingressReadiness(old);if(ruleSnapshot((await api('GET','/rules')).rules)!==previousRules||(old.programIngresses||[]).some(e=>priorReadiness[e.id]===true&&restoredReadiness[e.id]!==true))throw Error('rollback-unverified');write(STATE,beforeState===null?old:beforeState);write(path.join(ROOT,'generation.json'),{generation:crypto.randomUUID()});}
   catch{throw Error('独立内核回滚尚未通过验证，请检查入口状态并通过托盘停止服务恢复设置');}
   throw Error('独立规则应用失败，已恢复修改前配置与实际规则');
  }finally{fs.unlinkSync(candidate);}
 });}
 function ruleSnapshot(rules){return JSON.stringify((rules||[]).map(r=>({type:r.type,payload:r.payload||'',proxy:r.proxy})));}
 function rulesMatch(s,rules){
- const expected=[...s.entries.map(e=>({type:'ProcessPath',payload:e.path,proxy:group(e.route)})),{type:'Match',proxy:s.defaultRoute?group(s.defaultRoute):'REJECT'}];
+ const expected=routes.rules(s,group);
  return Array.isArray(rules)&&rules.length===expected.length&&expected.every((e,i)=>rules[i].type===e.type&&rules[i].proxy===e.proxy&&(!e.payload||String(rules[i].payload||'').toLowerCase()===e.payload.toLowerCase()));
 }
 async function status(){const o=options(),s=state();try{
  const result=await Promise.allSettled([api('GET','/configs'),api('GET','/rules'),api('GET','/connections'),api('GET','/proxies')]);
  const [configResult,rulesResult,connectionResult,proxyResult]=result,c=configResult.value,g=proxyResult.value,gateway=o.Profiles.find(p=>p.Id===o.Routing.ProfileId);
  if(configResult.status!=='fulfilled'||!gateway||c['mixed-port']!==gateway.Port||c.mode!=='rule'||!await listening(gateway.Host,gateway.Port))throw Error('独立入口配置或控制接口未验证');
- const rulesAvailable=rulesResult.status==='fulfilled'&&Array.isArray(rulesResult.value?.rules),connectionsAvailable=connectionResult.status==='fulfilled'&&Array.isArray(connectionResult.value?.connections),proxiesAvailable=proxyResult.status==='fulfilled'&&!!g?.proxies;
+ const observedConnections=connectionResult.status==='fulfilled'?routes.connectionRows(connectionResult.value):null;
+ const rulesAvailable=rulesResult.status==='fulfilled'&&Array.isArray(rulesResult.value?.rules),connectionsAvailable=observedConnections!==null,proxiesAvailable=proxyResult.status==='fulfilled'&&!!g?.proxies;
  const loaded=rulesAvailable?rulesMatch(s,rulesResult.value.rules):null;
+ const readiness=await ingressReadiness(s);const ingressLoaded=(e)=>loaded===null||readiness[e.id]===null?null:loaded&&readiness[e.id]===true;
  const effective=id=>id==='Direct'?'Direct':proxiesAvailable?actualRoute([g.proxies[group(id)]?.now],o):'Unknown';
- return {available:true,mode:c.mode,tunEnabled:!!c.tun?.enable,independent:true,rulesAvailable,connectionsAvailable,proxiesAvailable,ruleError:rulesAvailable?'':'独立规则读取失败，生效状态未知',connectionError:connectionsAvailable?'':'独立连接读取失败，连接状态未知',proxyError:proxiesAvailable?'':'独立出口读取失败，出口状态未知',defaultRoute:s.defaultRoute,effectiveDefaultRoute:s.defaultRoute?effective(s.defaultRoute):'Blocked',defaultLoaded:rulesAvailable?!!s.defaultRoute&&loaded:null,
+ const effectiveTarget=target=>target==='REJECT'?'Blocked':target===group('Direct')?'Direct':proxiesAvailable?actualRoute([g.proxies[target]?.now],o):'Unknown';
+ return {available:true,partialIngressFailure:Object.values(readiness).some(value=>value!==true),mode:c.mode,tunEnabled:!!c.tun?.enable,independent:true,rulesAvailable,connectionsAvailable,proxiesAvailable,ruleError:rulesAvailable?'':'独立规则读取失败，生效状态未知',connectionError:connectionsAvailable?'':'独立连接读取失败，连接状态未知',proxyError:proxiesAvailable?'':'独立出口读取失败，出口状态未知',defaultRoute:s.defaultRoute,effectiveDefaultRoute:s.defaultRoute?effective(s.defaultRoute):'Blocked',defaultLoaded:rulesAvailable?!!s.defaultRoute&&loaded:null,
   entries:s.entries.map(e=>({...e,effectiveRoute:effective(e.route),loaded,loadState:loaded===null?'unknown':loaded?'loaded':'not-loaded'})),
-  connections:(connectionsAvailable?connectionResult.value.connections:[]).map(x=>({id:x.id,start:x.start,path:x.metadata?.processPath||'',sourcePort:Number(x.metadata?.sourcePort),sourceAddress:x.metadata?.sourceIP||'',destinationAddress:x.metadata?.destinationIP||'',destinationPort:Number(x.metadata?.destinationPort),network:x.metadata?.network||'',inbound:x.metadata?.type||'',route:actualRoute(x.chains||[],o),managed:true})),failover:{...json(path.join(ROOT,'health.json'),{}),events:json(path.join(ROOT,'failover-events.json'),[])}};
- }catch(e){return {available:false,error:'独立分流内核未就绪：'+e.message,rulesAvailable:false,connectionsAvailable:false,proxiesAvailable:false,ruleError:'内核未就绪，规则状态未知',connectionError:'内核未就绪，连接状态未知',defaultRoute:s.defaultRoute,defaultLoaded:null,entries:s.entries.map(e=>({...e,loaded:null,loadState:'unknown'})),connections:[]};}}
+  programIngresses:(s.programIngresses||[]).map(e=>({...e,host:'127.0.0.1',inboundName:routes.ingressName(e.id),effectiveRoute:e.route==='Follow'?(s.defaultRoute?effective(s.defaultRoute):'Blocked'):e.route==='Direct'?'Direct':proxiesAvailable?actualRoute([g.proxies[routes.ingressGroup(e.id)]?.now],o):'Unknown',ready:readiness[e.id],listening:readiness[e.id],loaded:ingressLoaded(e),error:readiness[e.id]===false?'此程序固定入口未监听或端口被其他进程占用；公共入口仍可用，请检查该程序入口':readiness[e.id]===null?'此程序固定入口归属未能核对，状态未知':''})),siteRulesLoaded:loaded,siteRules:(s.siteRules||[]).map(e=>({...e,loaded,effectiveRoute:effective(e.route)})),
+  connections:(observedConnections||[]).map(x=>({id:x.id,start:x.start,path:x.metadata?.processPath||'',sourcePort:Number(x.metadata?.sourcePort),sourceAddress:x.metadata?.sourceIP||'',destinationAddress:x.metadata?.destinationIP||'',destinationPort:Number(x.metadata?.destinationPort),network:x.metadata?.network||'',inbound:x.metadata?.type||'',inboundName:x.metadata?.inboundName||'',ingressId:(s.programIngresses||[]).find(e=>routes.ingressName(e.id)===x.metadata?.inboundName)?.id||'',route:actualRoute(x.chains||[],o),expectedRoute:effectiveTarget(routes.connectionPolicy(s,x.metadata,group)),policyMatches:loaded===true&&proxiesAvailable?actualRoute(x.chains||[],o)===effectiveTarget(routes.connectionPolicy(s,x.metadata,group)):null,managed:true})),failover:{...json(path.join(ROOT,'health.json'),{}),events:json(path.join(ROOT,'failover-events.json'),[])}};
+ }catch(e){return {available:false,error:'独立分流内核未就绪：'+e.message,rulesAvailable:false,connectionsAvailable:false,proxiesAvailable:false,ruleError:'内核未就绪，规则状态未知',connectionError:'内核未就绪，连接状态未知',defaultRoute:s.defaultRoute,defaultLoaded:null,entries:s.entries.map(e=>({...e,loaded:null,loadState:'unknown'})),programIngresses:(s.programIngresses||[]).map(e=>({...e,loaded:null,ready:null,listening:null,effectiveRoute:'Unknown'})),siteRulesLoaded:null,siteRules:(s.siteRules||[]).map(e=>({...e,loaded:null,effectiveRoute:'Unknown'})),connections:[]};}}
 
 const LIFECYCLE=path.join(ROOT,'lifecycle-state.json');
 function lifecycleEvent(event,fields={}) {
@@ -281,18 +308,18 @@ async function serve(){fs.mkdirSync(ROOT,{recursive:true});const singleton=path.
    setPhase('ready','listener-and-controller-ready');
   const o=options(),s=state(),gen=read(path.join(ROOT,'generation.json'))||s.changedAt||'';
   if(gen!==generation){policies={};generation=gen;}
-  const ids=[...new Set([...s.entries.map(e=>e.route),s.defaultRoute].filter(id=>id&&id!=='Direct'))];
-  const needed=[...new Set(ids.flatMap(id=>candidates(id,o)).filter(id=>id!=='Direct'))];const health={},details={};
+  const selectors=routes.selectors(s,group);
+  const needed=[...new Set(selectors.flatMap(selector=>candidates(selector.preferred,o)).filter(id=>id!=='Direct'))];const health={},details={};
   await Promise.all(needed.map(async id=>{details[id]=await healthCheck(id,o);health[id]=details[id].healthy;}));
   // An abandoned writer lock must reach claimLock so its process identity can
   // be checked and reclaimed; file existence alone can freeze failover forever.
   if(generation!==(read(path.join(ROOT,'generation.json'))||state().changedAt||'')){await new Promise(r=>setTimeout(r,250));continue;}
   try{await lock(async()=>{
   if(generation!==(read(path.join(ROOT,'generation.json'))||state().changedAt||''))return;
-  for(const id of ids){
-   try{const current=await api('GET','/proxies/'+encodeURIComponent(group(id)));const actual=actualRoute([current.now],o);const prior=policies[id]?.current===actual?policies[id]:{current:actual==='Unknown'?id:actual,failures:0,changed:0};
-    const next=decide(prior,candidates(id,o),health,Date.now(),policy(o),details);const wanted=next.current==='Blocked'?'REJECT':next.current==='Direct'?group('Direct'):upstream(next.current);
-    if(current.now!==wanted){await api('PUT','/proxies/'+encodeURIComponent(group(id)),{name:wanted});const verified=await api('GET','/proxies/'+encodeURIComponent(group(id)));if(verified.now!==wanted)throw Error('selection-not-applied');recordEvent({policy:id,from:prior.current,to:next.current,reason:details[prior.current]?.reason||'route-recovered'});}
+  for(const selector of selectors){const id=selector.key;
+   try{const current=await api('GET','/proxies/'+encodeURIComponent(selector.name));const actual=actualRoute([current.now],o);const prior=policies[id]?.current===actual?policies[id]:{current:actual==='Unknown'?selector.preferred:actual,failures:0,changed:0};
+    const next=decide(prior,candidates(selector.preferred,o),health,Date.now(),policy(o),details);const wanted=next.current==='Blocked'?'REJECT':next.current==='Direct'?group('Direct'):upstream(next.current);
+    if(current.now!==wanted){await api('PUT','/proxies/'+encodeURIComponent(selector.name),{name:wanted});const verified=await api('GET','/proxies/'+encodeURIComponent(selector.name));if(verified.now!==wanted)throw Error('selection-not-applied');recordEvent({policy:id,from:prior.current,to:next.current,reason:details[prior.current]?.reason||'route-recovered'});}
     policies[id]=next;
    }catch{details[id]={...details[id],selectionError:true};}
   }
@@ -310,16 +337,18 @@ async function serve(){fs.mkdirSync(ROOT,{recursive:true});const singleton=path.
 }
 async function reconnectPlan(executable){const o=options(),s=state();executable=require('./AppRouter.cjs').normalizeEntry(executable,'Follow',o).path;
  if(o.Profiles.some(p=>[p.CorePath,p.AppPath].filter(Boolean).some(x=>path.win32.normalize(x).toLowerCase()===executable.toLowerCase())))throw Error('代理内核和客户端不能按程序重连');
- const live=await status(),rule=live.entries.find(e=>e.path.toLowerCase()===executable.toLowerCase());const wanted=rule?rule.effectiveRoute:live.effectiveDefaultRoute;
- if(!live.available||!live.rulesAvailable||!live.defaultLoaded||(rule&&rule.loaded!==true)||wanted==='Blocked'||wanted==='Unknown')throw Error('当前规则或出口未验证，无法预览重连');
- const all=(await api('GET','/connections')).connections||[];
- return {path:executable,wanted,createdAt:Date.now(),fingerprint:JSON.stringify(s),connections:all.filter(c=>c.metadata?.processPath?.toLowerCase()===executable.toLowerCase()&&actualRoute(c.chains||[],o)!==wanted).map(c=>({id:c.id,start:c.start,route:actualRoute(c.chains||[],o)}))};
+ const live=await status(),rule=live.entries.find(e=>e.path.toLowerCase()===executable.toLowerCase()),ingress=live.programIngresses.find(e=>e.path.toLowerCase()===executable.toLowerCase());const wanted=ingress?ingress.effectiveRoute:rule?rule.effectiveRoute:live.effectiveDefaultRoute;
+ if(!live.available||!live.rulesAvailable||!live.defaultLoaded||(rule&&rule.loaded!==true)||(ingress&&ingress.loaded!==true)||wanted==='Blocked'||wanted==='Unknown')throw Error('当前规则或出口未验证，无法预览重连');
+ const all=routes.connectionRows(await api('GET','/connections'));if(all===null)throw Error('入口连接状态不可读，无法预览重连');
+ const proxies=(await api('GET','/proxies')).proxies;
+ const effective=target=>target==='REJECT'?'Blocked':target===group('Direct')?'Direct':actualRoute([proxies[target]?.now],o);
+ return {path:executable,wanted,createdAt:Date.now(),fingerprint:JSON.stringify(s),connections:all.filter(c=>ingress?c.metadata?.inboundName===routes.ingressName(ingress.id):c.metadata?.processPath?.toLowerCase()===executable.toLowerCase()).map(c=>({id:c.id,start:c.start,route:actualRoute(c.chains||[],o),expectedRoute:effective(routes.connectionPolicy(s,c.metadata,group))})).filter(c=>!['Unknown','Blocked'].includes(c.expectedRoute)&&c.route!==c.expectedRoute)};
 }
 async function main(input){if(input.action==='status')return status();if(input.action==='start')return start();if(input.action==='stop'){lifecycleEvent('stop-request',{reason:'explicit-stop'});write(path.join(ROOT,'stop'),'stop');return {ok:true};}
- if(input.action==='replace')return replace(input.entries,input.defaultRoute,input.expectedStateHash,input.expectedSettingsHash);if(input.action==='sync'){const s=state();return replace(s.entries,s.defaultRoute);}
+ if(input.action==='replace')return replace(input.entries,input.defaultRoute,input.expectedStateHash,input.expectedSettingsHash,input.resetDefaultSelection===true,input);if(input.action==='sync'){const s=state();return replace(s.entries,s.defaultRoute);}
  if(input.action==='reconnect-plan')return reconnectPlan(input.path);
- if(input.action==='reconnect')return lock(async()=>{const p=input.plan;if(!p||!Array.isArray(p.connections)||p.connections.length>1024||!Number.isFinite(p.createdAt)||Date.now()-p.createdAt>60000||p.createdAt>Date.now())throw Error('重连预览已失效');const now=await reconnectPlan(p.path);if(now.wanted!==p.wanted||now.fingerprint!==p.fingerprint)throw Error('线路已改变，请重新预览');let closed=0,failed=0;for(const c of now.connections.filter(c=>p.connections.some(x=>x.id===c.id&&x.start===c.start&&x.route===c.route))){if(/^[a-zA-Z0-9-]{1,100}$/.test(c.id)){try{await api('DELETE','/connections/'+encodeURIComponent(c.id));closed++;}catch{failed++;}}}return {ok:failed===0,closed,failed,Message:'已关闭 '+closed+' 条预览确认的旧连接。'+(failed?' '+failed+' 条未能关闭；请刷新状态后重新预览。':'')};});
+ if(input.action==='reconnect')return lock(async()=>{const p=input.plan;if(!p||!Array.isArray(p.connections)||p.connections.length>1024||!Number.isFinite(p.createdAt)||Date.now()-p.createdAt>60000||p.createdAt>Date.now())throw Error('重连预览已失效');const now=await reconnectPlan(p.path);if(now.wanted!==p.wanted||now.fingerprint!==p.fingerprint)throw Error('线路已改变，请重新预览');let closed=0,failed=0;for(const c of now.connections.filter(c=>p.connections.some(x=>x.id===c.id&&x.start===c.start&&x.route===c.route&&x.expectedRoute===c.expectedRoute))){if(/^[a-zA-Z0-9-]{1,100}$/.test(c.id)){try{await api('DELETE','/connections/'+encodeURIComponent(c.id));closed++;}catch{failed++;}}}return {ok:failed===0,closed,failed,Message:'已关闭 '+closed+' 条预览确认的旧连接。'+(failed?' '+failed+' 条未能关闭；请刷新状态后重新预览。':'')};});
  throw Error('独立内核不支持此操作');
 }
 if(require.main===module&&process.argv.includes('--serve'))serve().catch(()=>{process.exitCode=1;});
-module.exports={main,api,makeConfig,actualRoute,decide,policy,candidates,healthCheck,retainedSelections,resumeSelections,status,replace,start,nextRestart,lifecycleEvent,rulesMatch,processStartTicks,claimLock,releaseLock,ROOT,PIPE,CONFIG};
+module.exports={main,api,makeConfig,actualRoute,decide,policy,candidates,healthCheck,retainedSelections,resumeSelections,status,replace,start,nextRestart,lifecycleEvent,rulesMatch,ingressReadiness,ingressesReady,processStartTicks,claimLock,releaseLock,ROOT,PIPE,CONFIG};

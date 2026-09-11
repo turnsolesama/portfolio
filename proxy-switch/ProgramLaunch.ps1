@@ -22,23 +22,8 @@ function Set-ProgramLaunchEntries($Entries) {
     catch{Write-LocalJson (Join-Path $script:DataRoot 'program-proxies.json') ([pscustomobject]@{version=1;entries=$before});throw}
 }
 function Get-ProgramFamily([string]$Executable,$Processes,$IdentityContext=$null) {
-    $found=@{};$directory=[IO.Path]::GetDirectoryName($Executable)+'\'
-    if($null -eq $IdentityContext){$IdentityContext=New-ProgramIdentityContext -Processes $Processes}
-    $rootIdentity=Get-ProgramIdentityDescriptor $Executable $IdentityContext
-    $canonicalDirectory='';if($rootIdentity.CanonicalPath){$canonicalDirectory=[IO.Path]::GetDirectoryName($rootIdentity.CanonicalPath)+'\'}
-    foreach($p in $Processes){if($p.Path -and (Test-ProgramPathEquivalent $p.Path $Executable $IdentityContext)){$found[[int]$p.Id]=$p}}
-    do{
-        $count=$found.Count
-        foreach($p in $Processes){
-            if($found.ContainsKey([int]$p.Id) -or -not $p.ParentId -or -not $found.ContainsKey([int]$p.ParentId)){continue}
-            $parent=$found[[int]$p.ParentId]
-            if($p.StartTime -and $parent.StartTime -and $p.StartTime -ne [DateTime]::MinValue -and $parent.StartTime -ne [DateTime]::MinValue -and $p.StartTime -lt $parent.StartTime){continue}
-            $inside=-not $p.Path -or $p.Path.StartsWith($directory,[StringComparison]::OrdinalIgnoreCase)
-            if(-not $inside -and $canonicalDirectory){$member=Get-ProgramIdentityDescriptor $p.Path $IdentityContext;$inside=$member.CanonicalPath -and $member.CanonicalPath.StartsWith($canonicalDirectory,[StringComparison]::OrdinalIgnoreCase)}
-            if($inside){$found[[int]$p.Id]=$p}
-        }
-    }while($found.Count -gt $count)
-    @($found.Values)
+    . (Join-Path $PSScriptRoot 'ProgramFamilyTracking.ps1')
+    @((Get-ProgramFamilyTrackingSnapshot $Executable $Processes $IdentityContext).Members)
 }
 function ConvertTo-ProgramArgument([string]$Value) {
     '"'+[regex]::Replace([regex]::Replace($Value,'(\\*)"','$1$1\"'),'(\\+)$','$1$1')+'"'
@@ -46,6 +31,12 @@ function ConvertTo-ProgramArgument([string]$Value) {
 function Get-ProgramLaunchPlan([string]$Executable,[string]$Route) {
     if((Get-ProgramProxyAdapter $Executable) -ne 'chromium'){throw '此程序暂不支持启动代理适配；不能把保存设置当作流量已接管。可使用已配置的分流引擎。'}
     foreach($p in $script:Profiles.Profiles){if($Executable -ieq $p.CorePath -or $Executable -ieq $p.AppPath){throw '不能给代理程序自身设置启动代理，以免形成回路。'}}
+    $ingress=Get-ManagedProgramIngress $Executable
+    if($ingress){
+        $endpoint=Get-ManagedIngressEndpoint $ingress
+        $environment=[pscustomobject]@{HTTP_PROXY=$endpoint;HTTPS_PROXY=$endpoint;ALL_PROXY=$endpoint;NO_PROXY='localhost,127.0.0.1,::1'}
+        return [pscustomobject]@{Path=$Executable;Route=$ingress.route;Adapter='chromium';Arguments=@(('--proxy-server='+$endpoint),'--proxy-bypass-list=localhost;127.0.0.1;[::1]');Environment=$environment;Endpoint=$endpoint;IngressId=$ingress.id}
+    }
     $key=$Route
     if($key -eq 'Follow'){$key=Get-SystemKey (Get-SystemSnapshot)}
     if($key -notin (@('Direct')+(Get-ProfileKeys))){throw '当前系统代理无法解析为已配置入口，请先选择具体代理。'}
@@ -68,16 +59,43 @@ function Get-ProgramShortcutRecords {
     $path=Join-Path $script:DataRoot 'program-shortcuts.json'
     if(Test-Path -LiteralPath $path){@((Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json).entries)}else{@()}
 }
-function Get-VerifiedProgramShortcuts([string]$Executable) {
+function Get-ProgramProxyShortcutHealth([string]$Executable) {
     $shell=New-Object -ComObject WScript.Shell
     try{
-        foreach($record in @(Get-ProgramShortcutRecords | Where-Object {$_.program -ieq $Executable})){
-            if(-not (Test-Path -LiteralPath $record.shortcut -PathType Leaf)){continue}
-            $link=$shell.CreateShortcut($record.shortcut)
-            try{if($link.TargetPath -ieq $record.managedTarget -and $link.Arguments -ceq $record.managedArguments){$record.shortcut}}
-            finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}
+        foreach($record in @(Get-ProgramShortcutRecords|Where-Object {$_.program -ieq $Executable})){
+            $state='missing-shortcut';$owned=$false;$backend='';$ready=$false
+            if(Test-Path -LiteralPath $record.shortcut -PathType Leaf){
+                $link=$shell.CreateShortcut($record.shortcut)
+                try{
+                    $owned=$link.TargetPath -ieq $record.managedTarget -and $link.Arguments -ceq $record.managedArguments
+                    if(-not $owned){$state='externally-modified'}else{
+                        $match=[regex]::Match($link.Arguments,'(?i)(?:^|\s)-File\s+(?:"([^"]+)"|(\S+))')
+                        if($match.Success){$backend=$match.Groups[1].Value;if(-not $backend){$backend=$match.Groups[2].Value}}
+                        if(-not $backend -or -not [IO.File]::Exists($backend) -or -not [IO.File]::Exists($link.TargetPath)){$state='missing-backend'}
+                        elseif($backend -ine (Join-Path $script:Root 'ProxySwitch.ps1')){$state='old-backend'}
+                        else{$state='ready';$ready=$true}
+                    }
+                }finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($link)}
+            }
+            [pscustomobject]@{Shortcut=$record.shortcut;Owned=$owned;State=$state;Ready=$ready;Backend=$backend;CanRefresh=($owned -and $state -in @('missing-backend','old-backend'))}
         }
     }finally{[void][Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)}
+}
+function Get-VerifiedProgramShortcuts([string]$Executable) {
+    @(Get-ProgramProxyShortcutHealth $Executable|Where-Object Ready|ForEach-Object Shortcut)
+}
+function Repair-ProgramProxyEntry([string]$Executable) {
+    Use-ChangeLock {
+        $snapshot=Get-RuleMaintenanceSnapshot $Executable
+        if(-not @(@($snapshot.Launch.entries)+@($snapshot.Engine.programIngresses)|Where-Object {$_.path -ieq $Executable}).Count){throw '此程序没有启动代理记录，未修改入口。'}
+        if(@($snapshot.Engine.entries|Where-Object {$_.path -ieq $Executable}).Count){throw '此程序同时有引擎规则，请先核对规则模式。'}
+        if(-not [IO.File]::Exists($Executable)){throw '程序路径已失效，请先修复程序路径记录。'}
+        if(-not @(Get-ProgramProxyShortcutHealth $Executable|Where-Object CanRefresh).Count){throw '没有仍归本工具且需要更新的旧入口；外部修改保持原样。'}
+        $identity=Get-ProgramIdentityDescriptor -Path $Executable -Context (New-ProgramIdentityContext)
+        $result=Invoke-RuleMaintenanceChange $snapshot $Executable $Executable $identity
+        $result.Message='代理启动入口已更新到当前流向，原线路与原始入口备份保留。外部修改的入口保持原样；正在运行的程序未重启。'
+        $result
+    }
 }
 function Restore-ProgramProxyShortcuts([string]$Executable) {
     $records=@(Get-ProgramShortcutRecords);$keep=@();$shell=New-Object -ComObject WScript.Shell
@@ -142,6 +160,7 @@ function Install-ProgramProxyShortcut([string]$Executable,[string]$DesktopDirect
 }
 function Set-ProgramLaunchRoute([string]$Executable,[string]$Route) {
     Use-ChangeLock {
+        if(@((Get-RoutingSnapshot).entries|Where-Object {$_.path -ieq $Executable}).Count){throw '此程序已有引擎规则。请先明确移除该规则，再改用主程序和子进程启动代理，避免两种方式冲突。'}
         $plan=Get-ProgramLaunchPlan $Executable $Route
         $before=@(Get-ProgramLaunchEntries);$next=@($before|Where-Object {$_.path -ine $Executable})+@([pscustomobject]@{path=$Executable;route=$Route;adapter='chromium';identity=(Get-ProgramIdentityDescriptor -Path $Executable -Context (New-ProgramIdentityContext))})
         $backup=Save-Backup ([pscustomobject]@{Version=3;Time=(Get-Date).ToString('o');System=(Get-SystemSnapshot);Environment=(Get-UserProxyEnv);Selection=(Get-Selection);Routing=(Get-RoutingSnapshot)})
@@ -150,11 +169,25 @@ function Set-ProgramLaunchRoute([string]$Executable,[string]$Route) {
     }
 }
 function Start-ManagedProgram([string]$Executable) {
-    $entry=Get-ProgramLaunchEntries|Where-Object {$_.path -ieq $Executable}|Select-Object -First 1
+    Use-ChangeLock {
+    $ingress=Get-ManagedProgramIngress $Executable
+    $entry=$ingress;if(-not $entry){$entry=Get-ProgramLaunchEntries|Where-Object {$_.path -ieq $Executable}|Select-Object -First 1}
     if(-not $entry){throw '此程序尚未配置启动代理，请先在管理器中指定线路。'}
     if(@(Get-ProgramFamily $Executable @(Get-ProcessInventory)).Count){throw '该程序仍在运行。请先保存任务并完整退出，再从这个入口打开，才能让界面和联网子进程同时使用新线路。没有结束现有进程。'}
-    $readyKey=$entry.route;if($readyKey -eq 'Follow'){$readyKey=Get-SystemKey (Get-SystemSnapshot)}
-    Wait-ManagedProxyReady $readyKey
+    $limitedDirect=$false;$launchNotice=''
+    if($ingress){
+        $live=Ensure-ManagedGateway
+        $ready=$live.programIngresses|Where-Object {$_.id -ceq $ingress.id}|Select-Object -First 1
+        if(-not $ready.loaded -or -not $ready.ready -or -not $ready.effectiveRoute -or $ready.effectiveRoute -eq 'Unknown'){throw '程序固定入口或出口尚未就绪，未启动程序。请打开流向切换到可用线路。'}
+        if($ready.effectiveRoute -eq 'Blocked'){
+            $directSites=@($live.siteRules|Where-Object {$_.loaded -eq $true -and $_.route -ceq 'Direct' -and ($_.scope -ceq 'global' -or $_.scope -ceq $ingress.id)})
+            if($live.siteRulesLoaded -ne $true -or -not $directSites.Count){throw '程序默认代理当前不可用，且没有适用于此程序的已加载直连网站例外；未启动程序。请先切换到可用线路。'}
+            $limitedDirect=$true;$launchNotice=' 默认代理出口已暂停，仅匹配直连网站例外的请求可用；其他请求仍会失败，请切换到可用代理后重试。'
+        }
+    }else{
+        $readyKey=$entry.route;if($readyKey -eq 'Follow'){$readyKey=Get-SystemKey (Get-SystemSnapshot)}
+        Wait-ManagedProxyReady $readyKey
+    }
     $plan=Get-ProgramLaunchPlan $Executable $entry.route
     $psi=New-Object Diagnostics.ProcessStartInfo;$psi.FileName=$Executable;$psi.WorkingDirectory=[IO.Path]::GetDirectoryName($Executable)
     $psi.UseShellExecute=$false;$psi.CreateNoWindow=$false;$psi.Arguments=(@($plan.Arguments|ForEach-Object {ConvertTo-ProgramArgument $_}) -join ' ')
@@ -166,16 +199,27 @@ function Start-ManagedProgram([string]$Executable) {
     try{
         $records=@();$path=Join-Path $script:DataRoot 'program-launches.json'
         if(Test-Path -LiteralPath $path){$records=@((Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json).entries|Where-Object {$_.path -ine $Executable})}
-        $started=(Get-ProcessInventory -Id $process.Id).StartTime.ToUniversalTime().Ticks.ToString()
+        # Process.Start owns this handle; inventory may already have lost a short-lived bootstrap.
+        [void]$process.Handle;$started=$process.StartTime.ToUniversalTime().Ticks.ToString()
         $records+=@([pscustomobject]@{path=$Executable;pid=$process.Id;started=$started;route=$plan.Route;endpoint=$plan.Endpoint})
         Write-LocalJson $path ([pscustomobject]@{version=1;entries=$records})
-        [pscustomobject]@{Message='已按指定线路启动，等待观察实际连接。';PID=$process.Id;Route=$plan.Route}
+        [pscustomobject]@{Message=('已按指定线路启动，等待观察实际连接。'+$launchNotice);PID=$process.Id;Route=$plan.Route;ObservationUnknown=$false;LimitedDirect=$limitedDirect}
+    }catch{
+        # A launch-record failure cannot turn a successfully started app into a failed launch.
+        Write-LifecycleEvent 'program-launch' 'observation-unavailable'
+        [pscustomobject]@{Message=('程序已启动，但启动记录或进程观察未完成，请刷新实际连接；没有重复启动程序。'+$launchNotice);PID=$process.Id;Route=$plan.Route;ObservationUnknown=$true;LimitedDirect=$limitedDirect}
     }finally{$process.Dispose()}
+    }
 }
 function Test-ManagedProgramSession([string]$Executable,$Processes,[string]$Route) {
     $path=Join-Path $script:DataRoot 'program-launches.json';if(-not (Test-Path -LiteralPath $path)){return $false}
-    $record=(Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json).entries|Where-Object {$_.path -ieq $Executable}|Select-Object -First 1
+    try{$record=(Get-Content -LiteralPath $path -Raw -Encoding UTF8|ConvertFrom-Json).entries|Where-Object {$_.path -ieq $Executable}|Select-Object -First 1}catch{return $false}
     if(-not $record){return $false}
+    $ingress=Get-ManagedProgramIngress $Executable
+    if($ingress){
+        if($record.endpoint -cne (Get-ManagedIngressEndpoint $ingress)){return $false}
+        return @($Processes|Where-Object {$_.Id -eq $record.pid -and $_.Path -ieq $Executable -and $_.StartTime -and $_.StartTime.ToUniversalTime().Ticks.ToString() -eq $record.started}).Count -gt 0
+    }
     $key=$Route;if($key -eq 'Follow'){$key=Get-SystemKey (Get-SystemSnapshot)}
     if($record.route -ne $key){return $false}
     if($key -ne 'Direct' -and $record.endpoint -cne ('http://'+(Get-EndpointAddress (Get-Profile $key)))){return $false}

@@ -27,4 +27,19 @@ Check (-not (Get-Listener (Get-Profile 'proxy'))) 'A fresh readiness check reuse
 Check ($queries -eq 1) 'Readiness did not query Windows again'
 Get-ApplicationRoutes | Out-Null
 Check ($queries -eq 2) 'Default application query unexpectedly reused a previous snapshot'
+$script:Profiles.Routing.UnifiedMode='gateway';$script:Profiles.Routing.ProfileId='proxy'
+$script:Profiles.Routing.Adapter='clash-verge'
+$offline=Get-ProxyStatus $apps -TcpRows @()
+Check (($offline.Warnings -join ' ') -match '固定分流入口未就绪') 'Offline configured gateway explicitly explains why switching depends on it'
+$unknown=Get-ProxyStatus $apps -TcpRows @() -TcpAvailable $false
+Check (($unknown.Warnings -join ' ') -notmatch '固定分流入口未就绪') 'Unknown TCP data cannot falsely diagnose an offline gateway'
+function Get-NetTCPConnection {param($State,$LocalPort,$ErrorAction)
+    if($State){throw 'A missing requested state aborts assignment in the Windows CIM wrapper'}
+    @([pscustomobject]@{State='Listen';LocalPort=30000},[pscustomobject]@{State='Established';LocalPort=50000},[pscustomobject]@{State='TimeWait';LocalPort=50001})
+}
+$observed=Get-TcpObservationSnapshot
+Check ($observed.Available -and $observed.Rows.Count -eq 2 -and @($observed.Rows|Where-Object State -eq 'Listen').Count -eq 1) 'Absent SynSent cannot discard listeners and established connections'
+function Get-NetTCPConnection {param($State,$LocalPort,$ErrorAction);throw 'Access denied fixture'}
+$observed=Get-TcpObservationSnapshot
+Check (-not $observed.Available -and $observed.ErrorCode -eq 'tcp-query-failed') 'Actual collection failure still reports unknown instead of an empty healthy snapshot'
 Write-Output ('PASS: '+$checks+' display snapshot checks; no Windows writes or real network queries.')

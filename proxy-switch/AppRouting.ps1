@@ -30,6 +30,7 @@ function Invoke-AppRouter($Request,[int]$TimeoutMilliseconds=55000) {
 }
 
 function Set-ApplicationRoute([string]$Executable,[string]$Route) {
+    if(Get-ManagedProgramIngress $Executable){return Set-ManagedApplicationRoute $Executable $Route}
     Use-ChangeLock {
         if($script:Profiles.Routing.Adapter -eq 'standalone' -and $Route -eq (Get-GatewayKey)){throw '请选择上游代理，不能把独立入口作为自己的出口。'}
         if($Route -notin (@('Direct','Follow')+(Get-ProfileKeys))){throw '所选代理已不在列表中，请刷新。'}
@@ -80,13 +81,15 @@ function New-ApplicationCandidate([string]$Path,[string]$Name,[int]$ProcessId=0)
     [pscustomobject]@{Path=$Path;Name=$Name;PID=$ProcessId;SavedPath='';RowKey=$(if($Path){$Path.ToLowerInvariant()}else{'pid:'+$ProcessId});CoreRule=$null;LaunchRule=$null;Identity=$null;Conflict=$false}
 }
 function Get-ApplicationRoutes($TcpRows=$null,[bool]$TcpAvailable=$true) {
+    . (Join-Path $PSScriptRoot 'ProgramFamilyTracking.ps1')
     $saved=Get-RoutingSnapshot
     try{$core=Invoke-AppRouter @{action='status'} -TimeoutMilliseconds 9000}catch{
-        $core=[pscustomobject]@{available=$false;error='引擎状态读取失败或超时';rulesAvailable=$false;connectionsAvailable=$false;entries=@($saved.entries|ForEach-Object {[pscustomobject]@{path=$_.path;route=$_.route;identity=$_.identity;loaded=$null}});connections=@();defaultRoute=$saved.defaultRoute;defaultLoaded=$null}
+        $core=[pscustomobject]@{available=$false;error='引擎状态读取失败或超时';rulesAvailable=$false;connectionsAvailable=$false;entries=@($saved.entries|ForEach-Object {[pscustomobject]@{path=$_.path;route=$_.route;identity=$_.identity;loaded=$null}});connections=@();programIngresses=@($saved.programIngresses|Where-Object {$_ -and $_.path}|ForEach-Object {[pscustomobject]@{id=$_.id;path=$_.path;port=$_.port;route=$_.route;identity=$_.identity;managed=$true;loaded=$null;ready=$null}});defaultRoute=$saved.defaultRoute;defaultLoaded=$null}
     }
-    $processesAvailable=$true;$processes=@()
+    $processesAvailable=$true;$processes=@();$processSnapshotStarted=[DateTime]::UtcNow
     try{$processes=@(Get-ProcessInventory)}catch{$processesAvailable=$false}
     $context=New-ProgramIdentityContext -Processes $processes
+    $context.Created=$processSnapshotStarted
     $byId=@{};$apps=@{};$clientPaths=@($script:Profiles.Profiles|ForEach-Object {$_.CorePath;$_.AppPath}|Where-Object {$_})
     foreach($p in $processes){
         $byId[[int]$p.Id]=$p
@@ -100,11 +103,18 @@ function Get-ApplicationRoutes($TcpRows=$null,[bool]$TcpAvailable=$true) {
         if($p -and $p.Path -notin $clientPaths -and (Get-ConnectionProfile $c)){$apps[(Get-ProcessRowKey $p)]=New-ApplicationCandidate $p.Path $p.ProcessName $p.Id}
     }}
     $records=@();$launchEntries=@($saved.launchEntries)
-    foreach($rule in $core.entries){
+    $managedEntries=@($saved.programIngresses|Where-Object {$_ -and $_.path})
+    foreach($entry in $managedEntries){
+        $live=$core.programIngresses|Where-Object {$_.id -eq $entry.id -and $_.path -ieq $entry.path -and [int]$_.port -eq [int]$entry.port}|Select-Object -First 1
+        if($live){$rule=$live|Select-Object *}else{$rule=[pscustomobject]@{id=$entry.id;path=$entry.path;port=$entry.port;route=$entry.route;ready=$null;loaded=$null}}
+        $rule|Add-Member managed $true -Force
+        $records+=[pscustomobject]@{Path=$entry.path;Rule=$rule;Launch=$null;Identity=$entry.identity}
+    }
+    foreach($rule in @($core.entries|Where-Object {$_.path -and $_.path -notin @($managedEntries.path)})){
         $stored=$saved.entries|Where-Object {$_.path -ieq $rule.path}|Select-Object -First 1
         $records+=[pscustomobject]@{Path=$rule.path;Rule=$rule;Launch=$null;Identity=$stored.identity}
     }
-    foreach($entry in $launchEntries){if(-not @($core.entries|Where-Object {$_.path -ieq $entry.path}).Count){$records+=[pscustomobject]@{Path=$entry.path;Rule=$null;Launch=$entry;Identity=$entry.identity}}}
+    foreach($entry in $launchEntries){if($entry.path -notin @($managedEntries.path) -and -not @($core.entries|Where-Object {$_.path -ieq $entry.path}).Count){$records+=[pscustomobject]@{Path=$entry.path;Rule=$null;Launch=$entry;Identity=$entry.identity}}}
     foreach($record in $records){
         if(-not $record.Path){continue}
         $identity=Resolve-ProgramIdentity -Path $record.Path -Processes $processes -Context $context -SavedIdentity $record.Identity
@@ -117,9 +127,13 @@ function Get-ApplicationRoutes($TcpRows=$null,[bool]$TcpAvailable=$true) {
         $row.SavedPath=$record.Path;$row.RowKey='saved:'+$record.Path.ToLowerInvariant();$row.CoreRule=$record.Rule;$row.LaunchRule=$record.Launch;$row.Identity=$identity;$apps[$key]=$row
     }
     # Fold same-installation helper processes only when they have no explicit rule of their own.
+    $familySnapshots=@{}
     foreach($primary in @($apps.Values)){
-        if(-not $primary.Path -or -not @($processes|Where-Object {$_.Path -ieq $primary.Path -and $_.MainWindowHandle -ne [IntPtr]::Zero}).Count){continue}
-        foreach($member in @(Get-ProgramFamily $primary.Path $processes $context)){
+        if(-not $primary.Path){continue}
+        $snapshot=Get-ProgramFamilyTrackingSnapshot $primary.Path $processes $context $processesAvailable
+        $familySnapshots[$primary.RowKey]=$snapshot
+        if(-not $primary.SavedPath -and -not @($processes|Where-Object {$_.Path -ieq $primary.Path -and $_.MainWindowHandle -ne [IntPtr]::Zero}).Count){continue}
+        foreach($member in @($snapshot.Members)){
             if(-not $member.Path -or $member.Path -ieq $primary.Path){continue}
             $memberKey=$member.Path.ToLowerInvariant();if($apps.ContainsKey($memberKey) -and -not $apps[$memberKey].SavedPath){$apps.Remove($memberKey)}
         }
@@ -127,7 +141,8 @@ function Get-ApplicationRoutes($TcpRows=$null,[bool]$TcpAvailable=$true) {
     $gateway=Get-GatewayKey;$rows=@()
     $independentApps=@($apps.Values|Where-Object {$_.SavedPath -and $_.Path})
     foreach($app in $apps.Values){
-        $family=@();if($app.Path){$family=@(Get-ProgramFamily $app.Path $processes $context)}elseif($app.PID -and $byId.ContainsKey($app.PID)){$family=@($byId[$app.PID])}
+        $family=@();$familySnapshot=$null
+        if($app.Path){$familySnapshot=$familySnapshots[$app.RowKey];if(-not $familySnapshot){$familySnapshot=Get-ProgramFamilyTrackingSnapshot $app.Path $processes $context $processesAvailable};$family=@($familySnapshot.Members)}elseif($app.PID -and $byId.ContainsKey($app.PID)){$family=@($byId[$app.PID])}
         # A separately saved child rule owns its own observation row and descendant evidence.
         # Compare verified current paths, never display names or obsolete saved path strings.
         if($app.Path -and $family.Count){
@@ -139,12 +154,12 @@ function Get-ApplicationRoutes($TcpRows=$null,[bool]$TcpAvailable=$true) {
             }
             if($excluded.Count){$family=@($family|Where-Object {-not $excluded.ContainsKey([int]$_.Id)})}
         }
-        $evidence=Get-ApplicationConnectionEvidence $family $tcp $core.connections $gateway $byId $app.Path $TcpAvailable
-        $rows+=Get-ApplicationObservationRow $app $family $evidence $core $app.CoreRule $app.LaunchRule $app.Identity $processesAvailable
+        $evidence=Get-ApplicationConnectionEvidence $family $tcp $core.connections $gateway $byId $app.Path $TcpAvailable $managedEntries
+        $rows+=Get-ApplicationObservationRow $app $family $evidence $core $app.CoreRule $app.LaunchRule $app.Identity $processesAvailable $familySnapshot
     }
     $rulesAvailable=Test-ObservationFlag $core 'rulesAvailable' ([bool]$core.available)
     $connectionsAvailable=Test-ObservationFlag $core 'connectionsAvailable' ([bool]$core.available)
-    [pscustomobject]@{Available=[bool]$core.available;RulesAvailable=$rulesAvailable;ConnectionsAvailable=$connectionsAvailable;ProcessesAvailable=$processesAvailable;TcpAvailable=$TcpAvailable;Error=$core.error;Mode=$core.mode;Rows=@($rows|Sort-Object @{Expression={if($_.HasSavedRule){0}else{1}}},Name);RuleCount=(@($core.entries).Count+@($launchEntries|Where-Object {$_.route -ne 'Follow'}).Count);LaunchRuleCount=@($launchEntries|Where-Object {$_.route -ne 'Follow'}).Count;RepairCount=@($rows|Where-Object CanRepair).Count;DefaultRoute=$core.defaultRoute;EffectiveDefaultRoute=$core.effectiveDefaultRoute;Failover=$core.failover;DefaultLoaded=$core.defaultLoaded;GatewayKey=$gateway;ObservedAt=[DateTimeOffset]::UtcNow.ToString('o');Coverage='TCP 快照；UDP/QUIC、短时请求和未进入入口的流量需分别诊断'}
+    [pscustomobject]@{Available=[bool]$core.available;RulesAvailable=$rulesAvailable;ConnectionsAvailable=$connectionsAvailable;ProcessesAvailable=$processesAvailable;TcpAvailable=$TcpAvailable;Error=$core.error;Mode=$core.mode;Rows=@($rows|Sort-Object @{Expression={if($_.HasSavedRule){0}else{1}}},Name);RuleCount=(@($core.entries|Where-Object {$_.path -notin @($managedEntries.path)}).Count+$managedEntries.Count+@($launchEntries|Where-Object {$_.route -ne 'Follow' -and $_.path -notin @($managedEntries.path)}).Count);LaunchRuleCount=@($launchEntries|Where-Object {$_.route -ne 'Follow' -and $_.path -notin @($managedEntries.path)}).Count;ManagedRuleCount=$managedEntries.Count;RepairCount=@($rows|Where-Object CanRepair).Count;DefaultRoute=$core.defaultRoute;EffectiveDefaultRoute=$core.effectiveDefaultRoute;Failover=$core.failover;DefaultLoaded=$core.defaultLoaded;GatewayKey=$gateway;ObservedAt=[DateTimeOffset]::UtcNow.ToString('o');Coverage='TCP 快照；UDP/QUIC、短时请求和未进入入口的流量需分别诊断'}
 }
 function Get-ProcessRowKey($Process) {
     if($Process.Path){return $Process.Path.ToLowerInvariant()}

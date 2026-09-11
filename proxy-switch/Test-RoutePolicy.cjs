@@ -1,0 +1,37 @@
+'use strict';
+const assert=require('node:assert/strict'),r=require('./IndependentRouter.cjs'),p=require('./RoutePolicy.cjs');let checks=0;
+const check=(b,label)=>{assert.ok(b,label);checks++;};
+const o={Version:3,Profiles:[{Id:'gateway',Protocol:'http',Host:'127.0.0.1',Port:18790,CorePath:'C:\\own\\core.exe'},{Id:'a',Protocol:'http',Host:'127.0.0.1',Port:19001},{Id:'b',Protocol:'http',Host:'127.0.0.1',Port:19002}],Routing:{Adapter:'standalone',ProfileId:'gateway',Failover:{Order:['a','b']}}};
+const id='1'.repeat(32),id2='2'.repeat(32),sid='3'.repeat(32);
+const s={entries:[],defaultRoute:'b',programIngresses:[{id,path:'C:\\Program\\Parent.exe',port:19003,route:'a'}],siteRules:[{id:sid,scope:id,type:'suffix',domain:'example.com',route:'Direct'}]};
+const cfg=r.makeConfig(o,s);
+check(cfg.listeners[0].listen==='127.0.0.1'&&cfg.listeners[0].udp===false,'Named ingress binds loopback with no UDP/TUN capture');
+check(cfg.rules[0]===`AND,((IN-NAME,FS-Program-${id}),(DOMAIN-SUFFIX,example.com)),PSW-App-Direct`,'Scoped website rule precedes program route');
+check(cfg.rules[1]===`IN-NAME,FS-Program-${id},FS-Program-${id}-Route`,'Child routing uses ingress rather than process path');
+check(r.rulesMatch(s,p.rules(s,x=>x==='Direct'?'PSW-App-Direct':'PSW-App-route-'+x)),'Controller normalized AND payload verifies exact order');
+check(!r.rulesMatch(s,p.rules(s,x=>x==='Direct'?'PSW-App-Direct':'PSW-App-route-'+x).reverse()),'Wrong order is not loaded');
+const follow={...s,defaultRoute:null,programIngresses:[{...s.programIngresses[0],route:'Follow'}]};check(r.makeConfig(o,follow).rules.at(-2).endsWith(',REJECT'),'Follow without default fails closed');
+check(p.domain('例子.测试')==='xn--fsqu00a.xn--0zwm56d','Unicode hostname safely converts to ASCII');
+for(const value of ['https://example.com/callback?code=secret','a.com,REJECT','*.a.com','user@a.com','127.0.0.1','a..com']){assert.throws(()=>p.domain(value));checks++;}
+for(const change of [ {programIngresses:[{...s.programIngresses[0],port:19001}]},{programIngresses:[{...s.programIngresses[0],route:'gateway'}]},{programIngresses:[{...s.programIngresses[0],path:o.Profiles[0].CorePath}]},{siteRules:[{...s.siteRules[0],scope:id2}]},{siteRules:[s.siteRules[0],{...s.siteRules[0],id:id2}]}]){assert.throws(()=>r.makeConfig(o,{...s,...change}));checks++;}
+const metadata={inboundName:p.ingressName(id),processPath:'C:\\Unrelated\\Child.exe',host:'sub.example.com'};
+check(p.connectionPolicy(s,metadata)==='Direct','Website route follows child ingress independent of EXE path');
+check(p.connectionPolicy(s,{...metadata,host:'notexample.com'})==='a','Suffix matching respects domain label boundaries');
+check(p.connectionPolicy(s,{...metadata,inboundName:p.ingressName(id2)})==='b','Unrecognized ingress cannot inherit another program scoped rule');
+const selected={[p.ingressGroup(id)]:{now:'FS-Up-b'}};
+check(r.retainedSelections(o,s,s,selected)[p.ingressGroup(id)]==='FS-Up-b','Unrelated updates preserve independent ingress fallback');
+check(!r.retainedSelections(o,s,s,selected,false,[id])[p.ingressGroup(id)],'Explicit ingress reselection resets only that program selector');
+const second={...s,programIngresses:[...s.programIngresses,{id:id2,path:'C:\\Program\\Other.exe',port:19004,route:'a'}]};
+const separate=r.makeConfig(o,second,{[p.ingressGroup(id)]:'FS-Up-b'});
+check(separate['proxy-groups'].find(g=>g.name===p.ingressGroup(id)).proxies[0]==='FS-Up-b'&&separate['proxy-groups'].find(g=>g.name===p.ingressGroup(id2)).proxies[0]==='FS-Up-a','Two programs choosing A keep independent actual selectors');
+const priority={...s,siteRules:[{id:'4'.repeat(32),scope:'global',type:'suffix',domain:'example.com',route:'a'},{id:'5'.repeat(32),scope:'global',type:'domain',domain:'auth.example.com',route:'b'},{id:'6'.repeat(32),scope:'global',type:'suffix',domain:'regional.example.com',route:'Direct'},{id:'7'.repeat(32),scope:'global',type:'suffix',domain:'auth.example.com',route:'a'}]};
+check(p.connectionPolicy(priority,{host:'auth.example.com'})==='b','Later-added exact domain beats an earlier broad suffix');
+check(p.connectionPolicy(priority,{host:'x.regional.example.com'})==='Direct','More-specific suffix beats a broader suffix regardless of insertion order');
+check(p.connectionPolicy(priority,{host:'x.auth.example.com'})==='a','Exact hostname does not capture its subdomains');
+check(r.makeConfig(o,priority).rules.findIndex(x=>x==='DOMAIN,auth.example.com,PSW-App-route-b')<r.makeConfig(o,priority).rules.findIndex(x=>x==='DOMAIN-SUFFIX,auth.example.com,PSW-App-route-a'),'Generated rules and connection evidence agree on exact-before-same-suffix');
+const priorityScoped={...priority,siteRules:[...priority.siteRules,{id:'8'.repeat(32),scope:id,type:'suffix',domain:'example.com',route:'Direct'}]};
+check(p.connectionPolicy(priorityScoped,{inboundName:p.ingressName(id),host:'auth.example.com'})==='Direct','Program scope remains stronger than a more specific global domain');
+check(Array.isArray(p.connectionRows({connections:null,downloadTotal:0,uploadTotal:0,memory:1024})),'Pinned core empty Go slice is a known empty connection set');
+check(p.connectionRows({connections:null})===null&&p.connectionRows({})===null,'Incomplete or missing connection response stays unknown');
+check(p.connectionRows({connections:[],downloadTotal:0}).length===0,'Explicit empty connection array remains valid');
+console.log('PASS: '+checks+' program ingress and website policy checks');

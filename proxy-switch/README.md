@@ -1,30 +1,42 @@
-![流向 FlowSwitch](../docs/assets/flowswitch.svg)
+![流向 FlowSwitch](assets/FlowSwitch.png)
 
-# 流向 FlowSwitch 3.7.1
+# 流向 FlowSwitch 3.8.0 核心重构候选
 
 管理已有 HTTP / SOCKS5 代理，让程序通过固定入口选择出口。独立模式自带运行组件，代理失效后按备用顺序接替。关闭窗口默认驻留系统托盘，内核异常退出后有限重启；停止服务时先恢复仍归属本会话的网络设置。
 
 [返回工具集](../) · [功能与设计](DESIGN.md) · [更新记录](CHANGELOG.md) · [功能验收约定](ACCEPTANCE.md)
 
-**3.7.1 修复：**意外中断留下空锁或截断锁时，可安全恢复自动接替与入口启动；不会接管仍在写入的活跃锁，并核对并发恢复的进程身份。
+本目录为 3.8.0 核心重构候选，隔离整链及程序包验证已通过；另一台电脑的真实 IDE 登录与长期使用仍待验收。新版使用方法与范围见 [核心重构说明](CORE_REBUILD.md)，请保留旧版和本机数据备份。
 
-**[下载 Windows x64 程序包 · 3.7.1 · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-x64.zip)** · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-Source.zip) · [下载与校验](releases/README.md)
+**上一版 3.7.1 修复：**意外中断留下空锁或截断锁时，可安全恢复自动接替与入口启动；不会接管仍在写入的活跃锁，并核对并发恢复的进程身份。
+
+**[下载 Windows x64 候选包 · 3.8.0 · 68.2 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.8.0-Windows-x64.zip)** · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.8.0-Windows-Source.zip) · [下载与校验及历史版本](releases/README.md)
 
 ## 快速开始
 
 1. 完整解压，双击 `FlowSwitch/FlowSwitch.exe`，保留旁边的 `app` 文件夹。
 2. 添加自己的代理入口，或打开代理客户端后让 FlowSwitch 发现入口。
-3. 关闭上游客户端的 TUN、系统代理和代理守卫，保留代理服务运行。
-4. 在「代理管理」启用独立分流。顶部选择首选线路并统一切换；右键程序可设置专用线路。
+3. 关闭上游客户端的 TUN 和代理守卫，保留代理服务运行。普通系统代理开关不会阻止明确切换；建议也将其关闭，避免客户端随后启动或退出时改写入口。
+4. 顶部选择线路并统一切换，明确操作会准备稳定的流向入口；右键程序选择线路，支持的程序会同时接入固定启动入口。首次接入时保存任务并完整退出，然后从流向或已接入的桌面入口打开。
 5. 在「自动接替设置」调整备用顺序。全部代理失效时默认暂停；只有明确勾选才允许直连。
 
-统一切换会撤销本工具管理的程序专用线路。切换影响新连接；旧连接未恢复时，可右键程序预览并确认重连，不会退出程序或关闭其他应用的连接。
+统一切换会将程序专用线路改为跟随，保留稳定入口和网站例外。切换影响新连接；旧连接未恢复时，可右键程序预览并确认重连，不会退出程序或关闭其他应用的连接。
 
 ## 运行要求
 
 Windows 10 1809+ / Windows 11 x64，保留系统自带的 Windows PowerShell 5.1、.NET Framework 4.x 和 curl.exe。完整程序包自带 Node.js 24.19.0、mihomo 1.19.29 的标准及兼容构建、许可证和内核源码，无需另装 Node.js、npm 或 Clash，无需配置 PATH。首次运行不下载组件，不要求管理员权限。
 
 不提供 VPN 服务、订阅、节点或账户，仍需自己的可用代理。32 位 Windows、Windows 7/8 和原生 ARM64 包不在本次交付范围。源码开发可使用已安装的组件。
+
+## IDE 主程序和联网子进程
+
+直接右键选择需要的线路。受支持的 Chromium/Electron 程序获得稳定本地代理参数，其新建、遵守代理环境的子进程继承同一本地入口；A/B/直连只改变入口后面的出口。首次接入前已记住旧 A 地址的进程仍须自行保存任务并完整退出，从流向或已接入的桌面入口重新打开一次。此后普通改线不必反复更换启动参数。
+
+没有原生代理适配的程序继续按 EXE 规则处理经过流向的流量。已有独立服务、自带隧道或忽略代理设置的程序不能声称已被透明接管；本版本不自动开启 TUN。主程序退出后，本会话已验证的后台子进程仍可归组观察；重启流向后无法证明的孤儿归属显示未知，入口转发本身继续按其保存规则。
+
+在「网站规则」为同一浏览器设置域名例外：例如程序默认代理 B，某个网站设直连。程序范围优先于全局范围，域名更具体的规则优先；统一切换保留这些网站例外。规则作用于进入流向的新连接，页面原有连接需要刷新。
+
+旧代理图标仍指向缺失／旧版 FlowSwitch 时，右键「修复旧代理启动入口」；不覆盖外部修改的入口。
 
 ## 程序正常使用，为什么没有连接？
 

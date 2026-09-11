@@ -15,6 +15,7 @@ $source=$matches[0].Right.Extent.Text
 $worker=[scriptblock]::Create($source.Substring(1,$source.Length-2))
 $backend=@'
 $script:Profiles=[pscustomobject]@{Version=3;Profiles=@();Routing=@{Adapter='none'}}
+function Set-UniversalProxy([string]$Key){Set-SelectedProxy $Key}
 function Set-SelectedProxy {
     param($Key)
     if($Key -eq 'fail-before'){throw 'fixture operation rejected before writing'}
@@ -51,4 +52,18 @@ Check (-not $reply.OK -and $reply.Error -match 'snapshot unavailable') 'A plain 
 $script:DisplayWorks=$true
 $reply=Run-Worker 'Switch' 'upstream'
 Check ($reply.OK -and -not $reply.RefreshError -and $reply.State.Key -eq 'fixture' -and $reply.Result.Backup -eq 'fixture-backup') 'A successful operation with a successful refresh returns both current evidence and its result'
+$before=$script:MutationCount
+[IO.File]::WriteAllText((Join-Path $qa 'ProxyBackend.ps1'),"throw 'PRIVATE_CONFIG_MARKER?token=DO_NOT_LEAK'",(New-Object Text.UTF8Encoding($true)))
+$reply=Run-Worker 'Switch' 'upstream'
+Check (-not $reply.OK -and $reply.Stage -eq 'initialization' -and ($reply|ConvertTo-Json) -notmatch 'PRIVATE_CONFIG|DO_NOT_LEAK' -and $reply.Error -match '未执行操作') 'Background initialization failure reports safe actionable stage without raw private configuration'
+Check ($script:MutationCount -eq $before) 'Failed background initialization never executes the requested switch'
+$launchFixture=$backend+@'
+
+function Get-ManagedProgramIngress {throw 'PRIVATE_RULE_JSON?token=DO_NOT_LEAK'}
+function Get-ProgramLaunchEntries {@()}
+function Start-ManagedProgram {$script:UnexpectedLaunch++}
+'@
+[IO.File]::WriteAllText((Join-Path $qa 'ProxyBackend.ps1'),$launchFixture,(New-Object Text.UTF8Encoding($true)));$script:UnexpectedLaunch=0
+$reply=Run-Worker 'AppLaunch' 'C:\Fixtures\app.exe'
+Check (-not $reply.OK -and $reply.Error -match '线路记录无法读取' -and ($reply|ConvertTo-Json) -notmatch 'PRIVATE_RULE|DO_NOT_LEAK' -and $script:UnexpectedLaunch -eq 0) 'Corrupt program rule validation reports a safe actionable failure without starting the application'
 Write-Output ('PASS: '+$script:Pass+' worker outcome assertions; actual worker AST with isolated backend only.')

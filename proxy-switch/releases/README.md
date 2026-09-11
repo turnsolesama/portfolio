@@ -1,4 +1,19 @@
-# 流向 FlowSwitch 3.7.1 · 下载与校验
+# 流向 FlowSwitch 3.8.0 核心重构候选
+
+固定程序入口让已接入的主程序和联网子进程保持本地地址，通过同一入口改选 A/B/直连；新增通用域名分流与旧引擎离线迁移。首次接入需要完整重开原应用，已有长连接不会被自动结束。
+
+隔离回归和程序包校验已通过；跨电脑真实 IDE/浏览器登录仍待用户验收，本包不宣称已解决全部实际登录问题。保留旧版和数据备份。
+
+| 文件 | 大小 | SHA-256 |
+| --- | --- | --- |
+| [FlowSwitch-v3.8.0-Windows-x64.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.8.0-Windows-x64.zip) | 71,507,831 字节 | `021edd68d69c747b22da52502a245b58d01917c21e724a17acc551b5e0d039ed` |
+| [FlowSwitch-v3.8.0-Windows-Source.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.8.0-Windows-Source.zip) | 1,937,708 字节 | `f5d724739e4ab0376ea4d1221dd281e803f4a589351131902a914e93ebfce640` |
+
+[使用方法](../README.md) · [验证结果](../TEST_REPORT.md) · [核心变更与实际复验步骤](../CORE_REBUILD.md) · [校验值](SHA256SUMS.txt)
+
+以下为历史版本记录，原下载路径保留。
+
+## 流向 FlowSwitch 3.7.1 · 下载与校验
 
 修复异常中断留下空锁或截断锁导致自动接替与重新启动被持续阻塞；恢复前核对文件占用及进程身份，保留活跃持有者。
 

@@ -49,7 +49,7 @@ function Get-RuleMaintenanceSnapshot([string]$SavedPath){
     $engine=Read-RuleMaintenanceJson $files['app-rules.json'] ([pscustomobject]@{version=2;installed=$false;entries=@();defaultRoute=$null})
     $launch=Read-RuleMaintenanceJson $files['program-proxies.json'] ([pscustomobject]@{version=1;entries=@()})
     $shortcuts=Read-RuleMaintenanceJson $files['program-shortcuts.json'] ([pscustomobject]@{version=1;entries=@()})
-    if($engine.version -notin @(1,2) -or $launch.version -ne 1 -or $shortcuts.version -ne 1){throw '程序保存记录版本不兼容，未进行修改。'}
+    if($engine.version -notin @(1,2,3) -or $launch.version -ne 1 -or $shortcuts.version -ne 1){throw '程序保存记录版本不兼容，未进行修改。'}
     $links=@{};foreach($entry in @($shortcuts.entries|Where-Object {$_.program -ieq $SavedPath})){
         $path=[string]$entry.shortcut;if(-not [IO.Path]::IsPathRooted($path) -or $path -notmatch '(?i)\.lnk$'){throw '快捷方式记录路径无效。'}
         $links[$path]=Read-RuleMaintenanceFile $path
@@ -71,14 +71,14 @@ function Get-RuleMaintenanceProfiles($Snapshot){
 function Get-ProgramRuleRepairPlan([string]$SavedPath){
     $path=ConvertTo-ProgramIdentityPath $SavedPath;if(-not $path -or $path -notmatch '(?i)\.exe$'){throw '请选择有效的已保存程序记录。'}
     $snapshot=Get-RuleMaintenanceSnapshot $path
-    $engine=@($snapshot.Engine.entries|Where-Object {$_.path -ieq $path});$launch=@($snapshot.Launch.entries|Where-Object {$_.path -ieq $path})
+    $engine=@(@($snapshot.Engine.entries)+@($snapshot.Engine.programIngresses)|Where-Object {$_.path -ieq $path});$launch=@($snapshot.Launch.entries|Where-Object {$_.path -ieq $path})
     if(-not ($engine.Count+$launch.Count)){throw '该程序没有需要修复的保存记录。'}
     if($engine.Count -gt 1 -or $launch.Count -gt 1){throw '相同路径存在重复记录，请先移除冲突记录。'}
     $savedIdentity=$null;if($engine.Count){$savedIdentity=$engine[0].identity};if(-not $savedIdentity -and $launch.Count){$savedIdentity=$launch[0].identity}
     $processes=@(Get-ProcessInventory);$context=New-ProgramIdentityContext -Processes $processes -RefreshPackages
     $resolution=Resolve-ProgramIdentity $path -Processes $processes -Context $context -SavedIdentity $savedIdentity
     if(-not $resolution.CanRepair -or -not $resolution.RequiresRepair -or -not $resolution.CurrentPath){throw '没有唯一、可核对的新程序路径；请先解决路径不可读或多个候选的情况。'}
-    if(@(@($snapshot.Engine.entries)+@($snapshot.Launch.entries)|Where-Object {$_.path -ine $path -and (Test-ProgramPathEquivalent $_.path $resolution.CurrentPath $context)}).Count){throw '新程序路径已经存在保存记录，请先处理冲突，未合并线路。'}
+    if(@(@($snapshot.Engine.entries)+@($snapshot.Engine.programIngresses)+@($snapshot.Launch.entries)|Where-Object {$_.path -ine $path -and (Test-ProgramPathEquivalent $_.path $resolution.CurrentPath $context)}).Count){throw '新程序路径已经存在保存记录，请先处理冲突，未合并线路。'}
     if($launch.Count -and (Get-ProgramProxyAdapter $resolution.CurrentPath) -ne $launch[0].adapter){throw '新版本不再符合原启动代理适配方式，未迁移记录。'}
     $profiles=Get-RuleMaintenanceProfiles $snapshot
     foreach($profile in $profiles.Profiles){if((Test-ProgramPathEquivalent $resolution.CurrentPath $profile.AppPath $context) -or (Test-ProgramPathEquivalent $resolution.CurrentPath $profile.CorePath $context)){throw '不能把代理程序自身的路径作为修复目标。'}}
@@ -156,10 +156,42 @@ function Assert-RuleMaintenanceEngine($Snapshot){
     if(-not $live.available -or -not (Get-ProgramIdentityValue $live 'rulesAvailable' $false) -or $live.mode -ne 'rule'){throw '分流引擎尚未运行或规则无法核对；请先启动已配置引擎。此次操作不会启动引擎或切换系统代理。'}
     if((Read-RuleMaintenanceFile $Snapshot.Files['app-rules.json'].Path).Hash -cne $Snapshot.Files['app-rules.json'].Hash){throw '引擎检查期间保存记录发生变化，请重新预览。'}
 }
+function Test-RuleMaintenanceLoopback([string]$Address){
+    $parsed=$null
+    if(-not [Net.IPAddress]::TryParse($Address,[ref]$parsed)){return $false}
+    if($parsed.IsIPv4MappedToIPv6){$parsed=$parsed.MapToIPv4()}
+    return [Net.IPAddress]::IsLoopback($parsed)
+}
+function Assert-ManagedIngressRemoval($Snapshot,[string]$SavedPath,$Entries){
+    $ids=@($Entries|ForEach-Object id);$ports=@($Entries|ForEach-Object {[int]$_.port});$names=@($ids|ForEach-Object {'FS-Program-'+$_})
+    if(@($Snapshot.Engine.siteRules|Where-Object {$_.scope -in $ids}).Count){throw '此程序仍有网站例外，请先在网站规则中移除对应规则，再移除程序入口。'}
+    . (Join-Path $PSScriptRoot 'ProgramFamilyTracking.ps1')
+    try{
+        $processes=@(Get-ProcessInventory)
+        $family=Get-ProgramFamilyTrackingSnapshot $SavedPath $processes (New-ProgramIdentityContext -Processes $processes)
+    }catch{throw '进程身份读取失败，无法确认程序入口无人使用；未移除入口。请等待或刷新后重试。'}
+    if(@($family.Members).Count){throw '此程序或已确认的后台进程仍在运行，移除固定入口会中断它。请先保存任务并完整退出；只想取消专用线路可选择“跟随统一线路”。'}
+    if(-not $family.Available -or @($family.UnknownIds).Count){throw '部分后台进程身份不可读，程序入口使用状态未知；未移除入口。请等待或刷新后重试。'}
+    try{$live=Invoke-AppRouter @{action='status'}}catch{throw '入口连接读取失败，无法确认无人使用；未移除固定入口。'}
+    if(-not $live.available -or -not (Test-ObservationFlag $live 'connectionsAvailable' $false) -or $null -eq $live.PSObject.Properties['connections'] -or $null -eq $live.connections){throw '入口连接状态未知，无法确认无人使用；未移除固定入口。'}
+    if(@($live.connections|Where-Object {$_.ingressId -in $ids -or $_.inboundName -in $names}).Count){throw '固定入口仍有活动连接，可能来自后台服务；未移除入口。请先保存任务并完整退出相关程序，或选择“跟随统一线路”。'}
+    try{$tcp=Get-TcpObservationSnapshot}catch{throw 'TCP 连接读取失败，无法确认入口无人使用；未移除固定入口。'}
+    if(-not $tcp.Available -or $null -eq $tcp.Rows){throw 'TCP 连接状态未知，无法确认入口无人使用；未移除固定入口。'}
+    $active=@($tcp.Rows|Where-Object {
+        if([string]$_.State -notin @('Established','SynSent')){return $false}
+        return (([int]$_.RemotePort -in $ports) -and (Test-RuleMaintenanceLoopback ([string]$_.RemoteAddress))) -or (([int]$_.LocalPort -in $ports) -and (Test-RuleMaintenanceLoopback ([string]$_.LocalAddress)))
+    })
+    if($active.Count){throw '固定入口仍有活动或正在建立的 TCP 连接；未移除入口。请先保存任务并完整退出相关程序，或选择“跟随统一线路”。'}
+}
 function Invoke-RuleMaintenanceChange($Snapshot,[string]$SavedPath,[string]$CurrentPath,$Identity,[switch]$Remove){
     # Invoke-AppRouter exports this object; bind it to exactly the previewed configuration bytes.
     $script:Profiles=Get-RuleMaintenanceProfiles $Snapshot
-    $engineEntries=@($Snapshot.Engine.entries|Where-Object {$_.path -ieq $SavedPath});$launchEntries=@($Snapshot.Launch.entries|Where-Object {$_.path -ieq $SavedPath})
+    $engineEntries=@(@($Snapshot.Engine.entries)+@($Snapshot.Engine.programIngresses)|Where-Object {$_.path -ieq $SavedPath});$launchEntries=@($Snapshot.Launch.entries|Where-Object {$_.path -ieq $SavedPath})
+    $managedEntries=@($Snapshot.Engine.programIngresses|Where-Object {$_.path -ieq $SavedPath})
+    if($managedEntries.Count -and $Remove){
+        Assert-ManagedIngressRemoval $Snapshot $SavedPath $managedEntries
+    }
+    if($managedEntries.Count -and -not $Remove -and (Get-ProgramProxyAdapter $CurrentPath) -ne 'chromium'){throw '新程序路径不再支持原固定入口启动适配，未迁移规则。'}
     if($engineEntries.Count){Assert-RuleMaintenanceEngine $Snapshot}
     $backup=New-RuleMaintenanceBackup $Snapshot $(if($Remove){'remove'}else{'repair'}) $SavedPath $CurrentPath
     $shortcutPlan=New-RuleMaintenanceShortcutChanges $Snapshot $SavedPath $CurrentPath $backup -Remove:$Remove
@@ -168,6 +200,10 @@ function Invoke-RuleMaintenanceChange($Snapshot,[string]$SavedPath,[string]$Curr
         if($entry.path -ine $SavedPath){$nextEngine+=@($entry);continue};if($Remove){continue}
         $next=$entry|ConvertTo-Json -Depth 16|ConvertFrom-Json;$next.path=$CurrentPath;$next|Add-Member NoteProperty identity $Identity -Force;$nextEngine+=@($next)
     }
+    $nextIngresses=@(foreach($entry in @($Snapshot.Engine.programIngresses|Where-Object {$_})){
+        if($entry.path -ine $SavedPath){$entry;continue};if($Remove){continue}
+        $next=$entry|ConvertTo-Json -Depth 16|ConvertFrom-Json;$next.path=$CurrentPath;$next|Add-Member NoteProperty identity $Identity -Force;$next
+    })
     $nextLaunch.entries=@(foreach($entry in @($Snapshot.Launch.entries)){
         if($entry.path -ine $SavedPath){$entry;continue};if($Remove){continue}
         $next=$entry|ConvertTo-Json -Depth 16|ConvertFrom-Json;$next.path=$CurrentPath;$next|Add-Member NoteProperty identity $Identity -Force;$next
@@ -182,7 +218,7 @@ function Invoke-RuleMaintenanceChange($Snapshot,[string]$SavedPath,[string]$Curr
     try{
         if((Get-RuleMaintenanceSnapshot $SavedPath).Fingerprint -cne $Snapshot.Fingerprint){throw '记录或快捷方式在准备期间发生变化，请重新预览。'}
         if($engineEntries.Count){
-            $response=Invoke-AppRouter @{action='replace';entries=$nextEngine;defaultRoute=$Snapshot.Engine.defaultRoute;expectedStateHash=$Snapshot.Files['app-rules.json'].TextHash;expectedSettingsHash=$Snapshot.Files['config.json'].TextHash}
+            $response=Invoke-AppRouter @{action='replace';entries=$nextEngine;defaultRoute=$Snapshot.Engine.defaultRoute;programIngresses=$nextIngresses;siteRules=@($Snapshot.Engine.siteRules|Where-Object {$_});expectedStateHash=$Snapshot.Files['app-rules.json'].TextHash;expectedSettingsHash=$Snapshot.Files['config.json'].TextHash}
             $engineHash=[string](Get-ProgramIdentityValue $response 'stateHash' '')
             if(-not $engineHash){throw '引擎未返回写入归属校验，已保留备份；请刷新核对，不继续改写启动入口。'}
         }
@@ -203,7 +239,7 @@ function Invoke-RuleMaintenanceChange($Snapshot,[string]$SavedPath,[string]$Curr
         if($engineHash){
             try{
                 $current=Read-RuleMaintenanceFile $Snapshot.Files['app-rules.json'].Path
-                if($current.TextHash -ceq $engineHash){Invoke-AppRouter @{action='replace';entries=@($Snapshot.Engine.entries);defaultRoute=$Snapshot.Engine.defaultRoute;expectedStateHash=$engineHash;expectedSettingsHash=$Snapshot.Files['config.json'].TextHash}|Out-Null}else{$preserved++}
+                if($current.TextHash -ceq $engineHash){Invoke-AppRouter @{action='replace';entries=@($Snapshot.Engine.entries);defaultRoute=$Snapshot.Engine.defaultRoute;programIngresses=@($Snapshot.Engine.programIngresses|Where-Object {$_});siteRules=@($Snapshot.Engine.siteRules|Where-Object {$_});expectedStateHash=$engineHash;expectedSettingsHash=$Snapshot.Files['config.json'].TextHash}|Out-Null}else{$preserved++}
             }catch{$rollbackProblems+='引擎规则'}
         }
         $suffix='；已回滚仍归本次写入的内容。';if($preserved){$suffix+=' 已保留外部修改。'};if($rollbackProblems.Count){$suffix='；部分回滚未完成，请使用本机备份检查。'}
@@ -231,7 +267,7 @@ function Remove-SavedProgramRule([string]$SavedPath){
     Use-ChangeLock {
         $path=ConvertTo-ProgramIdentityPath $SavedPath;if(-not $path -or $path -notmatch '(?i)\.exe$'){throw '请选择有效的已保存程序记录。'}
         $snapshot=Get-RuleMaintenanceSnapshot $path
-        if(-not @(@($snapshot.Engine.entries)+@($snapshot.Launch.entries)|Where-Object {$_.path -ieq $path}).Count){throw '该程序没有可移除的保存记录。'}
+        if(-not @(@($snapshot.Engine.entries)+@($snapshot.Engine.programIngresses)+@($snapshot.Launch.entries)|Where-Object {$_.path -ieq $path}).Count){throw '该程序没有可移除的保存记录。'}
         Invoke-RuleMaintenanceChange $snapshot $path '' $null -Remove
     }
 }
