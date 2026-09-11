@@ -67,7 +67,16 @@
       }
       if (g.started) { event.preventDefault(); schedule(); }
     });
-    on(viewport,'pointerup',event => { if (gesture?.pointerId === event.pointerId) { gesture.x = event.clientX; gesture.y = event.clientY; if (frame) win.cancelAnimationFrame(frame); frame = 0; paint(); finish(); } });
+    on(viewport,'pointerup',event => {
+      const g = gesture; if (g?.pointerId !== event.pointerId) return;
+      g.x = event.clientX; g.y = event.clientY;
+      if (frame) win.cancelAnimationFrame(frame); frame = 0;
+      if (!g.started && g.mode === 'replace' && enabled() && getContext() === g.context && Math.hypot(g.x-g.downX,g.y-g.downY) < 4) {
+        const b = bounds();
+        if (g.x >= b.left && g.x < b.right && g.y >= b.top && g.y < b.bottom && g.items.every(item => viewport.contains(item.node))) { onStart(); apply(new Set()); }
+      } else paint();
+      finish();
+    });
     on(viewport,'pointercancel',event => { if (gesture?.pointerId === event.pointerId) finish(true); });
     on(viewport,'lostpointercapture',event => { if (gesture?.pointerId === event.pointerId) finish(true); });
     on(viewport,'scroll',schedule,{passive:true});

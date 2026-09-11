@@ -35,8 +35,13 @@ test('Escape and pointercancel restore the initial selection and stop scheduled 
 test('card controls, editable content, touch, right button and scrollbar never start a marquee',()=>{
  for(const options of [{target:{closest:()=>({})}},{pointerType:'touch'},{button:2},{clientX:201}]){const s=setup();const down=s.emit('pointerdown',options);s.emit('pointermove',{clientX:5,clientY:5});assert.equal(down.prevented,undefined);assert.equal(s.frames.size,0);assert.equal(s.boxes.length,0);}
 });
-test('clicks and subthreshold movement do not alter selection or open a drag rectangle',()=>{
- const s=setup({base:['a']});s.emit('pointerdown');s.emit('pointermove',{clientX:182,clientY:181});s.emit('pointerup',{clientX:182,clientY:181});assert.deepEqual(s.selected(),['a']);assert.equal(s.boxes.length,0);assert.equal(s.emit('click').stopped,undefined);
+test('plain blank clicks clear full or partial selection without opening a drag rectangle',()=>{
+ for(const base of [['a'],['a','b']]) { const s=setup({base});s.emit('pointerdown');s.emit('pointermove',{clientX:182,clientY:181});s.emit('pointerup',{clientX:182,clientY:181});assert.deepEqual(s.selected(),[]);assert.equal(s.boxes.length,0);assert.equal(s.emit('click').stopped,undefined); }
+});
+
+test('modified blank clicks, cancellation and stale context preserve selection',()=>{
+ for(const options of [{ctrlKey:true},{metaKey:true},{shiftKey:true}]) { const s=setup({base:['a','b']});s.emit('pointerdown',options);s.emit('pointerup');assert.deepEqual(s.selected(),['a','b']); }
+ for(const action of [s=>s.emit('pointercancel'),s=>s.disable(),s=>s.setContext('page2')]) { const s=setup({base:['a','b']});s.emit('pointerdown');action(s);s.emit('pointerup');assert.deepEqual(s.selected(),['a','b']); }
 });
 test('pointer move events share one frame and unchanged selection does not call update again',()=>{
  const s=setup();s.emit('pointerdown');for(let i=0;i<50;i++)s.emit('pointermove',{clientX:5,clientY:5});assert.equal(s.frames.size,1);s.tick();assert.equal(s.changes(),1);s.emit('pointermove',{clientX:6,clientY:5});s.tick();assert.equal(s.changes(),1);s.controller.cancel();assert.equal(s.frames.size,0);
