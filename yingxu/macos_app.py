@@ -77,7 +77,7 @@ class Desktop:
                 else: self.guard.respond(request_id, False)
                 return
             message = json.dumps({'action':'prepare-exit','requestId':request_id})
-            self.window.evaluate_js('window.yingxuMacReceive(' + message + ')')
+            self.window.run_js('window.yingxuMacReceive(' + message + ')')
         except Exception:
             logging.exception('Close preparation failed')
             self.guard.respond(request_id, False)
@@ -85,14 +85,6 @@ class Desktop:
             if self.window.create_confirmation_dialog('页面响应失败', '无法检查当前文稿。强制退出可能丢失尚未保存的输入，仍要退出吗？'):
                 self.guard.allowed = True
                 self.window.destroy()
-
-
-class Bridge:
-    def __init__(self, desktop):
-        self._desktop = desktop
-
-    def post_message(self, data, token):
-        return self._desktop.post_message(data, token)
 
 
 def stop_server(server, app):
@@ -143,9 +135,10 @@ def main():
     origin = 'http://127.0.0.1:8791'
     desktop = Desktop(app, origin)
     window = webview.create_window('映序 · macOS 试用版', origin+'/?desktop=macos',
-        js_api=Bridge(desktop), width=1380, height=900, min_size=(980,650),
+        width=1380, height=900, min_size=(980,650),
         background_color='#f7f8f6', text_select=True, zoomable=True)
     desktop.window = window
+    app.desktop_message = desktop.post_message
     app.native_picker = lambda kind: window.create_file_dialog(
         webview.FileDialog.FOLDER if kind == 'folder' else webview.FileDialog.OPEN,
         allow_multiple=kind == 'files')

@@ -3,21 +3,19 @@
   'use strict';
   if (new URLSearchParams(location.search).get('desktop') !== 'macos') return;
   window.yingxuMac = true;
-  const listeners = [], pending = [];
+  const listeners = [];
   const send = data => {
     if (data?.action === 'choose-external-files') {
       window.yingxuMacOpenExternal().catch(report); return;
     }
     if (!['desktop-ready','exit-response'].includes(data?.action)) return;
-    if (!window.pywebview?.api?.post_message) { pending.push(data); return; }
-    window.pywebview.api.post_message(data, state.bootstrap?.token || '').catch(console.error);
+    api('/api/macos/desktop',{method:'POST',body:data}).catch(report);
   };
   window.chrome ||= {};
   window.chrome.webview = {postMessage:send, addEventListener:(type,handler) => {
     if (type === 'message') listeners.push(handler);
   }};
   window.yingxuMacReceive = data => listeners.forEach(handler => handler({data}));
-  window.addEventListener('pywebviewready', () => pending.splice(0).forEach(send));
   const style = document.createElement('style');
   style.textContent = '[data-action="capture-screen"],[data-drag-file]{display:none!important}';
   document.head.appendChild(style);

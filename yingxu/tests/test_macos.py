@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from macos_app import CloseGuard, Desktop, Bridge
+from macos_app import CloseGuard, Desktop
 from yingxu.paths import default_data_root
 from yingxu import macos
 
@@ -39,8 +39,7 @@ class MacAdaptersTests(unittest.TestCase):
     def test_bridge_validates_token_origin_and_request(self):
         app=Mock(token='local-token');host=Desktop(app,'http://127.0.0.1:8791')
         host.window=Mock();host.window.get_current_url.return_value=host.origin+'/?desktop=macos'
-        bridge=Bridge(host)
-        self.assertEqual([name for name in dir(bridge) if not name.startswith('_')],['post_message'])
+        bridge=host
         request=host.guard.begin();data={'action':'exit-response','requestId':request,'allow':True}
         self.assertFalse(bridge.post_message(data,'wrong'));host.window.destroy.assert_not_called()
         host.window.get_current_url.return_value='https://example.com/'

@@ -34,6 +34,7 @@ class Application:
         self.token=resume_token if re.fullmatch(r'[A-Za-z0-9_-]{40,128}',resume_token) else secrets.token_urlsafe(32)
         self.picker_lock=threading.Lock()
         self.native_picker=None
+        self.desktop_message=None
         self.demo_lock=threading.Lock()
         from yingxu.skills import SkillLibrary
         from yingxu.context import ContextExporter
@@ -407,6 +408,9 @@ class Handler(BaseHTTPRequestHandler):
                     item=self.app.store.create_item(data);self.app.context.request(item['project_id']);return self.json(item,201)
                 if path=='/api/import':return self.json(self.app.jobs.submit(data.get('project_id'),data.get('category','references'),data.get('paths',[]),data.get('folder_id','')),202)
                 if path=='/api/rescan':return self.json(self.app.jobs.submit(data.get('project_id')),202)
+                if path=='/api/macos/desktop':
+                    if self.app.desktop_message is None:raise UserError('当前环境没有 macOS 桌面窗口。',404)
+                    return self.json({'ok':bool(self.app.desktop_message(data,self.headers.get('X-YingXu-Token','')))})
                 if path=='/api/pick':return self.json(self.app.pick(data.get('kind')))
                 if path=='/api/open':return self.json(self.app.open_file(data))
                 if path=='/api/open-folder':return self.json(self.app.open_folder(data))
