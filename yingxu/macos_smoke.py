@@ -34,7 +34,7 @@ def run():
                 return json.loads(raw)
             finally:c.close()
         try:
-            assert request('GET','/api/health')['version']=='0.4.2'
+            assert request('GET','/api/health')['version']=='0.4.3'
             project=request('POST','/api/projects',{'name':'Mac 合成项目'})
             item=request('POST','/api/items',{'project_id':project['id'],'category':'scripts','name':'测试文稿','content':'# 中文\n正文'})
             original=Path(item['path']).read_bytes()

@@ -26,8 +26,26 @@ class Jobs:
             Organize(self.store).folder_path(pid,category,None if folder_id=='root' else folder_id)
         if paths is not None:
             if not isinstance(paths,list) or not 1<=len(paths)<=200:raise UserError('一次请选择1至200个文件或文件夹。')
-            sources=[self.store.register_source(pid,p,category) for p in paths]
+            sources=[]
+            for value in paths:
+                path=clean_path(value)
+                if path.is_file() and path.suffix.lower()=='.zip':
+                    if path.is_relative_to(self.store.data_root):raise UserError('不能从应用数据目录导入 ZIP。')
+                    sources.append({'archive':str(path),'name':path.name})
+                else:sources.append(self.store.register_source(pid,value,category))
         else:sources=self.store.sources(pid)
+        return self._enqueue(pid,category,sources,paths is not None,folder_id)
+
+    def submit_archive(self,pid,category,path,folder_id=None,name=None,cleanup=False):
+        from .organize import Organize
+        Organize(self.store).folder_path(pid,category,folder_id)
+        path=clean_path(path)
+        if not path.is_file():raise UserError('ZIP 来源不存在。')
+        if cleanup and (path.parent!=self.store.data_root/'archive-uploads' or path.suffix!='.zip'):
+            raise UserError('临时 ZIP 路径无效。')
+        return self._enqueue(pid,category,[{'archive':str(path),'name':name or path.name,'cleanup':cleanup}],True,folder_id)
+
+    def _enqueue(self,pid,category,sources,restore_removed,folder_id):
         if not self.slots.acquire(False):raise UserError('导入队列已满，请等当前任务完成。',429)
         jid=uid()
         with self.lock:
@@ -35,7 +53,7 @@ class Jobs:
             if len(self.jobs)>100:
                 old=[key for key,val in self.jobs.items() if val['state'] in ('done','error')]
                 for key in old[:len(self.jobs)-100]:self.jobs.pop(key,None)
-        self.pool.submit(self._run,jid,pid,sources,paths is not None,category,folder_id)
+        self.pool.submit(self._run,jid,pid,sources,restore_removed,category,folder_id)
         return {'job_id':jid}
 
     def get(self,jid):
@@ -76,6 +94,15 @@ class Jobs:
         try:
             for source in sources:
                 try:
+                    if 'archive' in source:
+                        from .archive_import import import_zip
+                        try:
+                            result=import_zip(self.store,source['archive'],pid,category,folder_id,source['name'],
+                                lambda message:self._update(jid,message=message))
+                            done+=result['done'];skipped+=result['skipped'];self._update(jid,done=done,skipped=skipped)
+                        finally:
+                            if source.get('cleanup'):Path(source['archive']).unlink(missing_ok=True)
+                        continue
                     root=clean_path(source['path']);batch=[]
                     for path in self.walk(root,self.store.data_root):
                         batch.append(path)
