@@ -70,6 +70,8 @@ class Organize:
             with self.store.connection() as db:folder=self._folder(db,folder_id)
             if folder['project_id']!=project_id or folder['category']!=category:raise UserError('目标文件夹不属于这个项目和分类。')
             target=root/folder['relative_path']
+        if category=='unclassified' and folder_id in ('',None,'root') and not target.exists():
+            target.mkdir(exist_ok=True)
         path=clean_path(target)
         if not path.is_relative_to(root) or not path.is_dir():raise UserError('项目文件夹路径无效。',403)
         return path

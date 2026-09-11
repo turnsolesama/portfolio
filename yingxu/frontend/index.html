@@ -26,6 +26,7 @@
   <link rel="stylesheet" href="/docx-editor.css">
   <link rel="stylesheet" href="/svg-preview.css">
   <link rel="stylesheet" href="/html-preview.css">
+  <script src="/canvas-bridge.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -88,7 +89,7 @@
             <button id="selectPageButton" class="button button-ghost button-small">全选本页</button>
             <span id="selectionCount" class="selection-count" hidden></span>
             <select id="statusFilter" aria-label="按制作状态筛选"><option value="">全部状态</option></select>
-            <select id="kindFilter" aria-label="按文件类型筛选"><option value="">所有类型</option><option value="image">图片</option><option value="video">视频</option><option value="markdown">Markdown</option><option value="docx">Word 文档</option><option value="text">文本</option><option value="audio">音频</option><option value="pdf">PDF</option><option value="model">3D 模型</option><option value="file">其他文件</option></select>
+            <select id="kindFilter" aria-label="按文件类型筛选"><option value="">所有类型</option><option value="image">图片</option><option value="video">视频</option><option value="markdown">Markdown</option><option value="docx">Word 文档</option><option value="excalidraw">Excalidraw 画板</option><option value="text">文本</option><option value="audio">音频</option><option value="pdf">PDF</option><option value="model">3D 模型</option><option value="file">其他文件</option></select>
             <div class="filter-spacer"></div>
             <select id="folderScope" aria-label="文件夹范围"><option value="current">当前文件夹</option><option value="all">此分类全部</option></select>
             <select id="sortFilter" class="sort-filter" aria-label="排序"><option value="updated">最近更新</option><option value="name">文件名称</option><option value="order">分镜顺序</option></select>

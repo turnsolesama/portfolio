@@ -12,7 +12,7 @@ import time
 from server import Application, Server
 from yingxu.paths import default_data_root, default_project_root
 
-PREVIEW = '0.4.1-mac.1'
+PREVIEW = '0.4.2-mac.1'
 
 
 class CloseGuard:

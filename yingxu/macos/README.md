@@ -1,11 +1,11 @@
-# 映序 macOS 试用版 · 0.4.1-mac.1
+# 映序 macOS 试用版 · 0.4.2-mac.1
 
 面向 **macOS 14 或更新版本、Apple Silicon（M 系列芯片）**。
 这是独立的 macOS 试用包，Windows 版和既有 Windows 发布包保持不变。
 
 ## 安装
 
-完整解压 `YingXu-v0.4.1-mac.1-macOS-arm64.zip`，将 `YingXu.app` 拖入“应用程序”，双击打开。
+完整解压 `YingXu-v0.4.2-mac.1-macOS-arm64.zip`，将 `YingXu.app` 拖入“应用程序”，双击打开。
 自带 Python、Pillow、FFmpeg 和本地编辑器；窗口使用 macOS 系统 WebKit。
 正常使用无需安装 Python、Node.js 或 Homebrew，也不在启动时下载组件。
 

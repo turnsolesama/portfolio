@@ -105,6 +105,7 @@ class Application:
             else:raise UserError('选择器类型不正确。')
             import base64
             prefix='[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding; '
+            script=script.replace('$d.ShowDialog()', '$d.ShowDialog($owner)').replace('Add-Type -AssemblyName System.Windows.Forms;', 'Add-Type -AssemblyName System.Windows.Forms; $owner=New-Object Windows.Forms.Form; $owner.TopMost=$true; $owner.ShowInTaskbar=$false; $owner.Opacity=0; $owner.Show();')+'; $owner.Dispose()'
             encoded=base64.b64encode((prefix+script).encode('utf-16-le')).decode('ascii')
             ps=Path(os.environ.get('WINDIR','C:/Windows'))/'System32/WindowsPowerShell/v1.0/powershell.exe'
             try:
@@ -128,7 +129,7 @@ class Application:
         if action=='reveal':subprocess.Popen(['explorer.exe','/select,',str(path)],creationflags=subprocess.CREATE_NO_WINDOW)
         elif action=='open':os.startfile(str(path))
         else:raise UserError('不支持的打开方式。')
-        return {'ok':True}
+        return {'ok':True,'focus_folder':str(path.parent) if action=='reveal' else None}
 
     def open_folder(self,data):
         if not isinstance(data,dict) or set(data)-{'project_id','category','folder_id','skill_id'}:
@@ -160,7 +161,31 @@ class Application:
             else:
                 explorer=Path(os.environ.get('WINDIR','C:/Windows'))/'explorer.exe'
                 subprocess.Popen([str(explorer),str(path)],creationflags=subprocess.CREATE_NO_WINDOW)
-        return {'ok':True}
+        return {'ok':True,'focus_folder':str(path)}
+
+    def paste_clipboard(self,data):
+        from types import SimpleNamespace
+        from yingxu.clipboard_files import read_files
+        pid=data.get('project_id');category=data.get('category','unclassified')
+        self.organize.folder_path(pid,category,data.get('folder_id'))
+        paths=read_files()
+        if not paths:raise UserError('剪贴板里没有文件。请先在系统文件夹中复制文件，再粘贴到当前分类。')
+        checked=[]
+        for value in paths:
+            path=clean_path(value)
+            if not path.is_file():raise UserError('暂不支持粘贴整个文件夹，请选择其中的文件，或使用导入文件夹。')
+            if path.suffix.lower() not in SAFE_EXTENSIONS:raise UserError('剪贴板包含不支持的文件类型，请重新选择。')
+            checked.append(path)
+        items=[]
+        for path in checked:
+            try:
+                clean_path(path)
+                with path.open('rb') as source:
+                    handler=SimpleNamespace(rfile=source,headers={'Content-Length':str(os.fstat(source.fileno()).st_size)})
+                    items.append(self.receive_upload(handler,{'project':pid,'category':category,'folder_id':data.get('folder_id'),'name':path.name}))
+            except (OSError,UserError) as error:
+                raise UserError(f'已粘贴 {len(items)} 个文件；后续文件未完成：{error}。已完成的副本保留，原文件不变。',409) from error
+        return {'items':items}
 
     def receive_upload(self,handler,query):
         pid=query.get('project','');category=query.get('category','references')
@@ -421,6 +446,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.app.context.request(data['project_id']);return self.json(result)
                 if path=='/api/items':
                     item=self.app.store.create_item(data);self.app.context.request(item['project_id']);return self.json(item,201)
+                if path=='/api/clipboard/paste':return self.json(self.app.paste_clipboard(data),201)
                 if path=='/api/import':return self.json(self.app.jobs.submit(data.get('project_id'),data.get('category','references'),data.get('paths',[]),data.get('folder_id','')),202)
                 if path=='/api/rescan':return self.json(self.app.jobs.submit(data.get('project_id')),202)
                 if path=='/api/macos/desktop':

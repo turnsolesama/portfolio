@@ -18,8 +18,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.4.1.0")]
-[assembly: AssemblyFileVersion("0.4.1.0")]
+[assembly: AssemblyVersion("0.4.2.0")]
+[assembly: AssemblyFileVersion("0.4.2.0")]
 
 namespace YingXu.Desktop
 {
@@ -408,6 +408,18 @@ namespace YingXu.Desktop
             catch { return false; }
             object value; if (message == null || !message.TryGetValue("action",out value) || !(value is string)) return false;
             string action = (string)value;
+            if (action == "open-file")
+            {
+                object id;
+                if (message.Count != 2 || !message.TryGetValue("id",out id) || !(id is string)) return false;
+                BeginInvoke((Action)(() => OpenRegisteredFile((string)id)));return true;
+            }
+            if (action == "focus-folder")
+            {
+                object folder;
+                if (message.Count != 2 || !message.TryGetValue("path",out folder) || !(folder is string) || !Path.IsPathRooted((string)folder)) return false;
+                BeginInvoke((Action)(() => FocusFolder((string)folder))); return true;
+            }
             if (action == "desktop-ready") { pageReady = true; pageFailed = false; exitUnresponsive = false; ReloadSettings(); if(capture!=null)capture.Flush(); FlushSettings(); DrainFiles(); return true; }
             if (action == "capture-request" && message.Count==1) { BeginInvoke((Action)StartCapture); return true; }
             if (action == "capture-context") { if(capture!=null)capture.Receive(message); return true; }
@@ -431,6 +443,53 @@ namespace YingXu.Desktop
                 return true;
             }
             return false;
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window,out uint process);
+        [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr window);
+        [DllImport("user32.dll")] private static extern bool ShowWindowAsync(IntPtr window,int command);
+
+        private async void OpenRegisteredFile(string id)
+        {
+            try {
+                string path=await Task.Run(() => Hub.NativeFilePath(id));
+                if(IsDisposed || closing.IsCancellationRequested)return;
+                Process.Start(new ProcessStartInfo(path) { UseShellExecute=true,WindowStyle=ProcessWindowStyle.Normal,
+                    ErrorDialog=true,ErrorDialogParentHandle=Handle });
+            } catch(Exception error) { Notice("系统应用未能打开："+error.Message,true); }
+        }
+
+        private void FocusFolder(string folder)
+        {
+            string expected;
+            try { expected=Path.GetFullPath(folder).TrimEnd('\\'); } catch { return; }
+            int attempts=0;
+            var timer=new System.Windows.Forms.Timer { Interval=150 };
+            timer.Tick += delegate {
+                uint owner; GetWindowThreadProcessId(GetForegroundWindow(),out owner);
+                // Never repeatedly steal focus after the user switches to another application.
+                if(IsDisposed || closing.IsCancellationRequested || ++attempts>24 || owner!=(uint)Process.GetCurrentProcess().Id) { timer.Stop();timer.Dispose();return; }
+                object shell=null,windows=null;
+                try {
+                    shell=Activator.CreateInstance(Type.GetTypeFromProgID("Shell.Application"));
+                    windows=shell.GetType().InvokeMember("Windows",BindingFlags.InvokeMethod,null,shell,null);
+                    foreach(object window in (System.Collections.IEnumerable)windows) {
+                        try {
+                            string url=Convert.ToString(window.GetType().InvokeMember("LocationURL",BindingFlags.GetProperty,null,window,null));
+                            Uri uri;if(!Uri.TryCreate(url,UriKind.Absolute,out uri)||!uri.IsFile)continue;
+                            if(!String.Equals(Path.GetFullPath(uri.LocalPath).TrimEnd('\\'),expected,StringComparison.OrdinalIgnoreCase))continue;
+                            IntPtr handle=new IntPtr(Convert.ToInt64(window.GetType().InvokeMember("HWND",BindingFlags.GetProperty,null,window,null)));
+                            if(IsIconic(handle))ShowWindowAsync(handle,9);
+                            if(SetForegroundWindow(handle)) { timer.Stop();timer.Dispose();return; }
+                        } catch { } finally { if(Marshal.IsComObject(window))Marshal.ReleaseComObject(window); }
+                    }
+                } catch { } finally {
+                    if(windows!=null&&Marshal.IsComObject(windows))Marshal.ReleaseComObject(windows);
+                    if(shell!=null&&Marshal.IsComObject(shell))Marshal.ReleaseComObject(shell);
+                }
+            };
+            timer.Start();
         }
 
         private async Task InitializeAsync()
@@ -480,7 +539,7 @@ namespace YingXu.Desktop
                 core.Settings.IsPasswordAutosaveEnabled = false;
                 core.Settings.IsGeneralAutofillEnabled = false;
                 core.WebMessageReceived += ReceiveDragRequest;
-                await core.AddScriptToExecuteOnDocumentCreatedAsync("window.yingxuDesktopDrag = true;");
+                await core.AddScriptToExecuteOnDocumentCreatedAsync("window.yingxuDesktopDrag = true; window.yingxuDesktopFocus = true;");
                 core.NavigationStarting += delegate(object sender, CoreWebView2NavigationStartingEventArgs e)
                 {
                     if (Hub.IsLocalPage(e.Uri, Hub.Url)) { pageReady = false; return; }

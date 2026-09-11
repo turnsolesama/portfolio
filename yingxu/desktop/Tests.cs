@@ -70,7 +70,7 @@ namespace YingXu.Desktop
                 "Path('logs/console.txt').write_text(str(ctypes.windll.kernel32.GetConsoleWindow()))\n" +
                 "class Handler(BaseHTTPRequestHandler):\n" +
                 " def do_GET(self):\n" +
-                "  body=json.dumps(dict(app='yingxu',ok=True,version='0.4.1',instance_id=instance_id(default_data_root()))).encode()\n" +
+                "  body=json.dumps(dict(app='yingxu',ok=True,version='0.4.2',instance_id=instance_id(default_data_root()))).encode()\n" +
                 "  self.send_response(200);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)\n" +
                 " def log_message(self,*args): pass\n" +
                 "server=HTTPServer(('127.0.0.1',int(sys.argv[sys.argv.index('--port')+1])),Handler)\n" +
@@ -215,7 +215,7 @@ namespace YingXu.Desktop
                 Directory.CreateDirectory(Path.Combine(folder, "frontend"));
                 File.WriteAllText(Path.Combine(folder, "frontend", "index.html"), "");
                 Check(Hub.IsAppRoot(folder), "complete app folder recognized");
-                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.4.1\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", true);
+                HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.4.2\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", true);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.3.2\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true,\"version\":\"0.2.1\",\"instance_id\":\"" + Hub.InstanceId() + "\"}", false);
                 HealthResponse("{\"app\":\"yingxu\",\"ok\":true}", false);
