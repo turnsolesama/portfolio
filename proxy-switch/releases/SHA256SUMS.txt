@@ -1,3 +1,5 @@
+be60541668d157ccc94a0dd8a2527009c3bd0e9d97403a709c1ba6f2d35feca1  FlowSwitch-v3.7.1-Windows-x64.zip
+f76d4f3371bbf63cab9f89de7890d4019672fa0cd1e2dc5d46af50f812a60237  FlowSwitch-v3.7.1-Windows-Source.zip
 4daef8fe8e6a42ed9dbe4d32f4a4a17cf28c1bdc77ccbccac663f0cdfa2e2218  FlowSwitch-v3.7.0-Windows-Source.zip
 8d56bf4a96ca01264cb7f788dde98d7493e6de9f5e06de1c35d6c026fc1ae332  FlowSwitch-v3.7.0-Windows-x64.zip
 bb9063753c3c48bbbc3cf6ef143409a825e603533d5d90ec0686c40ca3017886  FlowSwitch-v3.6.0-Windows-x64.zip

@@ -105,15 +105,30 @@ async function claimLock(file){
  for(let i=0;i<3;i++){
   try{const fd=fs.openSync(file,'wx');try{fs.writeFileSync(fd,JSON.stringify(owner));}finally{fs.closeSync(fd);}return owner;}
   catch(e){if(e.code!=='EEXIST')throw e;
-   const prior=read(file);let old;try{old=JSON.parse(prior);}catch{throw Error('独立内核正在更新，请稍后重试');}
-   if(await lockOwnerAlive(old))throw Error('独立内核正在更新，请稍后重试');
-   if(read(file)===prior)fs.unlinkSync(file);
+   let prior;try{prior=read(file);}catch(e){if(['EACCES','EPERM','EBUSY'].includes(e.code))throw Error('独立内核正在更新，请稍后重试');throw e;}
+   if(prior===null)continue;
+   if(Buffer.byteLength(prior)>4096)throw Error('独立内核锁记录异常，请检查本机数据目录');
+   let old;try{old=JSON.parse(prior);}catch{}
+   if(old&&await lockOwnerAlive(old))throw Error('独立内核正在更新，请稍后重试');
+   // An exclusive OS file handle distinguishes an interrupted empty journal
+   // from a writer paused between create and write. Compare and claim under
+   // that same handle, so concurrent recoverers cannot unlink a new owner.
+   const request=Buffer.from(JSON.stringify({path:path.resolve(file),expected:prior,owner:JSON.stringify(owner)})).toString('base64');
+   const recovered=await new Promise((resolve,reject)=>execFile(systemPowerShell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'GatewayLock.ps1'),'-RequestBase64',request],{windowsHide:true,timeout:5000,maxBuffer:1024},(error,out)=>error?reject(Error('独立内核锁恢复未完成，请稍后重试')):resolve(out.trim())));
+   if(recovered==='acquired')return owner;
+   if(recovered!=='changed')throw Error('独立内核正在更新，请稍后重试');
   }
  }
  throw Error('操作锁不可用');
 }
-function releaseLock(file,owner){try{if(json(file,{}).token===owner.token)fs.unlinkSync(file);}catch{}}
-async function lock(action,name='mutation.lock'){fs.mkdirSync(ROOT,{recursive:true});const file=path.join(ROOT,name),owner=await claimLock(file);try{return await action();}finally{releaseLock(file,owner);}}
+async function releaseLock(file,owner){
+ // A recovering contender may briefly hold the old journal while comparing
+ // it with our new token. Wait for that handle; never leave our live PID locked.
+ const deadline=Date.now()+6000;
+ for(;;){try{if(json(file,{}).token===owner.token)fs.unlinkSync(file);return;}
+  catch(e){if(e.code==='ENOENT')return;if(!['EACCES','EPERM','EBUSY'].includes(e.code)||Date.now()>=deadline)throw e;await new Promise(r=>setTimeout(r,50));}}
+}
+async function lock(action,name='mutation.lock'){fs.mkdirSync(ROOT,{recursive:true});const file=path.join(ROOT,name),owner=await claimLock(file);try{return await action();}finally{await releaseLock(file,owner);}}
 async function replace(entries,defaultRoute,expectedStateHash,expectedSettingsHash){return lock(async()=>{
  const o=options(),old=state(),before=read(CONFIG),beforeState=read(STATE),settingsPath=path.join(DATA,'config.json'),beforeSettings=read(settingsPath),router=require('./AppRouter.cjs');
  router.assertExpectedStateHash(expectedStateHash,beforeState);
@@ -194,11 +209,16 @@ async function start(){return lock(async()=>{
  // A still-listening old child may already have a stop request. Do not report
  // that retiring process as a successfully restarted service.
  if(fs.existsSync(stopped)){
+  const retiringAlive=async()=>{
+   let owner;try{owner=json(singleton,{});}catch(e){if(!(e instanceof SyntaxError))throw e;}
+   if(!owner?.pid){const tracked=json(path.join(ROOT,'process.json'),{});owner={pid:tracked.supervisor,startTicks:tracked.supervisorStartTicks};}
+   return lockOwnerAlive(owner);
+  };
   const end=Date.now()+14000;
   while(fs.existsSync(singleton)&&Date.now()<end){
-   if(!await lockOwnerAlive(json(singleton,{})))break;await new Promise(r=>setTimeout(r,100));
+   if(!await retiringAlive())break;await new Promise(r=>setTimeout(r,100));
   }
-  if(fs.existsSync(singleton)&&await lockOwnerAlive(json(singleton,{})))throw Error('上一次代理服务尚未停止，请稍后重试');
+  if(fs.existsSync(singleton)&&await retiringAlive())throw Error('上一次代理服务尚未停止，请稍后重试');
  }
  try{const live=await status(),life=json(LIFECYCLE,{}),owned=json(path.join(ROOT,'process.json'),{});
   if(!fs.existsSync(stopped)&&live.available&&life.phase==='ready'&&life.supervisor===owned.supervisor&&owned.supervisorStartTicks&&await processStartTicks(owned.supervisor)===owned.supervisorStartTicks)return {ok:true};
@@ -285,7 +305,7 @@ async function serve(){fs.mkdirSync(ROOT,{recursive:true});const singleton=path.
  finally{
   if(child&&!exited){child.kill();await Promise.race([new Promise(r=>child.once('exit',r)),new Promise(r=>setTimeout(r,2000))]);}
   clearInterval(heartbeat);if(stopped())setPhase('stopped','requested-stop');else if(life.phase!=='failed')setPhase('failed','supervisor-ended');
-  lifecycleEvent('supervisor-stop',{reason:life.reason});releaseLock(singleton,ownership);
+  lifecycleEvent('supervisor-stop',{reason:life.reason});await releaseLock(singleton,ownership);
  }
 }
 async function reconnectPlan(executable){const o=options(),s=state();executable=require('./AppRouter.cjs').normalizeEntry(executable,'Follow',o).path;

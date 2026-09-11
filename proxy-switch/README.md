@@ -1,12 +1,14 @@
 ![流向 FlowSwitch](../docs/assets/flowswitch.svg)
 
-# 流向 FlowSwitch 3.7.0
+# 流向 FlowSwitch 3.7.1
 
 管理已有 HTTP / SOCKS5 代理，让程序通过固定入口选择出口。独立模式自带运行组件，代理失效后按备用顺序接替。关闭窗口默认驻留系统托盘，内核异常退出后有限重启；停止服务时先恢复仍归属本会话的网络设置。
 
 [返回工具集](../) · [功能与设计](DESIGN.md) · [更新记录](CHANGELOG.md) · [功能验收约定](ACCEPTANCE.md)
 
-**[下载 Windows x64 程序包 · 3.7.0 · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.0-Windows-x64.zip)** · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.0-Windows-Source.zip) · [下载与校验](releases/README.md)
+**3.7.1 修复：**意外中断留下空锁或截断锁时，可安全恢复自动接替与入口启动；不会接管仍在写入的活跃锁，并核对并发恢复的进程身份。
+
+**[下载 Windows x64 程序包 · 3.7.1 · 68.1 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-x64.zip)** · [源码包](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-Source.zip) · [下载与校验](releases/README.md)
 
 ## 快速开始
 
@@ -63,7 +65,7 @@ Windows 10 1809+ / Windows 11 x64，保留系统自带的 Windows PowerShell 5.1
 
 从托盘选择「停止代理服务并退出」后，先恢复仍归属本会话的系统代理和用户代理变量，再关闭自有内核；备份中的本地代理已失效时恢复直连。内核异常退出先有限恢复，耗尽后由守护进程恢复设置；界面崩溃与断电残留继续走安全恢复。其他程序后来的网络设置会保留。
 
-恢复直连不能使本来需要代理的网站变为可直连；已缓存旧代理地址的应用可能需要重开。更新前停止并正常退出 FlowSwitch（3.7.0 使用托盘菜单，旧版无托盘时正常关闭主界面），再解压新包；本机数据保存在 `%USERPROFILE%\.proxyswitch`，不随安装包覆盖。新电脑应配置自己的入口，不复制其他电脑的个人配置、内核路径、订阅或账户。
+恢复直连不能使本来需要代理的网站变为可直连；已缓存旧代理地址的应用可能需要重开。更新前停止并正常退出 FlowSwitch（3.7.1 使用托盘菜单，旧版无托盘时正常关闭主界面），再解压新包；本机数据保存在 `%USERPROFILE%\.proxyswitch`，不随安装包覆盖。新电脑应配置自己的入口，不复制其他电脑的个人配置、内核路径、订阅或账户。
 
 ## 验证与构建
 

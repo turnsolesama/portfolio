@@ -15,4 +15,6 @@ if($LASTEXITCODE -ne 0){throw 'Node syntax check failed'}
 if($LASTEXITCODE -ne 0){throw 'Routing tests failed'}
 & node (Join-Path $PSScriptRoot 'Test-IndependentRouter.cjs')
 if($LASTEXITCODE -ne 0){throw 'Independent gateway tests failed'}
+& node (Join-Path $PSScriptRoot 'Test-GatewayLock.cjs')
+if($LASTEXITCODE -ne 0){throw 'Windows lock recovery tests failed'}
 Write-Output 'PASS: all static and unit checks completed.'

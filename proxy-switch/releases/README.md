@@ -1,4 +1,19 @@
-# 流向 FlowSwitch 3.7.0 · 下载与校验
+# 流向 FlowSwitch 3.7.1 · 下载与校验
+
+修复异常中断留下空锁或截断锁导致自动接替与重新启动被持续阻塞；恢复前核对文件占用及进程身份，保留活跃持有者。
+
+| 文件 | 大小 | SHA-256 |
+| --- | --- | --- |
+| [FlowSwitch-v3.7.1-Windows-x64.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-x64.zip) | 71,473,709 字节 | `be60541668d157ccc94a0dd8a2527009c3bd0e9d97403a709c1ba6f2d35feca1` |
+| [FlowSwitch-v3.7.1-Windows-Source.zip](https://raw.githubusercontent.com/turnsolesama/portfolio/main/proxy-switch/releases/FlowSwitch-v3.7.1-Windows-Source.zip) | 1,823,910 字节 | `f76d4f3371bbf63cab9f89de7890d4019672fa0cd1e2dc5d46af50f812a60237` |
+
+Windows 包 39 文件 / 38 项清单，源码包 84 文件 / 83 项清单；ZIP CRC、逐文件校验与单应用根目录通过。
+
+[使用与升级说明](../README.md) · [验收记录](../TEST_REPORT.md) · [SHA256SUMS.txt](SHA256SUMS.txt)
+
+以下保留历史版本。
+
+## 流向 FlowSwitch 3.7.0 · 下载与校验
 
 改进程序升级识别、旧记录修复与连接证据，修复生命周期和配置竞争；保留托盘、独立入口及备用接替。
 

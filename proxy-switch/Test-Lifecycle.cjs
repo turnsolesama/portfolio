@@ -26,10 +26,14 @@ async function main(){
  const firstSupervisor=get('process.json').supervisor;
  await r.main({action:'stop'});await r.start();await delay(2500);
  check((await r.status()).available&&get('process.json').supervisor!==firstSupervisor,'immediate start waits for pending stop and creates a new supervised entry');
+ await stop();fs.writeFileSync(path.join(r.ROOT,'supervisor.lock'),'');
+ await r.start();check(await request(port,url)==='A','abandoned empty supervisor journal does not block startup');
  fs.writeFileSync(path.join(r.ROOT,'mutation.lock'),JSON.stringify({pid:process.pid,startTicks:'1',token:'abandoned-update-fixture'}));
+ await r.replace([],'a');check(!fs.existsSync(path.join(r.ROOT,'mutation.lock')),'rule update recovers a stale valid owner');
+ fs.writeFileSync(path.join(r.ROOT,'mutation.lock'),'');
  for(const c of sockets)c.destroy();await new Promise(done=>a.close(done));
  await until(async()=>await request(port,url)==='B','upstream outage switches to B');
- await until(()=>!fs.existsSync(path.join(r.ROOT,'mutation.lock')),'automatic failover reclaims an abandoned rule mutation lock');
+ await until(()=>!fs.existsSync(path.join(r.ROOT,'mutation.lock')),'automatic failover reclaims an abandoned empty rule mutation lock');
  await until(()=>get('health.json').policies.a?.current==='b','backup is journaled');
  const supervisor=get('process.json').supervisor;
  for(let attempt=1;attempt<=3;attempt++){
@@ -39,6 +43,7 @@ async function main(){
   check(await request(port,url)==='B','cached entry reconnects through retained B '+attempt);
  }
  const stateBefore=fs.readFileSync(path.join(data,'app-rules.json'),'utf8').replace(/^\uFEFF/,'');
+ fs.writeFileSync(path.join(r.ROOT,'mutation.lock'),'{"pid":');
  const digest=text=>require('node:crypto').createHash('sha256').update(text).digest('hex');
  const replaced=await r.main({action:'replace',entries:[{path:'C:\\FlowSwitch-Unrelated-Test.exe',route:'Direct'}],defaultRoute:'a',expectedStateHash:digest(stateBefore)});check(await request(port,url)==='B','unrelated rule reload retains active backup');
  check(replaced.stateHash===digest(fs.readFileSync(path.join(data,'app-rules.json'),'utf8').replace(/^\uFEFF/,'')),'successful independent repair returns the exact state hash for guarded compensation');

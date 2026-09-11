@@ -1,4 +1,4 @@
-﻿流向 FlowSwitch 3.7.0
+﻿流向 FlowSwitch 3.7.1
 
 完整解压并保留 app，双击 FlowSwitch.exe。运行组件已经随包提供。
 

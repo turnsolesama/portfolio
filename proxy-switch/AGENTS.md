@@ -81,3 +81,5 @@
 - RuleMaintenance 计划必须在应用前复核身份、记录快照和快捷方式归属；引擎 replace 的 expectedStateHash 在内部锁中比较 UTF8 无 BOM 文件文本 SHA256，缺失使用 <missing>；成功返回自己写入的 stateHash。身份元数据不参与线路指纹，不能使备用出口回跳。
 - 生命周期停止 / 重启使用绝对就绪期限；旧 supervisor 停止中不复用旧 child。孤儿内核清理核对精确 OS 创建 ticks 并持有进程句柄。watchdog 用 ExpectedSession 在锁内校验会话，恢复环境变量前重新实读归属。
 - 新单元测试：Test-ProgramIdentity.ps1、Test-ApplicationObservation.ps1、Test-RuleMaintenance.ps1，均纳入 Test-All；真实控件测试：powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File .\Test-ObservationUI.ps1。完整功能范围见 ACCEPTANCE.md，已执行验证见 TEST_REPORT.md。
+
+- 3.7.1 损坏锁只在 GatewayLock.ps1 持有禁止写入和删除的文件句柄期间核对并接管；不得按时间戳直接删除，也不得终止锁持有进程。锁释放需等待竞争恢复句柄。Test-GatewayLock.cjs 纳入 Test-All，覆盖活跃空锁及八进程恢复竞争；Test-Lifecycle 验证空锁下真实自动接替。
