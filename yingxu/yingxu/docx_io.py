@@ -1,13 +1,16 @@
 """Conservative DOCX text preview/editing with no dependency or disk writes.
 
 Only direct, ordinary body paragraphs can be edited. Changed paragraphs retain
-their paragraph properties and first run properties. All other XML bytes and all
+their paragraph properties and existing run properties. All other XML bytes and all
 other ZIP member payloads are preserved. This is not a Word layout editor.
 """
 
 from __future__ import annotations
 
 import copy
+import base64
+import posixpath
+from urllib.parse import unquote
 from contextlib import nullcontext
 import io
 import re
@@ -34,7 +37,7 @@ WORD_NAMESPACES = {
 }
 NOTICE = (
     "此处是 Word 文本预览和普通段落编辑，不是完整排版编辑器。"
-    "保存时保留段落样式和首个文字片段的字体，修改段落内的混合字体、颜色等会简化；"
+    "保存时保留段落样式和混合字体，新增文字沿用改动位置的字体；"
     "未修改段落保持原样。表格、超链接、域、图片、修订等复杂内容只读，"
     "页眉页脚、批注和分页版式请用 Word 等系统应用查看。"
 )
@@ -288,17 +291,220 @@ def _open_path(path):
     return path.open("rb")
 
 
-def read_docx(path, handle=None):
+def _value(node, name="val", default=""):
+    if node is None:
+        return default
+    return next((node.attrs.get(f"{ns}}}{name}") for ns in WORD_NAMESPACES
+                 if f"{ns}}}{name}" in node.attrs), default)
+
+
+def _child(node, name):
+    return next((child for child in node.children if _word(child, name)), None) if node else None
+
+
+def _formatting(properties):
+    result = {}
+    if properties is None:
+        return result
+    for name, key in (("b", "bold"), ("i", "italic"), ("u", "underline")):
+        entry = _child(properties, name)
+        if entry is not None:
+            result[key] = _value(entry, default="true") not in {"0", "false", "off", "none"}
+    color = _value(_child(properties, "color"))
+    if re.fullmatch(r"[0-9a-fA-F]{6}", color):
+        result["color"] = "#" + color
+    size = _value(_child(properties, "sz"))
+    if size.isdigit() and 8 <= int(size) <= 144:
+        result["font_size"] = int(size) / 2
+    return result
+
+
+def _preview(package, root):
+    """A bounded semantic preview; never resolve external images or XML links."""
+    styles = {}
+    if "word/styles.xml" in package.namelist():
+        style_root, _ = _parse_xml(package.read("word/styles.xml"), tree=True)
+        for node in style_root.children:
+            if _word(node, "style"):
+                styles[_value(node, "styleId")] = node
+    relationships = {}
+    relation_path = "word/_rels/document.xml.rels"
+    if relation_path in package.namelist():
+        relation_root, _ = _parse_xml(package.read(relation_path), tree=True)
+        for node in relation_root.children:
+            relationships[node.attrs.get("Id", "")] = node.attrs
+    image_cache = {}
+    image_bytes = 0
+    output_image_bytes = 0
+    image_count = 0
+
+    def image_preview(drawing):
+        nonlocal image_bytes, output_image_bytes, image_count
+        alt = next((n.attrs.get("descr") or n.attrs.get("title") or ""
+                    for n in _walk(drawing) if n.tag.endswith("}docPr")), "")[:500]
+        unavailable = {"alt": alt or "Word 图片", "reason": "此图片格式暂不能预览，请用 Word 查看。"}
+        if image_count >= 32:
+            return {**unavailable, "reason": "图片超过预览数量限制，请用 Word 查看。"}
+        image_count += 1
+        blip = next((n for n in _walk(drawing) if n.tag.endswith("}blip")), None)
+        if blip is None:
+            return unavailable
+        relationship_id = next((v for k, v in blip.attrs.items() if k.endswith("}embed")), None)
+        relation = relationships.get(relationship_id, {})
+        if not relation or relation.get("TargetMode", "").lower() == "external":
+            return {**unavailable, "reason": "外部链接图片未加载。"}
+        target = unquote(relation.get("Target", ""))
+        if (not relation.get("Type", "").endswith("/image") or "\\" in target
+                or ":" in target or "?" in target or "#" in target):
+            return unavailable
+        path = posixpath.normpath(target.lstrip("/") if target.startswith("/")
+                                  else posixpath.join("word", target))
+        if not path.startswith("word/media/") or path not in package.namelist():
+            return unavailable
+        info = package.getinfo(path)
+        if info.file_size > 4 * 1024 * 1024 or image_bytes + info.file_size > 8 * 1024 * 1024:
+            return {**unavailable, "reason": "图片超过预览数量或体积限制，请用 Word 查看。"}
+        image_bytes += info.file_size
+        if path in image_cache:
+            value, size = image_cache[path]
+            if output_image_bytes + size > 8 * 1024 * 1024:
+                return {**unavailable, "reason": "图片超过预览体积限制，请用 Word 查看。"}
+            output_image_bytes += size
+            return {**value, "alt": alt or "Word 图片"}
+        try:
+            from PIL import Image, ImageOps
+        except ImportError:
+            return {**unavailable, "reason": "图片预览组件不可用，请用 Word 查看。"}
+        try:
+            data = package.read(info)
+            with Image.open(io.BytesIO(data)) as picture:
+                width, height = picture.size
+                mime = {"PNG": "png", "JPEG": "jpeg", "GIF": "gif", "WEBP": "webp"}.get(picture.format)
+                if not mime or width * height > 40_000_000 or width < 1 or height < 1:
+                    return unavailable
+                picture.verify()
+            # Display a small static copy. Keep all original package members intact.
+            # No animation or full-resolution photo remains active in the WebView.
+            with Image.open(io.BytesIO(data)) as picture:
+                animated = getattr(picture, "is_animated", False)
+                picture.seek(0)
+                transparent = "A" in picture.getbands() or "transparency" in picture.info
+                picture.draft("RGB", (1600, 1600))
+                picture.thumbnail((1600, 1600), Image.Resampling.LANCZOS, reducing_gap=3)
+                with ImageOps.exif_transpose(picture) as oriented:
+                    with oriented.convert("RGBA" if transparent else "RGB") as preview:
+                        image_output = io.BytesIO()
+                        preview.save(image_output, format="PNG" if transparent else "JPEG", quality=85)
+                        shown_width, shown_height = preview.size
+            thumbnail = image_output.getvalue()
+            size = len(thumbnail)
+            if size > 4 * 1024 * 1024 or output_image_bytes + size > 8 * 1024 * 1024:
+                return {**unavailable, "reason": "图片超过预览体积限制，请用 Word 查看。"}
+            output_image_bytes += size
+            mime = "png" if transparent else "jpeg"
+            value = {"src": f"data:image/{mime};base64," + base64.b64encode(thumbnail).decode("ascii"),
+                     "width": shown_width, "height": shown_height,
+                     "source_width": width, "source_height": height,
+                     "note": "动画仅预览首帧，原文件保留完整动画。" if animated else ""}
+            image_cache[path] = (value, size)
+            return {**value, "alt": alt or "Word 图片"}
+        except (Image.DecompressionBombError, ValueError, OSError, SyntaxError):
+            return unavailable
+
+    paragraphs = []
+    ids = {}
+    for identifier, node in _paragraphs(root):
+        ids[id(node)] = identifier
+        properties = _child(node, "pPr")
+        chain = []
+        style_id = _value(_child(properties, "pStyle"))
+        seen = set()
+        while style_id in styles and style_id not in seen and len(chain) < 16:
+            seen.add(style_id)
+            chain.insert(0, styles[style_id])
+            style_id = _value(_child(styles[style_id], "basedOn"))
+        paragraph_properties = [_child(style, "pPr") for style in chain] + [properties]
+        heading, alignment, default_run = 0, "left", {}
+        for style in chain:
+            style_name = _value(_child(style, "name"))
+            match = re.fullmatch(r"(?:heading\s*|标题\s*)([1-6])", style_name, re.IGNORECASE)
+            if match:
+                heading = int(match.group(1))
+            default_run.update(_formatting(_child(style, "rPr")))
+        for properties_entry in paragraph_properties:
+            level = _value(_child(properties_entry, "outlineLvl"))
+            if level.isdigit():
+                heading = int(level) + 1 if 0 <= int(level) <= 5 else 0
+            align = _value(_child(properties_entry, "jc"))
+            if align in {"left", "start", "center", "right", "end", "both", "distribute"}:
+                alignment = {"start": "left", "end": "right", "both": "justify", "distribute": "justify"}.get(align, align)
+        runs = []
+        images = []
+        for entry in _walk(node):
+            # Text-box paragraphs have their own descriptor; don't repeat them here.
+            parent = entry.parent
+            nested = False
+            while parent is not None and parent is not node:
+                if _word(parent, "p"):
+                    nested = True
+                    break
+                parent = parent.parent
+            if nested:
+                continue
+            if _word(entry, "r"):
+                runs.append({"text": _paragraph_text(entry), **default_run, **_formatting(_child(entry, "rPr"))})
+            elif _word(entry, "drawing") or _word(entry, "pict"):
+                images.append(image_preview(entry))
+        editable = _editable(node)
+        paragraphs.append({"id": identifier, "text": _paragraph_text(node), "editable": editable,
+                           "heading_level": heading, "alignment": alignment, "runs": runs, "images": images,
+                           "readonly_reason": "" if editable else "表格、图片、链接或其他复杂段落保留原样，请用 Word 编辑。"})
+
+    def blocks(parent):
+        result = []
+        for node in parent.children:
+            if _word(node, "p"):
+                result.append({"kind": "paragraph", "id": ids[id(node)]})
+            elif _word(node, "tbl"):
+                rows = []
+                for row in node.children:
+                    if not _word(row, "tr"):
+                        continue
+                    cells = []
+                    for cell in row.children:
+                        if not _word(cell, "tc"):
+                            continue
+                        prop = _child(cell, "tcPr")
+                        span = _value(_child(prop, "gridSpan"), default="1")
+                        merge = _child(prop, "vMerge")
+                        cells.append({"colspan": min(100, max(1, int(span))) if span.isdigit() else 1,
+                                      "vmerge": _value(merge, default="continue") if merge is not None else "",
+                                      "blocks": blocks(cell)})
+                    rows.append(cells)
+                result.append({"kind": "table", "rows": rows})
+            elif _word(node, "altChunk"):
+                result.append({"kind": "unsupported", "text": "此处含外部导入内容，请用 Word 查看。"})
+            elif not any(_word(node, tag) for tag in ("pPr", "rPr", "sectPr", "tblPr", "tblGrid", "trPr", "tcPr")):
+                result.extend(blocks(node))
+        return result
+
+    body = _child(root, "body")
+    return paragraphs, blocks(body)
+
+
+def read_docx(path, handle=None, *, structured=True):
     """Return plain text and conservative editable paragraph descriptors."""
     try:
         with (nullcontext(handle) if handle is not None else _open_path(path)) as handle:
             package, _data, root, _enc = _validated_package(handle)
             with package:
-                paragraphs = [
-                    {"id": identifier, "text": _paragraph_text(node), "editable": _editable(node)}
-                    for identifier, node in _paragraphs(root)
-                ]
-                return {"paragraphs": paragraphs, "content": "\n".join(p["text"] for p in paragraphs), "notice": NOTICE}
+                if not structured:
+                    paragraphs = [{"id": identifier, "text": _paragraph_text(node), "editable": _editable(node)}
+                                  for identifier, node in _paragraphs(root)]
+                    return {"paragraphs": paragraphs, "content": "\n".join(p["text"] for p in paragraphs), "notice": NOTICE}
+                paragraphs, blocks = _preview(package, root)
+                return {"paragraphs": paragraphs, "blocks": blocks,
+                        "content": "\n".join(p["text"] for p in paragraphs), "notice": NOTICE}
     except (zipfile.BadZipFile, RuntimeError, UnicodeError, OSError) as exc:
         raise DocxError("Word 文件无法读取，可能损坏、被加密或正在被占用。") from exc
 
@@ -311,7 +517,7 @@ def _opening(data, node, encoding):
     return opening, name
 
 
-def _render_paragraph(data, node, text, encoding):
+def _render_new_paragraph(data, node, text, encoding):
     opening, name = _opening(data, node, encoding)
     prefix = name.rsplit(":", 1)[0] + ":" if ":" in name else ""
     properties = next((child for child in node.children if _word(child, "pPr")), None)
@@ -342,7 +548,68 @@ def _render_paragraph(data, node, text, encoding):
     return b"".join(pieces)
 
 
-def edit_docx(path, edits):
+def _render_run(data, run, text, encoding):
+    opening, name = _opening(data, run, encoding)
+    prefix = name.rsplit(":", 1)[0] + ":" if ":" in name else ""
+    pieces = [opening.encode(encoding)]
+    properties = _child(run, "rPr")
+    if properties:
+        pieces.append(data[properties.start:properties.end])
+    for part in re.split(r"([\n\t])", text):
+        if part == "\n":
+            value = f"<{prefix}br/>"
+        elif part == "\t":
+            value = f"<{prefix}tab/>"
+        else:
+            value = f'<{prefix}t xml:space="preserve">{escape(part)}</{prefix}t>'
+        pieces.append(value.encode(encoding))
+    pieces.append(f"</{name}>".encode(encoding))
+    return b"".join(pieces)
+
+
+def _render_paragraph(data, node, text, encoding):
+    """Keep all run formatting, assigning inserted text to its edit position.
+
+    Use a linear common-prefix/suffix replacement, not an unbounded text diff.
+    Runs outside the changed range retain their original XML bytes exactly.
+    """
+    runs = [child for child in node.children if _word(child, "r")]
+    if not runs:
+        return _render_new_paragraph(data, node, text, encoding)
+    original = _paragraph_text(node)
+    prefix = 0
+    while prefix < min(len(original), len(text)) and original[prefix] == text[prefix]:
+        prefix += 1
+    suffix = 0
+    while (suffix < min(len(original) - prefix, len(text) - prefix)
+           and original[len(original) - suffix - 1] == text[len(text) - suffix - 1]):
+        suffix += 1
+    end = len(original) - suffix
+    inserted = text[prefix:len(text) - suffix if suffix else len(text)]
+    offset = 0
+    anchor = None
+    updates = []
+    for index, run in enumerate(runs):
+        before = _paragraph_text(run)
+        stop = offset + len(before)
+        # At a run boundary, typing continues the preceding run's formatting.
+        if anchor is None and (stop > prefix or (stop == prefix and prefix == end) or index == len(runs) - 1):
+            anchor = index
+        left = before[:max(0, min(len(before), prefix - offset))]
+        right = before[max(0, min(len(before), end - offset)):]
+        after = left + (inserted if anchor == index else "") + right
+        if before != after:
+            updates.append((run.start, run.end, _render_run(data, run, after, encoding)))
+        offset = stop
+    pieces, cursor = [], node.start
+    for start, stop, value in updates:
+        pieces.extend((data[cursor:start], value))
+        cursor = stop
+    pieces.append(data[cursor:node.end])
+    return b"".join(pieces)
+
+
+def edit_docx(path, edits, handle=None):
     """Return a new DOCX byte string; callers must manage backup/etag/atomic save.
 
     Paragraph IDs are valid only for the corresponding read/etag. Unknown IDs,
@@ -351,7 +618,7 @@ def edit_docx(path, edits):
     if not isinstance(edits, list):
         raise DocxError("Word 段落修改必须是列表。")
     try:
-        with _open_path(path) as handle:
+        with (nullcontext(handle) if handle is not None else _open_path(path)) as handle:
             package, data, root, encoding = _validated_package(handle)
             with package:
                 paragraphs = dict(_paragraphs(root))

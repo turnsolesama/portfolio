@@ -55,12 +55,13 @@ class SettingsExternalTests(unittest.TestCase):
         self.settings.path.write_text('{}',encoding='utf-8'); os.link(self.settings.path,self.root/'linked-settings.json')
         with self.assertRaises(UserError): self.settings.get()
 
-    def test_external_text_is_read_only_and_has_no_persistence_or_copies(self):
+    def test_external_text_is_editable_and_opening_has_no_persistence_or_copies(self):
         path=self.file('外部正文.md','测试原文'.encode()); original=path.read_bytes()
         entry=self.external.open({'paths':[str(path),str(path)]})['entries'][0]
         detail=self.external.detail(entry['id'])
         self.assertEqual(detail['content']['content'],'测试原文')
-        self.assertFalse(detail['content']['editable']); self.assertTrue(detail['external'])
+        self.assertTrue(detail['content']['editable']); self.assertTrue(detail['external'])
+        self.assertTrue(detail['editable']); self.assertEqual(len(detail['content']['etag']),64)
         self.assertEqual(path.read_bytes(),original); self.assertEqual(list(self.data.iterdir()),[])
         with self.assertRaises(UserError): ExternalPreviews(self.data).detail(entry['id'])
 
@@ -100,7 +101,7 @@ class SettingsExternalTests(unittest.TestCase):
         with patch.object(Path,'open',race),self.assertRaises(UserError):
             with self.external.open_media(entry['id']): self.fail('shared file must not be served')
 
-    def test_docx_paragraphs_are_forced_read_only(self):
+    def test_docx_simple_paragraphs_are_editable_with_etag(self):
         path=self.root/'test.docx'
         with zipfile.ZipFile(path,'w') as package:
             package.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
@@ -109,8 +110,9 @@ class SettingsExternalTests(unittest.TestCase):
         with patch('yingxu.docx_io._open_path',side_effect=AssertionError('must use verified open handle')):
             detail=self.external.detail(entry['id'])
         self.assertIn('Synthetic Word',detail['content']['content'])
-        self.assertFalse(detail['content']['editable'])
-        self.assertTrue(all(not paragraph['editable'] for paragraph in detail['content']['paragraphs']))
+        self.assertTrue(detail['content']['editable'])
+        self.assertTrue(all(paragraph['editable'] for paragraph in detail['content']['paragraphs']))
+        self.assertEqual(len(detail['content']['etag']),64)
 
     def test_large_text_is_bounded_and_binary_media_does_not_read_body_for_metadata(self):
         path=self.file('huge.txt',b'x'*(2*1024*1024+1)); entry=self.external.open({'paths':[str(path)]})['entries'][0]

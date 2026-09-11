@@ -1,18 +1,25 @@
-"""Session-only, read-only previews of explicitly opened files. No project writes."""
+"""Session-scoped access to explicitly opened files, without importing projects."""
 from __future__ import annotations
 
 import os
+import hashlib
+import io
+import json
+import stat as stat_module
 from contextlib import contextmanager
 from pathlib import Path
 import threading
 import time
 
-from .store import KINDS, TEXT_LIMIT, UserError, clean_path, decode_text, uid
+from .store import KINDS, TEXT_LIMIT, UserError, clean_path, decode_text, has_link, uid
 
 PREVIEW_KINDS = frozenset(('markdown','text','docx','pdf','image','video','audio'))
 MAX_OPEN = 200
 MAX_SESSION = 256
 TTL = 24 * 60 * 60
+WORD_LIMIT = 32 * 1024 * 1024
+EDIT_KINDS = frozenset(('markdown', 'text', 'docx'))
+EDIT_NOTICE = '直接编辑原文件；保存前备份，外部修改会触发冲突保护。未加入项目。'
 
 
 class ExternalPreviews:
@@ -42,7 +49,7 @@ class ExternalPreviews:
         return {'id':iid,'name':path.stem,'filename':path.name,'kind':KINDS[path.suffix.lower()],
                 'ext':path.suffix.lower(),'path':str(path),'size':stat.st_size,'mtime':stat.st_mtime_ns,
                 'editable':False,'external':True,'media_url':'/api/external-media/'+iid,
-                'content_url':'/api/external/'+iid,'notice':'外部文件只读预览；未加入项目，也未复制原文件。'}
+                'content_url':'/api/external/'+iid,'notice':'本地文件未加入项目，也未复制原文件；支持的文稿可编辑保存。'}
 
     def open(self,data):
         if not isinstance(data,dict) or set(data) != {'paths'}:
@@ -58,10 +65,19 @@ class ExternalPreviews:
         with self.lock:
             current=time.monotonic()
             self.entries={key:value for key,value in self.entries.items() if value['expires']>current}
-            while len(self.entries)+len(paths)>MAX_SESSION: self.entries.pop(next(iter(self.entries)))
             result=[]
             for path in paths:
-                stat=path.stat(); iid=uid()
+                stat=path.stat()
+                existing = next((entry for entry in self.entries.values()
+                    if os.path.normcase(entry['path']) == os.path.normcase(str(path))
+                    and entry['identity'] == (stat.st_dev, stat.st_ino)), None)
+                if existing:
+                    existing['expires'] = current + TTL
+                    result.append(self._metadata(existing, path))
+                    continue
+                while len(self.entries) >= MAX_SESSION:
+                    self.entries.pop(next(iter(self.entries)))
+                iid=uid()
                 entry={'id':iid,'path':str(path),'identity':(stat.st_dev,stat.st_ino),'expires':current+TTL}
                 result.append(self._metadata(entry,path)); self.entries[iid]=entry
             return {'entries':result}
@@ -82,26 +98,141 @@ class ExternalPreviews:
             path=self.resolve(iid); result=self._metadata(self.entries[iid],path)
         kind=result['kind']
         content={'format':kind,'content':'','editable':False,'notice':result['notice']}
+        if kind in EDIT_KINDS:
+            with self.lock:
+                raw = self._read(iid, WORD_LIMIT if kind == 'docx' else TEXT_LIMIT)
+            writable = bool(path.stat().st_mode & stat_module.S_IWRITE)
+            content.update(etag=hashlib.sha256(raw).hexdigest(), editable=writable,
+                           notice=EDIT_NOTICE if writable else '文件为只读，请先修改文件权限或使用系统应用另存副本。')
         if kind in ('markdown','text'):
-            if path.stat().st_size>TEXT_LIMIT:
-                raise UserError('文本超过 2 MiB，请使用系统编辑器打开。',413)
-            # Read at most the preview limit even if another app grows the file.
-            with self.open_media(iid) as handle: raw=handle.read(TEXT_LIMIT+1)
-            if len(raw)>TEXT_LIMIT: raise UserError('文本超过预览大小限制。',413)
-            text,encoding=decode_text(raw); content.update(content=text,encoding=encoding)
+            text,encoding=decode_text(raw)
+            content.update(content=text,encoding=encoding)
         elif kind=='docx':
-            if path.stat().st_size>32*1024*1024:
-                raise UserError('Word 文件超过 32 MiB，请使用系统应用打开。',413)
             from .docx_io import read_docx
             try:
-                with self.open_media(iid) as handle: preview=read_docx(path,handle=handle)
+                preview=read_docx(path,handle=io.BytesIO(raw))
             except ValueError as error: raise UserError(str(error)) from error
             content.update(preview)
-            content['paragraphs']=[{**paragraph,'editable':False} for paragraph in preview['paragraphs']]
-            content['notice']=result['notice']+' '+preview.get('notice','')
+            content['paragraphs']=[{**paragraph,'editable':writable and paragraph['editable']} for paragraph in preview['paragraphs']]
+            content['editable']=any(paragraph['editable'] for paragraph in content['paragraphs'])
+            content['notice']=(EDIT_NOTICE if writable else '文件为只读。')+' '+preview.get('notice','')
         self.resolve(iid)  # Recheck identity and links after reading, before returning text.
         result['content']=content
+        result['editable']=content['editable']
+        result['notice']=content['notice']
         return result
+
+    def _read(self, iid, limit):
+        """Bounded bytes from the capability's verified file handle."""
+        with self.open_media(iid) as handle:
+            if os.fstat(handle.fileno()).st_size > limit:
+                raise UserError('文件超过编辑大小限制，请使用系统应用打开。', 413)
+            raw = handle.read(limit + 1)
+        if len(raw) > limit:
+            raise UserError('文件超过编辑大小限制，请使用系统应用打开。', 413)
+        self.resolve(iid)
+        return raw
+
+    @staticmethod
+    def _text_bytes(before, content):
+        if not isinstance(content, str):
+            raise UserError('文稿内容必须是文本。')
+        text, encoding = decode_text(before)
+        if encoding == 'utf-8-sig' and not before.startswith(b'\xef\xbb\xbf'):
+            encoding = 'utf-8'
+        if encoding == 'utf-16':
+            encoding = 'utf-16-le' if before.startswith(b'\xff\xfe') else 'utf-16-be'
+        # The editor may produce LF. Preserve a uniform original line ending;
+        # mixed-ending source mode supplies its exact draft without normalization.
+        crlf = text.count('\r\n'); lf = text.count('\n') - crlf; cr = text.count('\r') - crlf
+        if sum(bool(count) for count in (crlf, lf, cr)) == 1:
+            ending = '\r\n' if crlf else '\r' if cr else '\n'
+            content = content.replace('\r\n', '\n').replace('\r', '\n').replace('\n', ending)
+        try:
+            if len(content.encode('utf-8')) > TEXT_LIMIT:
+                raise UserError('文稿最多 2 MiB。', 413)
+            after = content.encode(encoding)
+            if encoding in ('utf-16-le', 'utf-16-be'):
+                after = before[:2] + after
+        except UnicodeError as error:
+            raise UserError('新文字无法使用原文件编码保存，请先用系统编辑器另存为 UTF-8。') from error
+        if len(after) > TEXT_LIMIT:
+            raise UserError('文稿最多 2 MiB。', 413)
+        return after
+
+    def save(self, iid, data):
+        """Save only the explicit capability, with etag, backup and atomic replace.
+
+        HTTP callers must require the existing session token and same origin.
+        No arbitrary path is accepted by this method. No project index is changed.
+        """
+        with self.lock:
+            path = self.resolve(iid)
+            kind = KINDS[path.suffix.lower()]
+            field = 'paragraphs' if kind == 'docx' else 'content'
+            if kind not in EDIT_KINDS:
+                raise UserError('此文件类型只能预览。', 415)
+            if not isinstance(data, dict) or set(data) != {'etag', field}:
+                raise UserError('保存请求必须包含原文件版本和修改内容。')
+            if not isinstance(data['etag'], str) or len(data['etag']) != 64:
+                raise UserError('文件版本无效，请重新打开文稿。', 409)
+            mode = path.stat().st_mode
+            if not mode & stat_module.S_IWRITE:
+                raise UserError('文件为只读，无法保存；请使用系统应用另存副本。', 403)
+            limit = WORD_LIMIT if kind == 'docx' else TEXT_LIMIT
+            before = self._read(iid, limit)
+            digest = hashlib.sha256(before).hexdigest()
+            if digest != data['etag']:
+                raise UserError('原文件已被其他程序修改。草稿仍保留，请重新打开并比较后保存。', 409)
+            if kind == 'docx':
+                from .docx_io import edit_docx
+                try:
+                    after = edit_docx(path, data[field], handle=io.BytesIO(before))
+                except ValueError as error:
+                    raise UserError(str(error)) from error
+                if len(after) > WORD_LIMIT:
+                    raise UserError('Word 文件超过 32 MiB，请使用系统应用编辑。', 413)
+            else:
+                after = self._text_bytes(before, data[field])
+            if after == before:
+                return self.detail(iid)
+            vid = uid()
+            key = hashlib.sha256(os.path.normcase(str(path)).encode('utf-8')).hexdigest()
+            folder = self.data_root / 'external-versions' / key
+            if any(has_link(parent) for parent in (folder, *folder.parents) if parent.exists()):
+                raise UserError('备份目录包含链接，已停止保存。', 403)
+            folder.mkdir(parents=True, exist_ok=True)
+            clean_path(folder)  # Refuse redirected backup directories too.
+            backup = folder / (vid + path.suffix)
+            temporary = path.with_name('.' + path.name + '.' + vid + '.tmp')
+            try:
+                with backup.open('xb') as handle:
+                    handle.write(before); handle.flush(); os.fsync(handle.fileno())
+                with (folder / (vid + '.metadata.json')).open('x', encoding='utf-8') as handle:
+                    json.dump({'path': str(path), 'sha256': digest, 'created': time.time(),
+                               'size': len(before), 'file': backup.name}, handle, ensure_ascii=False)
+                    handle.flush(); os.fsync(handle.fileno())
+                with temporary.open('xb') as handle:
+                    handle.write(after); handle.flush(); os.fsync(handle.fileno())
+                os.chmod(temporary, stat_module.S_IMODE(mode))
+                if hashlib.sha256(self._read(iid, limit)).hexdigest() != digest:
+                    raise UserError('保存过程中原文件发生改变，已停止覆盖；草稿仍保留。', 409)
+                self.resolve(iid)
+                os.replace(temporary, path)
+                current = path.stat()
+                # Other tabs for this explicit path remain valid capabilities;
+                # their older etags still prevent overwriting this saved revision.
+                for entry in self.entries.values():
+                    if os.path.normcase(entry['path']) == os.path.normcase(str(path)):
+                        entry['identity'] = (current.st_dev, current.st_ino)
+            except OSError as error:
+                raise UserError('文件无法保存，可能被占用或没有写入权限；原稿备份和草稿已保留。', 409) from error
+            finally:
+                if temporary.exists():
+                    temporary.unlink()
+            result = self.detail(iid)
+            result['backup_id'] = vid
+            return result
 
     @contextmanager
     def open_media(self,iid):

@@ -18,8 +18,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.3.7.0")]
-[assembly: AssemblyFileVersion("0.3.7.0")]
+[assembly: AssemblyVersion("0.3.8.0")]
+[assembly: AssemblyFileVersion("0.3.8.0")]
 
 namespace YingXu.Desktop
 {
@@ -669,7 +669,7 @@ namespace YingXu.Desktop
             if (!exitApproved)
             {
                 e.Cancel = true;
-                if (e.CloseReason == CloseReason.UserClosing && closeToTray && !pageFailed && !exitUnresponsive) { Hide(); return; }
+                if (e.CloseReason == CloseReason.UserClosing && closeToTray && !pageFailed && !exitUnresponsive) { Post(new { action = "pause-media" }); Hide(); return; }
                 RequestExit(); return;
             }
             closing.Cancel();

@@ -9,7 +9,7 @@ const folders = [{id:'a',name:'长篇',parent_id:null},{id:'b',name:'第一季',
 const projects = [{id:'p1',name:'雨夜<script>',folder_id:'b',description:'港口',counts:{total:3}},{id:'p2',name:'新项目',folder_id:null}];
 const snapshot = () => ({folders,projects});
 const escapeHtml = value => String(value).replace(/[&<>"']/g,c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-function harness(response = snapshot, shared = false, dragEnvironment = null, write = null) {
+function harness(response = snapshot, shared = false, dragEnvironment = null, write = null, refresh = async()=>{}) {
   const calls = [],dialogs = [],opened = [],toasts = [];
   function node() { return {value:'',textContent:'',innerHTML:'',listeners:{},addEventListener(name,fn){this.listeners[name]=fn;}}; }
   const api = async (path,options) => { calls.push({path,options}); if(path === '/api/project-library') return response(); if(write)return write(path,options); return {id:'new'}; };
@@ -31,7 +31,7 @@ function harness(response = snapshot, shared = false, dragEnvironment = null, wr
     }
     dialogs.push(dialog); return dialog;
   };
-  const app = library.install({api,showDialog,choose:async()=> 'cancel',toast:(...v)=>toasts.push(v),escapeHtml,selectProject:async id => opened.push(id),refreshProjects:async()=>{}});
+  const app = library.install({api,showDialog,choose:async()=> 'cancel',toast:(...v)=>toasts.push(v),escapeHtml,selectProject:async id => opened.push(id),refreshProjects:refresh});
   const click = async (dialog,attrs) => {
     const button = {dataset:Object.fromEntries(Object.entries(attrs).filter(([k])=>k.startsWith('data-')).map(([k,v])=>[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),v])),hasAttribute:k=>k in attrs};
     await dialog.querySelector('.project-library-layout').listeners.click({target:{closest:()=>button}});
@@ -55,6 +55,7 @@ test('library escapes project names and exposes classification actions',async()=
   assert.match(d.querySelector('[data-library-results]').innerHTML,/雨夜&lt;script&gt;/);
   assert.doesNotMatch(d.querySelector('[data-library-results]').innerHTML,/<script>/);
   assert.match(d.querySelector('[data-library-results]').innerHTML,/data-library-assign="p1"/);
+  assert.match(d.querySelector('[data-library-results]').innerHTML,/data-library-rename="p1"/);
   assert.match(d.spec.body,/data-library-new/);
 });
 test('opening a project closes library and delegates guarded project selection',async()=>{
@@ -174,6 +175,53 @@ test('buttons do not start drag and touch scrolling is preserved outside grip',(
     const h=dragHarness();h.down({...props,...(props.target?{target:h.origin(props.target)}:{})});h.move();h.up();assert.equal(h.calls.length,0);
   }
   const h=dragHarness();h.down({pointerType:'touch',target:h.origin('grip')});h.move();h.up();assert.equal(h.calls.length,1);
+});
+test('project rename opens an escaped name form and writes only name metadata',async()=>{
+  const db=plain(snapshot()); let refreshed=0;
+  const h=harness(()=>db,true,null,async(path,options)=>{db.projects[0].name=options.body.name;return db.projects[0];},async()=>{refreshed++;});
+  await h.app.open(); const d=h.dialogs[0];
+  await h.click(d,{'data-library-rename':'p1'});
+  assert.equal(d.spec.title,'重命名项目'); assert.match(d.spec.body,/雨夜&lt;script&gt;/);
+  assert.match(d.spec.subtitle,/磁盘目录、素材和归类保持不变/);
+  await d.spec.onSubmit({elements:{name:{value:' 新的项目名称 '}}});
+  assert.deepEqual(plain(h.calls.find(c=>c.options)),{path:'/api/projects/p1',options:{method:'PATCH',body:{name:'新的项目名称'}}});
+  assert.equal(refreshed,1); assert.equal(db.projects[0].folder_id,'b');assert.equal(db.projects[0].description,'港口');
+  d.close(); await new Promise(setImmediate); await new Promise(setImmediate);
+  assert.equal(d.spec.title,'项目库');assert.match(d.querySelector('[data-library-results]').innerHTML,/新的项目名称/);
+  assert.deepEqual(h.opened,[]);
+});
+test('cancelled project rename returns to the same classification without any writes',async()=>{
+  const h=harness(snapshot,true);await h.app.open();const d=h.dialogs[0];
+  await h.click(d,{'data-library-folder':'b'});await h.click(d,{'data-library-rename':'p1'});
+  d.close();await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.equal(d.spec.title,'项目库');assert.match(d.querySelector('[data-library-heading]').textContent,/长篇 \/ 第一季 · 1 个项目/);
+  assert.equal(h.calls.filter(c=>c.options).length,0);
+});
+test('rename preserves global search and refresh removes the no-longer-matching result',async()=>{
+  const db=plain(snapshot());const h=harness(()=>db,true,null,async(path,options)=>{db.projects[0].name=options.body.name;});
+  await h.app.open();const d=h.dialogs[0],search=d.querySelector('[data-library-search]');
+  search.value='雨夜';search.listeners.input();await h.click(d,{'data-library-rename':'p1'});
+  await d.spec.onSubmit({elements:{name:{value:'日出'}}});d.close();await new Promise(setImmediate);await new Promise(setImmediate);
+  assert.match(d.spec.body,/value="雨夜"/);assert.equal(d.querySelector('[data-library-heading]').textContent,'全库搜索结果 · 0 个项目');
+});
+test('blank and overlong project names fail locally while unchanged names skip writes',async()=>{
+  const h=harness(()=>plain(snapshot()));await h.app.open();await h.click(h.dialogs[0],{'data-library-rename':'p1'});const d=h.dialogs[1];
+  for(const value of ['  ','名'.repeat(81)])await assert.rejects(d.spec.onSubmit({elements:{name:{value}}}),/项目名称/);
+  await d.spec.onSubmit({elements:{name:{value:'雨夜<script>'}}});
+  assert.equal(h.calls.filter(c=>c.options).length,0);
+});
+test('failed rename keeps the original name and the edit form open for correction',async()=>{
+  const db=plain(snapshot());const h=harness(()=>db,false,null,async()=>{throw new Error('名称无效');});
+  await h.app.open();await h.click(h.dialogs[0],{'data-library-rename':'p1'});const d=h.dialogs[1];
+  await assert.rejects(d.spec.onSubmit({elements:{name:{value:'新名字'}}}),/名称无效/);
+  assert.equal(db.projects[0].name,'雨夜<script>');assert.equal(d.open,true);assert.equal(h.toasts.length,0);
+});
+test('successful rename followed by refresh failure reports the saved outcome without a second write',async()=>{
+  const db=plain(snapshot());const h=harness(()=>db,false,null,async()=>({}),async()=>{throw new Error('offline');});
+  await h.app.open();await h.click(h.dialogs[0],{'data-library-rename':'p1'});const d=h.dialogs[1];
+  await d.spec.onSubmit({elements:{name:{value:'新名字'}}});
+  assert.equal(db.projects[0].name,'新名字');assert.match(h.toasts[0][0],/名称已保存/);
+  await d.spec.onSubmit({elements:{name:{value:'新名字'}}});assert.equal(h.calls.filter(c=>c.options).length,1);
 });
 test('valid pointer origin prevents default text drag while buttons and touch body retain defaults',()=>{
   const h=dragHarness();assert.equal(h.down().prevented,true);h.up();

@@ -167,6 +167,27 @@
         }});
       returnOnClose(dialog);
     }
+    async function renameProject(projectId) {
+      const project = data.projects.find(p => p.id === projectId);
+      if (!project) { toast('项目已不在项目库中，请刷新后重试。','error'); return; }
+      await closeCurrent();
+      const dialog = showDialog({title:'重命名项目',subtitle:'修改项目显示名称，磁盘目录、素材和归类保持不变。',
+        body:`<div class="field"><label for="libraryProjectName">项目名称</label><input id="libraryProjectName" name="name" maxlength="80" required value="${esc(project.name)}" autofocus></div>`,
+        submit:'保存名称',onSubmit:async form => {
+          const name = form.elements.name.value.trim();
+          if (!name) throw new Error('请输入项目名称。');
+          if ([...name].length > 80) throw new Error('项目名称最多 80 字。');
+          if (name === project.name) return;
+          await api(`/api/projects/${encodeURIComponent(projectId)}`,{method:'PATCH',body:{name}});
+          project.name = name;
+          // Keep the library location/search on return. A renamed search hit
+          // naturally leaves the results if it no longer matches the query.
+          try { await refreshProjects(); }
+          catch (_) { toast('名称已保存，页面刷新未完成；重新打开项目库可查看。','error'); return; }
+          toast('项目名称已保存。');
+        }});
+      returnOnClose(dialog);
+    }
     async function assignProject(projectId) {
       const project = data.projects.find(p => p.id === projectId);
       if (!project) { toast('项目已不在项目库中，请刷新后重试。','error'); return; }
@@ -189,7 +210,7 @@
       } finally { await open(); }
     }
     function projectHtml(project) {
-      return `<article class="project-library-card" data-library-project="${esc(project.id)}"><span class="project-library-drag-grip" data-library-drag aria-hidden="true" title="拖动归类">⠿</span><div role="button" tabindex="0" class="project-library-open" data-library-open="${esc(project.id)}"><strong>${esc(project.name)}</strong><span>${esc(folderName(project.folder_id))} · ${Number(project.counts?.total) || 0} 项素材</span>${project.description ? `<small>${esc(project.description)}</small>` : ''}</div><button type="button" class="button button-secondary" data-library-assign="${esc(project.id)}" aria-label="归类 ${esc(project.name)}">归类</button></article>`;
+      return `<article class="project-library-card" data-library-project="${esc(project.id)}"><span class="project-library-drag-grip" data-library-drag aria-hidden="true" title="拖动归类">⠿</span><div role="button" tabindex="0" class="project-library-open" data-library-open="${esc(project.id)}"><strong>${esc(project.name)}</strong><span>${esc(folderName(project.folder_id))} · ${Number(project.counts?.total) || 0} 项素材</span>${project.description ? `<small>${esc(project.description)}</small>` : ''}</div><div class="project-library-card-actions"><button type="button" class="button button-ghost" data-library-rename="${esc(project.id)}" aria-label="重命名项目 ${esc(project.name)}">重命名</button><button type="button" class="button button-secondary" data-library-assign="${esc(project.id)}" aria-label="归类 ${esc(project.name)}">归类</button></div></article>`;
     }
     function drawResults(dialog) {
       const projects = filterProjects(data, folder, query);
@@ -200,7 +221,10 @@
       dialog.querySelector('[data-library-page]').textContent = `${page + 1} / ${Math.max(1,Math.ceil(projects.length/size))}`;
       dialog.querySelector('[data-library-prev]').disabled = page === 0;
       dialog.querySelector('[data-library-next]').disabled = (page+1)*size >= projects.length;
-      for (const button of dialog.querySelectorAll('[data-library-folder]')) button.setAttribute('aria-current', button.dataset.libraryFolder === folder && !query.trim() ? 'true' : 'false');
+      for (const button of dialog.querySelectorAll('[data-library-folder]')) {
+        button.setAttribute('aria-current', button.dataset.libraryFolder === folder && !query.trim() ? 'true' : 'false');
+        if (button.dataset.libraryFolder === '') button.title = '未分类是系统分组；可新建自定义分类，再将项目归类。';
+      }
       const tools = dialog.querySelector('[data-library-folder-tools]');
       tools.hidden = folder === '*' || folder === '' || Boolean(query.trim());
     }
@@ -258,6 +282,7 @@
         busy = true;
         try {
           if (button.dataset.libraryOpen) { await closeCurrent(); const result = await selectProject(button.dataset.libraryOpen); if (result === false) await open(); }
+          else if (button.dataset.libraryRename) await renameProject(button.dataset.libraryRename);
           else if (button.dataset.libraryAssign) await assignProject(button.dataset.libraryAssign);
           else if (button.hasAttribute('data-library-edit')) await editFolder(folder);
           else if (button.hasAttribute('data-library-delete')) await deleteFolder(folder);

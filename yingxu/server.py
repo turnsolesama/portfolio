@@ -382,6 +382,8 @@ class Handler(BaseHTTPRequestHandler):
                 if path=='/api/resource-groups':return self.json(self.app.resource_groups.create(data),201)
                 if path=='/api/project-folders':return self.json(self.app.project_library.create_folder(data),201)
                 if path=='/api/external-open':return self.json(self.app.external.open(data))
+                external_save=re.fullmatch(r'/api/external/([a-f0-9]{32})/content',path)
+                if external_save:return self.json(self.app.external.save(external_save[1],data))
                 if path=='/api/projects':
                     project=self.app.store.create_project(data.get('name',''),data.get('description',''));self.app.context.request(project['id']);return self.json(project,201)
                 if path=='/api/items/batch-properties':

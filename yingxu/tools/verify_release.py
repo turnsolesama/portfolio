@@ -62,7 +62,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.7'
+    assert health['version'] == '0.3.8'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -80,6 +80,21 @@ def check_server(port, data, projects):
     assert bootstrap['capabilities']['resource_groups'] is True
     project = request(port, 'POST', '/api/projects', {'name': '公开包 隔离验收'}, token)
     assert Path(project['root']).is_relative_to(projects.resolve())
+    renamed = request(port, 'PATCH', '/api/projects/' + project['id'], {'name': '项目改名验收'}, token)
+    assert renamed['name'] == '项目改名验收' and renamed['root'] == project['root']
+    external_path = projects.parent / '外部编辑验收.md'
+    original_external = b'\xef\xbb\xbf# External\r\nOriginal\r\n'
+    external_path.write_bytes(original_external)
+    external = request(port, 'POST', '/api/external-open', {'paths': [str(external_path)]}, token)['entries'][0]
+    detail = request(port, 'GET', '/api/external/' + external['id'])
+    assert detail['content']['editable']
+    saved = request(port, 'POST', '/api/external/' + external['id'] + '/content',
+                    {'etag': detail['content']['etag'], 'content': '# External\nEdited\n'}, token)
+    assert saved['content']['content'] == '# External\r\nEdited\r\n'
+    assert external_path.read_bytes() == b'\xef\xbb\xbf# External\r\nEdited\r\n'
+    backups = list((data / 'external-versions').glob('*/*.md'))
+    assert backups and any(p.read_bytes() == original_external for p in backups)
+    assert len(request(port, 'GET', '/api/projects')['projects']) == 1
     folder = request(port, 'POST', '/api/folders', {'project_id': project['id'], 'category': 'characters', 'name': '第 1 集'}, token)
     item = request(port, 'POST', '/api/items', {'project_id': project['id'], 'category': 'characters', 'folder_id': folder['id'], 'name': '角色 测试', 'content': '# 合成角色\n不包含用户数据。'}, token)
     assert item['folder_id'] == folder['id']
@@ -132,7 +147,9 @@ def check_server(port, data, projects):
             'Chinese project/folder/document creation', 'capture settings default to enabled, Ctrl+Alt+Shift+S and annotate; quick/annotate modes persist',
             'cross-category group create/list/atomic transfer/remove/dissolve preserves file paths, bytes and categories',
             'batch tags append without replacing individual tags and batch status preserves original file bytes',
-            'global search finds indexed document content across projects']
+            'global search finds indexed document content across projects',
+            'project rename preserves project root',
+            'external Markdown saves original path with BOM/newlines, backup and no project import']
 
 
 def check_media(port, root, base, interpreter, environment):

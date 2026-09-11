@@ -384,7 +384,7 @@ class Store:
         elif kind=='docx' and stat.st_size<=32*1024*1024:
             try:
                 from .docx_io import read_docx
-                content=read_docx(p)['content'][:TEXT_LIMIT]
+                content=read_docx(p,structured=False)['content'][:TEXT_LIMIT]
             except (ValueError,OSError,UserError): pass
         elif kind=='image' and stat.st_size<=100*1024*1024:
             try:
@@ -648,8 +648,9 @@ class Store:
         if path.stat().st_size>limit:raise UserError('文件较大，请使用系统编辑器打开。')
         raw=path.read_bytes();etag=hashlib.sha256(raw).hexdigest()
         if fmt=='docx':
+            import io
             from .docx_io import read_docx
-            try:result=read_docx(path)
+            try:result=read_docx(path,handle=io.BytesIO(raw))
             except ValueError as e:raise UserError(str(e))
             return {'format':fmt,'etag':etag,'editable':any(p['editable'] for p in result['paragraphs']),**result}
         text,encoding=decode_text(raw)
@@ -665,8 +666,9 @@ class Store:
             before=path.read_bytes();digest=hashlib.sha256(before).hexdigest()
             if not data.get('etag') or digest!=data['etag']:raise UserError('原文件已被其他程序修改。你的编辑仍保留，请先复制草稿并重新打开比较。',409)
             if item['kind']=='docx':
+                import io
                 from .docx_io import edit_docx
-                try:after=edit_docx(path,data.get('paragraphs',[]))
+                try:after=edit_docx(path,data.get('paragraphs',[]),handle=io.BytesIO(before))
                 except ValueError as e:raise UserError(str(e))
             else:
                 content=data.get('content')

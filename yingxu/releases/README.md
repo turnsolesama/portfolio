@@ -1,11 +1,11 @@
 # 映序 Windows 发布包
 
-当前完整版 **0.3.7**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+当前完整版 **0.3.8**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
 
-**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.7/YingXu-v0.3.7-verification.json)
+**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.8/YingXu-v0.3.8-verification.json)
 
 0.3.7 截图默认进入标注后确认，支持画笔、箭头、矩形、颜色/粗细与撤销；设置中保留快速完成，取消不写剪贴板或项目。原生状态栏显示实际界面缩放百分比，点击恢复 100%；图片预览另显示图片自身的实际缩放比例。同时增加项目行与素材组成员长条行的拖动归类：拖到其他分类或同项目的组，拖出弹窗到明确空白区域则未分类或移出组，Esc 取消。全部为逻辑整理，磁盘原文件保持不变；修复素材选择框保持焦点时按 Delete 无响应，仍沿用映序回收站、确认开关与草稿保护。
 
@@ -46,3 +46,12 @@ python tools/verify_release.py releases/YingXu-v0.2.3-Windows-x64.zip
 0.2.1 提供右键操作列表和打开本地文件夹，并为公开分发增加个人数据目录、可配置 Python 查找和后台数据目录身份检查。现有项目管理、文件夹、拖放移动、文档编辑、SKILL、AI 交接与应用回收站功能一并保留。
 
 该 EXE 未进行商业代码签名；Windows 下载提示取决于系统策略。发布检查覆盖编译、后台、源码与包完整性；真实桌面拖出到不同剪辑软件的接收行为仍由目标软件决定。
+
+## 0.3.8：文件打开、文档预览与播放修复
+
+- 完整 ZIP 包含灰绿色“界面 100%”桌面状态文字，悬停才显示下划线，点击恢复 100%。
+- 项目库每个项目右侧有“重命名”，仅改项目名称，不移动目录；“未分类”是内置分组。
+- 关闭最后一个视频/音频标签释放播放器；切换标签停止旧媒体，关闭窗口留在托盘也暂停播放，重新打开不会自动恢复旧播放。
+- Windows 双击或“打开方式”打开的 Markdown/文本可直接编辑并按 Ctrl+S 保存原文件，不自动导入项目。原编码/BOM/统一换行保留，保存前备份，冲突不覆盖。重新明确打开同一路径时可恢复本地未保存草稿。
+- Word 默认“文档预览”，显示标题、文字样式、表格与支持的内嵌光栅图片；“编辑文字”保留未改文字的 run 样式和其他 ZIP 资源。精确分页、页眉页脚、浮动排版及旧 .doc 不属于本次编辑范围。
+- Word 图片按需读取：最多 32 张，单张 4 MiB、合计 8 MiB、每张 4000 万像素；预览图最长边 1600 像素，动画显示首帧，原图不改变；外链、不支持格式或超限内容显示提示。无图片常驻任务，索引只读纯文本。

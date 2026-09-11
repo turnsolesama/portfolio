@@ -63,7 +63,7 @@ class DocxTests(unittest.TestCase):
             self.assertIn(unchanged.encode(), updated)
             self.assertIn(b'<w:pPr><w:jc w:val="center"/></w:pPr>', updated)
             self.assertIn(b"<w:rPr><w:b/></w:rPr>", updated)
-            self.assertNotIn(b"<w:i/>", updated)
+            self.assertIn(b"<w:i/>", updated)
             self.assertEqual(original[:original.index(b"<w:p>")], updated[:updated.index(b"<w:p>")])
         self.assertEqual(self.read_saved(result)["paragraphs"][0]["text"], "角色 <林舟> & 雨夜\n第二行\t动作")
 
@@ -181,6 +181,137 @@ class DocxTests(unittest.TestCase):
         unsupported.write_bytes(self.path.read_bytes())
         with self.assertRaisesRegex(docx_io.DocxError, "DOCX"):
             docx_io.read_docx(unsupported)
+
+    def test_preserves_mixed_runs_when_editing_only_middle(self):
+        prefix = '<w:r w:rsidR="1111"><w:rPr><w:b/></w:rPr><w:t>标题：</w:t></w:r>'
+        suffix = '<w:r><w:rPr><w:color w:val="996633"/></w:rPr><w:t> 尾声</w:t></w:r>'
+        self.make('<w:p>' + prefix + '<w:r><w:rPr><w:i/></w:rPr><w:t>旧描述</w:t></w:r>' + suffix + '</w:p>')
+        changed = docx_io.edit_docx(self.path, [{"id": "p000001", "text": "标题：新描述 尾声"}])
+        with zipfile.ZipFile(io.BytesIO(changed)) as package:
+            xml = package.read("word/document.xml")
+            self.assertIn(prefix.encode(), xml)
+            self.assertIn(suffix.encode(), xml)
+            self.assertIn('<w:rPr><w:i/></w:rPr><w:t xml:space="preserve">新描述</w:t>'.encode(), xml)
+        self.assertEqual(self.read_saved(changed)["content"], "标题：新描述 尾声")
+
+    def test_run_boundaries_insert_delete_and_replace_keep_text_exact(self):
+        for original_runs, updated in [
+            (("甲", "乙", "丙"), "甲新乙丙"),
+            (("甲", "乙", "丙"), "甲丙"),
+            (("甲", "乙", "丙"), "新"),
+            (("", "甲", ""), ""),
+            (("", "", ""), "开头\t换行\n尾"),
+            (("甲\t", "乙", "\n丙"), "甲\t新乙\n丙尾"),
+        ]:
+            with self.subTest(runs=original_runs, updated=updated):
+                body = '<w:p>' + ''.join('<w:r><w:rPr><w:b/></w:rPr><w:t>' + text.replace('\t', '</w:t><w:tab/><w:t>').replace('\n', '</w:t><w:br/><w:t>') + '</w:t></w:r>' for text in original_runs) + '</w:p>'
+                self.make(body)
+                result = docx_io.edit_docx(self.path, [{"id": "p000001", "text": updated}])
+                self.assertEqual(self.read_saved(result)["content"], updated)
+
+    def test_edit_verified_handle_does_not_reopen_source(self):
+        self.make('<w:p><w:r><w:t>原文</w:t></w:r></w:p>')
+        original = io.BytesIO(self.path.read_bytes())
+        with patch.object(docx_io, "_open_path", side_effect=AssertionError("must not reopen source")):
+            changed = docx_io.edit_docx(self.path, [{"id": "p000001", "text": "来自安全快照"}], handle=original)
+        self.assertFalse(original.closed)
+        self.assertEqual(self.read_saved(changed)["content"], "来自安全快照")
+
+    def test_structured_preview_keeps_heading_table_cells_and_nested_table(self):
+        styles = f'<w:styles xmlns:w="{W}"><w:style w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:jc w:val="center"/></w:pPr><w:rPr><w:b/><w:sz w:val="36"/></w:rPr></w:style></w:styles>'
+        body = ('<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>标题</w:t></w:r></w:p>'
+                '<w:tbl><w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/><w:vMerge w:val="restart"/></w:tcPr><w:p><w:r><w:t>第一格</w:t></w:r></w:p>'
+                '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>嵌套格</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:tc></w:tr>'
+                '<w:tr><w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc></w:tr></w:tbl>'
+                '<w:altChunk/>')
+        self.make(body, {"word/styles.xml": styles})
+        preview = docx_io.read_docx(self.path)
+        title = preview["paragraphs"][0]
+        self.assertEqual((title["heading_level"], title["alignment"]), (1, "center"))
+        self.assertEqual(title["runs"][0], {"text": "标题", "bold": True, "font_size": 18.0})
+        table = preview["blocks"][1]
+        self.assertEqual(table["kind"], "table")
+        self.assertEqual((table["rows"][0][0]["colspan"], table["rows"][0][0]["vmerge"]), (2, "restart"))
+        self.assertEqual(table["rows"][0][0]["blocks"][1]["kind"], "table")
+        self.assertEqual(table["rows"][1][0]["vmerge"], "continue")
+        self.assertFalse(preview["paragraphs"][1]["editable"])
+        self.assertEqual(preview["blocks"][-1]["kind"], "unsupported")
+
+    def image_fixture(self, target="media/test.png", external=False, count=1, payload=None):
+        from PIL import Image
+        image = io.BytesIO()
+        Image.new("RGB", (16, 12), "green").save(image, format="PNG")
+        drawing = '<w:r><w:drawing xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><a:blip r:embed="rId1"/></w:drawing></w:r>'
+        relations = f'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="{target}"' + (' TargetMode="External"' if external else '') + '/></Relationships>'
+        self.make('<w:p>' + drawing * count + '</w:p>', {"word/media/test.png": payload if payload is not None else image.getvalue(), "word/_rels/document.xml.rels": relations})
+        return image.getvalue()
+
+    def test_embedded_image_preview_and_payload_survives_other_edit(self):
+        from PIL import Image
+        expected = self.image_fixture()
+        preview = docx_io.read_docx(self.path)
+        image = preview["paragraphs"][0]["images"][0]
+        self.assertEqual((image["width"], image["height"]), (16, 12))
+        self.assertTrue(image["src"].startswith("data:image/jpeg;base64,"))
+        with Image.open(io.BytesIO(docx_io.base64.b64decode(image["src"].split(",", 1)[1]))) as thumbnail:
+            self.assertEqual(thumbnail.size, (16, 12))
+        with zipfile.ZipFile(self.path) as package:
+            self.assertEqual(package.read("word/media/test.png"), expected)
+        self.assertFalse(preview["paragraphs"][0]["editable"])
+
+    def test_external_unsupported_and_oversize_images_are_placeholders(self):
+        for target, external, payload in [
+            ("https://invalid.example/private.png", True, None),
+            ("../../../escape.png", False, None),
+            ("media/test.png", False, b"<svg onload='unsafe'/>")
+        ]:
+            with self.subTest(target=target, external=external):
+                self.image_fixture(target, external, payload=payload)
+                image = docx_io.read_docx(self.path)["paragraphs"][0]["images"][0]
+                self.assertNotIn("src", image)
+                self.assertTrue(image["reason"])
+
+    def test_repeated_image_occurrences_are_bounded(self):
+        self.image_fixture(count=35)
+        images = docx_io.read_docx(self.path)["paragraphs"][0]["images"]
+        self.assertEqual(sum("src" in image for image in images), 32)
+        self.assertIn("数量", images[32]["reason"])
+
+    def test_text_indexing_skips_structured_preview_and_image_loading(self):
+        self.image_fixture()
+        with patch.object(docx_io, "_preview", side_effect=AssertionError("indexing must not decode images")):
+            result = docx_io.read_docx(self.path, structured=False)
+        self.assertNotIn("blocks", result)
+        self.assertNotIn("images", result["paragraphs"][0])
+
+    def test_large_alpha_image_is_resized_but_original_is_untouched(self):
+        from PIL import Image
+        source = io.BytesIO()
+        Image.new("RGBA", (3200, 1600), (10, 60, 20, 128)).save(source, format="PNG")
+        self.image_fixture(payload=source.getvalue())
+        before = self.path.read_bytes()
+        image = docx_io.read_docx(self.path)["paragraphs"][0]["images"][0]
+        self.assertEqual((image["width"], image["height"]), (1600, 800))
+        self.assertEqual((image["source_width"], image["source_height"]), (3200, 1600))
+        self.assertTrue(image["src"].startswith("data:image/png;base64,"))
+        with Image.open(io.BytesIO(docx_io.base64.b64decode(image["src"].split(",", 1)[1]))) as thumbnail:
+            self.assertEqual(thumbnail.mode, "RGBA")
+            self.assertEqual(thumbnail.getpixel((0, 0))[3], 128)
+        self.assertEqual(self.path.read_bytes(), before)
+
+    def test_animated_image_uses_static_first_frame_with_notice(self):
+        from PIL import Image
+        source = io.BytesIO()
+        Image.new("RGB", (12, 12), "red").save(source, format="GIF", save_all=True,
+            append_images=[Image.new("RGB", (12, 12), "blue")], duration=100, loop=0)
+        self.image_fixture(payload=source.getvalue())
+        before = self.path.read_bytes()
+        image = docx_io.read_docx(self.path)["paragraphs"][0]["images"][0]
+        self.assertIn("首帧", image["note"])
+        with Image.open(io.BytesIO(docx_io.base64.b64decode(image["src"].split(",", 1)[1]))) as thumbnail:
+            self.assertEqual(getattr(thumbnail, "n_frames", 1), 1)
+            self.assertGreater(thumbnail.convert("RGB").getpixel((0, 0))[0], 240)
+        self.assertEqual(self.path.read_bytes(), before)
 
 
 if __name__ == "__main__":
