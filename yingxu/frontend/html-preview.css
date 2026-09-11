@@ -1,0 +1,4 @@
+.html-workspace{height:100%;min-height:0;display:flex;flex-direction:column;background:#fff}
+.html-preview-notice{flex:none;margin:0;padding:10px 16px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted);background:var(--panel)}
+.html-preview-frame{flex:1;min-height:0;width:100%;border:0;background:#fff}
+.html-workspace>.text-editor{flex:1;min-height:0;width:100%;resize:none}

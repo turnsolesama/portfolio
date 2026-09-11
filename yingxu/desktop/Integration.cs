@@ -194,7 +194,7 @@ namespace YingXu.Desktop
     internal static class OpenWithRegistration
     {
         private const string ProgId = "YingXu.LocalPreview";
-        private static readonly string[] Extensions = { ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".docx", ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v", ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac" };
+        private static readonly string[] Extensions = { ".md", ".markdown", ".txt", ".json", ".csv", ".srt", ".vtt", ".html", ".htm", ".docx", ".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".svg", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v", ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac" };
         internal static string Change(RegistryKey classes, string executable, bool register)
         {
             string command = Hub.Quote(Path.GetFullPath(executable)) + " --open \"%1\"";

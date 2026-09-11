@@ -93,7 +93,7 @@ class Application:
             if kind=='folder':
                 script="Add-Type -AssemblyName System.Windows.Forms; $d=New-Object Windows.Forms.FolderBrowserDialog; $d.Description='选择要引用的素材文件夹'; $d.ShowNewFolderButton=$false; if($d.ShowDialog() -eq 'OK'){@($d.SelectedPath)|ConvertTo-Json -Compress} else {'[]'}"
             elif kind=='files':
-                script="Add-Type -AssemblyName System.Windows.Forms; $d=New-Object Windows.Forms.OpenFileDialog; $d.Title='选择素材、剧本或分镜文件'; $d.Multiselect=$true; $d.Filter='创作文件|*.md;*.txt;*.docx;*.doc;*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.mp4;*.mov;*.webm;*.mkv;*.wav;*.mp3;*.blend;*.glb;*.fbx;*.obj;*.srt;*.json;*.csv|所有文件|*.*'; if($d.ShowDialog() -eq 'OK'){@($d.FileNames)|ConvertTo-Json -Compress} else {'[]'}"
+                script="Add-Type -AssemblyName System.Windows.Forms; $d=New-Object Windows.Forms.OpenFileDialog; $d.Title='选择素材、剧本或分镜文件'; $d.Multiselect=$true; $d.Filter='创作文件|*.md;*.txt;*.docx;*.doc;*.pdf;*.svg;*.html;*.htm;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.mp4;*.mov;*.webm;*.mkv;*.wav;*.mp3;*.blend;*.glb;*.fbx;*.obj;*.srt;*.json;*.csv|所有文件|*.*'; if($d.ShowDialog() -eq 'OK'){@($d.FileNames)|ConvertTo-Json -Compress} else {'[]'}"
             else:raise UserError('选择器类型不正确。')
             import base64
             prefix='[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding; '
@@ -238,12 +238,12 @@ class Handler(BaseHTTPRequestHandler):
         if args and isinstance(args[0],str) and 'api/health' in args[0]:return
         print(f'[{self.log_date_time_string()}] {self.command} {urlsplit(self.path).path} {args[1] if len(args)>1 else ""}',flush=True)
 
-    def headers_common(self,content_type):
+    def headers_common(self,content_type,csp=None):
         self.send_header('Content-Type',content_type)
         self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Referrer-Policy','no-referrer')
         self.send_header('X-Frame-Options','SAMEORIGIN')
-        self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; object-src 'self'; frame-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
+        self.send_header('Content-Security-Policy',csp or "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; object-src 'self'; frame-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'")
 
     def check_origin(self,write=False):
         expected=f'127.0.0.1:{self.server.server_port}'
@@ -274,11 +274,24 @@ class Handler(BaseHTTPRequestHandler):
         if self.command!='HEAD':self.wfile.write(raw)
 
     def file(self,path,media=False,immutable=False,opened=None):
-        path=Path(path);length=os.fstat(opened.fileno()).st_size if opened is not None else path.stat().st_size
+        path=Path(path)
+        if media and path.suffix.lower()=='.svg':
+            from yingxu.svg_content import read_svg_bytes
+            with (nullcontext(opened) if opened is not None else path.open('rb')) as handle:
+                safe=read_svg_bytes(handle)
+            self.send_response(200)
+            self.headers_common('image/svg+xml; charset=utf-8',"default-src 'none'; style-src 'unsafe-inline'; sandbox; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+            self.send_header('Content-Length',str(len(safe)))
+            self.send_header('Cache-Control','no-store')
+            self.end_headers()
+            if self.command!='HEAD':self.wfile.write(safe)
+            return
+        length=os.fstat(opened.fileno()).st_size if opened is not None else path.stat().st_size
         try:start,end,partial=parse_range(self.headers.get('Range') if media else None,length)
         except UserError as e:
             self.json({'error':str(e)},416,{'Content-Range':f'bytes */{length}'});return
         mime=mimetypes.guess_type(path.name)[0] or 'application/octet-stream'
+        if media and path.suffix.lower() in ('.html','.htm'):mime='text/plain; charset=utf-8'
         if path.suffix=='.js':mime='application/javascript'
         if path.suffix in ('.md','.txt','.srt','.vtt','.json','.yaml','.yml','.csv'):mime='text/plain; charset=utf-8'
         self.send_response(206 if partial else 200);self.headers_common(mime)
@@ -287,7 +300,7 @@ class Handler(BaseHTTPRequestHandler):
         if media:
             self.send_header('Accept-Ranges','bytes')
             if partial:self.send_header('Content-Range',f'bytes {start}-{end}/{length}')
-        if mime=='application/octet-stream':self.send_header('Content-Disposition','attachment')
+        if mime=='application/octet-stream' or (media and path.suffix.lower() in ('.html','.htm')):self.send_header('Content-Disposition','attachment')
         self.end_headers()
         if self.command=='HEAD':return
         with (nullcontext(opened) if opened is not None else path.open('rb')) as f:

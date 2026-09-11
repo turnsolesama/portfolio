@@ -1,11 +1,11 @@
 # 映序 Windows 发布包
 
-当前完整版 **0.3.9**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+当前完整版 **0.4.0**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
 
-**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-verification.json)
+**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-verification.json)
 
 0.3.7 截图默认进入标注后确认，支持画笔、箭头、矩形、颜色/粗细与撤销；设置中保留快速完成，取消不写剪贴板或项目。原生状态栏显示实际界面缩放百分比，点击恢复 100%；图片预览另显示图片自身的实际缩放比例。同时增加项目行与素材组成员长条行的拖动归类：拖到其他分类或同项目的组，拖出弹窗到明确空白区域则未分类或移出组，Esc 取消。全部为逻辑整理，磁盘原文件保持不变；修复素材选择框保持焦点时按 Delete 无响应，仍沿用映序回收站、确认开关与草稿保护。
 
@@ -62,3 +62,11 @@ python tools/verify_release.py releases/YingXu-v0.2.3-Windows-x64.zip
 - 拖到“全部项目”可将分类移回项目库顶层。松手前显示目标，Esc 取消；不能拖入自身、自己的子分类或当前父级，同一层重名会提示并保持原状。
 - 触屏可用分类握柄；也可以通过“编辑分类 → 上级分类”整理。项目行拖动归类继续保留。“未分类”仍为固定系统分组。
 - 无新增依赖、模型或空闲轮询。完整包保留 0.3.8 的缩放配色、项目重命名、媒体暂停、外部 Markdown 编辑与 Word 结构预览修复。
+
+## 0.4.0：Word 编辑稳定性与静态文件预览
+
+- Word 编辑每页最多 40 段，不一次创建成千上万个输入框；跨页保留草稿，支持页码跳转、中文输入保护和返回页码。段落分页是编辑分组，不是 Word 的打印页码。
+- SVG 支持轻量静态预览与缩放；使用现有浏览器，不增渲染依赖。原 SVG 不改写；基本图形、文字与渐变经有界白名单重建，脚本、外链、动画、滤镜、虚线描边和其他不支持内容明确提示。列表只显示 SVG 图标，不后台解析所有 SVG 或生成缩略图。
+- HTML/HTM 支持只读源码和静态结构预览。文字、标题、列表、表格等按统一样式显示；不运行脚本、不联网、不跳转，图片显示文字占位，不还原原网页 CSS。隔离 iframe 与限制性 CSP；原 HTML 不改写，复杂结构可退回只读源码。
+- 新格式各限输入 1 MiB、最多 2000 个内容节点与 32 层嵌套；SVG 另限制路径、引用和尺寸复杂度，超限请用原应用查看。只在打开详情时解析，不新增模型、依赖或空闲轮询。
+- 保留 0.3.9 的项目分类拖动和此前所有修复。Markdown 拖入 Word 等文件建立链接尚未包含在本版。

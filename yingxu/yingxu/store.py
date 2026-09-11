@@ -32,7 +32,7 @@ KINDS = {
     **dict.fromkeys(['.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v'], 'video'),
     **dict.fromkeys(['.wav', '.mp3', '.ogg', '.flac', '.m4a', '.aac'], 'audio'),
     **dict.fromkeys(['.blend', '.fbx', '.obj', '.glb', '.gltf', '.stl'], 'model'),
-    '.docx': 'docx', '.pdf': 'pdf', '.doc': 'file', '.pptx': 'file', '.xlsx': 'file', '.rtf': 'file',
+    '.html': 'html', '.htm': 'html', '.svg': 'svg', '.docx': 'docx', '.pdf': 'pdf', '.doc': 'file', '.pptx': 'file', '.xlsx': 'file', '.rtf': 'file',
 }
 SAFE_EXTENSIONS = frozenset(KINDS)
 TEXT_LIMIT = 2 * 1024 * 1024
@@ -642,6 +642,14 @@ class Store:
     def read_content(self,iid):
         item=self.get_item(iid);path=self.resolve_item_path(item)
         fmt=item['kind']
+        if fmt == 'html':
+            from .html_content import read_html_content
+            with path.open('rb') as opened:
+                return read_html_content(opened)
+        if fmt == 'svg':
+            from .svg_content import read_svg_content
+            with path.open('rb') as opened:
+                return read_svg_content(opened)
         if fmt not in ('markdown','text','docx'):
             return {'format':'binary','content':'','etag':None,'editable':False}
         limit=32*1024*1024 if fmt=='docx' else TEXT_LIMIT

@@ -40,7 +40,7 @@
 
 | 编排提示词与参考图，控制 H3 视频和图片生成，检查本地缺失项 | **[FrameWeave 帧织](frameweave/)** | 0.2.0 | **[下载帧织 · 9.12 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/frameweave/releases/FrameWeave-v0.2.0-Windows-x64.zip)** |
 
-| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.3.9 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.3.9/YingXu-v0.3.9-Windows-x64.zip)** |
+| 写剧本、管分镜，按集数整理角色、场景和生成结果 | **[映序 YingXu](yingxu/)** | 0.4.0 | **[下载映序](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-Windows-x64.zip)** |
 
 | 查模型与 LoRA，用分类、图库和路径记录整理 AI 资产 | **[AI Hub](ai-hub/)** | 2.5.0 | **[下载 AI Hub · 1.04 MiB](https://raw.githubusercontent.com/turnsolesama/portfolio/main/ai-hub/releases/AI-Hub-v2.5.0-Windows-x64.zip)** |
 
@@ -263,7 +263,7 @@
 
 
 
-这些 EXE 是桌面启动入口，需要保留完整程序包，并满足各自的运行条件。映序 0.3.9 与 FlowSwitch 3.7.1 完整包已自带主要运行组件；各软件请按自己的说明配置。各包不包含模型权重或代理服务。
+这些 EXE 是桌面启动入口，需要保留完整程序包，并满足各自的运行条件。映序 0.4.0 与 FlowSwitch 3.7.1 完整包已自带主要运行组件；各软件请按自己的说明配置。各包不包含模型权重或代理服务。
 
 
 

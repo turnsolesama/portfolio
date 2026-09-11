@@ -142,3 +142,7 @@ PNG提取元数据为 source_prompt/source_parameters/source_workflow，width,he
 POST /api/external/ID/content 接受 {etag,content}（Markdown/文本）或 {etag,paragraphs:[{id,text}]}（DOCX），要求既有同源与会话令牌，ID 必须来自显式打开的有效会话记录，不能传任意路径。返回完整 detail（content 为更新后的内容对象，成功备份有 backup_id）。原路径保存、原编码保留、etag/身份/链接重查、私有 external-versions 备份、原子替换；冲突 409，过期 404，不支持类型 415。GET /api/external/ID 的顶层 editable 与 content.editable 表明实际能力，不再一律只读。
 
 DOCX content 保留 paragraphs/content/notice，并增加 blocks（paragraph/table/unsupported），段落带 heading_level/alignment/runs/images/readonly_reason。图片仅受限内部光栅 data URI，拒绝外链。导入索引使用 read_docx(...,structured=False)，不生成图片预览。
+
+## 0.4.0 静态格式
+
+资源 kind 增加 svg/html。项目 GET /api/content/ID 与外部 GET /api/external/ID.content 返回只读格式内容。SVG preview_url 为经过净化的 data:image/svg+xml;base64；HTML content 为原始解码源码，preview_html 为重建后的静态片段，必须使用无 allow-* 的 sandbox iframe + CSP。保存接口拒绝这两种格式。SVG 媒体直链也经过净化并返回隔离 CSP；HTML 媒体直链按 text/plain 附件提供，禁止同源网页执行。两者不创建缩略图任务。后台不解析超出各自有界限制的文件。

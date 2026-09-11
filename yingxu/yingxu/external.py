@@ -13,7 +13,7 @@ import time
 
 from .store import KINDS, TEXT_LIMIT, UserError, clean_path, decode_text, has_link, uid
 
-PREVIEW_KINDS = frozenset(('markdown','text','docx','pdf','image','video','audio'))
+PREVIEW_KINDS = frozenset(('markdown','text','docx','pdf','image','svg','html','video','audio'))
 MAX_OPEN = 200
 MAX_SESSION = 256
 TTL = 24 * 60 * 60
@@ -35,7 +35,7 @@ class ExternalPreviews:
         if path == self.data_root or path.is_relative_to(self.data_root):
             raise UserError('应用数据、备份和缓存不能作为外部文件预览。',403)
         if not path.is_file() or KINDS.get(path.suffix.lower()) not in PREVIEW_KINDS:
-            raise UserError('暂不支持此文件；可预览文本、Word、PDF、图片、视频和音频。',415)
+            raise UserError('暂不支持此文件；可预览文本、Word、PDF、图片、SVG、HTML、视频和音频。',415)
         if path.stat().st_nlink > 1:
             raise UserError('共享硬链接文件不能作为外部预览，避免绕过应用数据边界。',403)
         return path
@@ -98,6 +98,14 @@ class ExternalPreviews:
             path=self.resolve(iid); result=self._metadata(self.entries[iid],path)
         kind=result['kind']
         content={'format':kind,'content':'','editable':False,'notice':result['notice']}
+        if kind == 'html':
+            from .html_content import read_html_content
+            with self.open_media(iid) as opened:
+                content = read_html_content(opened)
+        if kind == 'svg':
+            from .svg_content import read_svg_content
+            with self.open_media(iid) as opened:
+                content = read_svg_content(opened)
         if kind in EDIT_KINDS:
             with self.lock:
                 raw = self._read(iid, WORD_LIMIT if kind == 'docx' else TEXT_LIMIT)

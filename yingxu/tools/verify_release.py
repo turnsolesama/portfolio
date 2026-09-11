@@ -1,5 +1,6 @@
 """Verify ZIP integrity and run only isolated synthetic HTTP checks on free ports."""
 import argparse
+import base64
 import hashlib
 import http.client
 import json
@@ -62,7 +63,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.3.9'
+    assert health['version'] == '0.4.0'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -241,6 +242,38 @@ def check_media(port, root, base, interpreter, environment):
             'project PNG upload and Markdown link/image routes preserve exact image bytes and original note']
 
 
+def check_static_formats(port, base):
+    token = request(port, 'GET', '/api/bootstrap')['token']
+    samples = {
+        'safe.svg': b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="40" height="30" fill="#567456"/></svg>',
+        'safe.html': b'<h1>Heading</h1><table><tr><td>Cell</td></tr></table><script>window.BAD=1</script>',
+    }
+    for name, raw in samples.items():
+        path = base / name
+        path.write_bytes(raw)
+        opened = request(port, 'POST', '/api/external-open', {'paths': [str(path)]}, token)['entries'][0]
+        content = request(port, 'GET', opened['content_url'])['content']
+        assert content['editable'] is False
+        connection = http.client.HTTPConnection('127.0.0.1', port, timeout=5)
+        try:
+            connection.request('GET', opened['media_url'])
+            response = connection.getresponse()
+            media = response.read()
+            assert response.status == 200 and response.getheader('X-Content-Type-Options') == 'nosniff'
+            if name.endswith('.svg'):
+                assert media == base64.b64decode(content['preview_url'].split(',', 1)[1])
+                assert 'sandbox' in response.getheader('Content-Security-Policy')
+            else:
+                assert content['content'] == raw.decode() and '<table>' in content['preview_html']
+                assert '<script' not in content['preview_html'] and 'window.BAD' not in content['preview_html']
+                assert media == raw and response.getheader('Content-Type').startswith('text/plain')
+                assert response.getheader('Content-Disposition') == 'attachment'
+        finally:
+            connection.close()
+        assert path.read_bytes() == raw
+    return ['bundled SVG sanitizer and isolated HTML static/source routes preserve original files']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('archive', type=Path)
@@ -272,7 +305,11 @@ def main():
         assert (root / 'frontend/live-markdown.css').is_file()
         assert (root / 'frontend/global-search.js').is_file() and (root / 'frontend/global-search.css').is_file()
         for relative in ('frontend/capture.js', 'frontend/resource-groups.js', 'frontend/resource-groups.css',
-                         'yingxu/markdown_assets.py', 'yingxu/resource_groups.py'):
+                         'yingxu/markdown_assets.py', 'yingxu/resource_groups.py',
+                         'frontend/docx-editor.js', 'frontend/docx-editor.css',
+                         'frontend/html-preview.js', 'frontend/html-preview.css', 'frontend/svg-preview.css',
+                         'yingxu/svg_preview.py', 'yingxu/svg_content.py',
+                         'yingxu/html_preview.py', 'yingxu/html_content.py'):
             assert (root / relative).is_file()
         assert not any('node_modules' in PurePosixPath(name).parts for name in names)
         checked.append('offline Markdown bundle SHA-256, stylesheet and licenses; no Node runtime')
@@ -306,6 +343,7 @@ def main():
             pid = pid_record['pid']
             checked += check_server(port, data, projects)
             checked += check_media(port, root, base, interpreter, environment)
+            checked += check_static_formats(port, base)
             second = subprocess.run([interpreter, '-B', str(root / 'launcher.pyw'), '--no-browser', '--no-dialog', '--port', str(port)],
                                     cwd=root, env=environment, capture_output=True, timeout=10)
             assert second.returncode == 0 and json.loads(second.stdout)['status'] == 'reused'

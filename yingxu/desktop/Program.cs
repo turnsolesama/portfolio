@@ -18,8 +18,8 @@ using Microsoft.Web.WebView2.WinForms;
 [assembly: AssemblyTitle("映序")]
 [assembly: AssemblyDescription("映序 本地视频创作项目工作台")]
 [assembly: AssemblyProduct("映序桌面版")]
-[assembly: AssemblyVersion("0.3.9.0")]
-[assembly: AssemblyFileVersion("0.3.9.0")]
+[assembly: AssemblyVersion("0.4.0.0")]
+[assembly: AssemblyFileVersion("0.4.0.0")]
 
 namespace YingXu.Desktop
 {
@@ -367,8 +367,8 @@ namespace YingXu.Desktop
 
         private void ChooseFiles()
         {
-            using (var dialog = new OpenFileDialog { Title = "用映序只读打开文件", Multiselect = true,
-                Filter = "可预览文件|*.md;*.markdown;*.txt;*.json;*.csv;*.srt;*.vtt;*.docx;*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp;*.mp4;*.mov;*.webm;*.mkv;*.avi;*.m4v;*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac|所有文件|*.*" })
+            using (var dialog = new OpenFileDialog { Title = "用映序打开文件", Multiselect = true,
+                Filter = "支持的文件|*.md;*.markdown;*.txt;*.json;*.csv;*.srt;*.vtt;*.html;*.htm;*.docx;*.pdf;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp;*.svg;*.mp4;*.mov;*.webm;*.mkv;*.avi;*.m4v;*.mp3;*.wav;*.ogg;*.flac;*.m4a;*.aac|所有文件|*.*" })
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
                     if (dialog.FileNames.Length > 32) { Notice("一次最多打开 32 个文件。",true); return; }
