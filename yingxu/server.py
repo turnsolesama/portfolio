@@ -93,7 +93,7 @@ class Application:
             if kind=='folder':
                 script="Add-Type -AssemblyName System.Windows.Forms; $d=New-Object Windows.Forms.FolderBrowserDialog; $d.Description='选择要引用的素材文件夹'; $d.ShowNewFolderButton=$false; if($d.ShowDialog() -eq 'OK'){@($d.SelectedPath)|ConvertTo-Json -Compress} else {'[]'}"
             elif kind=='files':
-                script="Add-Type -AssemblyName System.Windows.Forms; $d=New-Object Windows.Forms.OpenFileDialog; $d.Title='选择素材、剧本或分镜文件'; $d.Multiselect=$true; $d.Filter='创作文件|*.md;*.txt;*.docx;*.doc;*.pdf;*.svg;*.html;*.htm;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.mp4;*.mov;*.webm;*.mkv;*.wav;*.mp3;*.blend;*.glb;*.fbx;*.obj;*.srt;*.json;*.csv|所有文件|*.*'; if($d.ShowDialog() -eq 'OK'){@($d.FileNames)|ConvertTo-Json -Compress} else {'[]'}"
+                script="Add-Type -AssemblyName System.Windows.Forms; $d=New-Object Windows.Forms.OpenFileDialog; $d.Title='选择素材、剧本或分镜文件'; $d.Multiselect=$true; $d.Filter='创作文件|*.zip;*.md;*.txt;*.docx;*.doc;*.pdf;*.svg;*.html;*.htm;*.png;*.jpg;*.jpeg;*.webp;*.gif;*.mp4;*.mov;*.webm;*.mkv;*.wav;*.mp3;*.blend;*.glb;*.fbx;*.obj;*.srt;*.json;*.csv|所有文件|*.*'; if($d.ShowDialog() -eq 'OK'){@($d.FileNames)|ConvertTo-Json -Compress} else {'[]'}"
             else:raise UserError('选择器类型不正确。')
             import base64
             prefix='[Console]::OutputEncoding=New-Object System.Text.UTF8Encoding; '
@@ -157,18 +157,44 @@ class Application:
         for value in paths:
             path=clean_path(value)
             if not path.is_file():raise UserError('暂不支持粘贴整个文件夹，请选择其中的文件，或使用导入文件夹。')
-            if path.suffix.lower() not in SAFE_EXTENSIONS:raise UserError('剪贴板包含不支持的文件类型，请重新选择。')
+            if path.suffix.lower() not in SAFE_EXTENSIONS and path.suffix.lower()!='.zip':raise UserError('剪贴板包含不支持的文件类型，请重新选择。')
             checked.append(path)
-        items=[]
+        items=[];job_ids=[];error_message=None
         for path in checked:
             try:
                 clean_path(path)
+                if path.suffix.lower()=='.zip':
+                    job_ids.append(self.jobs.submit_archive(pid,category,path,data.get('folder_id'))['job_id'])
+                    continue
                 with path.open('rb') as source:
                     handler=SimpleNamespace(rfile=source,headers={'Content-Length':str(os.fstat(source.fileno()).st_size)})
                     items.append(self.receive_upload(handler,{'project':pid,'category':category,'folder_id':data.get('folder_id'),'name':path.name}))
             except (OSError,UserError) as error:
-                raise UserError(f'已粘贴 {len(items)} 个文件；后续文件未完成：{error}。已完成的副本保留，原文件不变。',409) from error
-        return {'items':items}
+                if not items and not job_ids:raise
+                error_message=f'已粘贴 {len(items)} 个文件，已提交 {len(job_ids)} 个 ZIP；后续文件未完成：{error}。原文件不变。'
+                break
+        return {'items':items,'job_ids':job_ids,'error':error_message}
+
+    def receive_archive(self,handler,query,length):
+        from yingxu.archive_import import MAX_ARCHIVE
+        if length>MAX_ARCHIVE:raise UserError('ZIP 最大支持 8 GiB。',413)
+        pid=query.get('project');category=query.get('category','unclassified');folder_id=query.get('folder_id')
+        self.organize.folder_path(pid,category,folder_id)
+        cache=self.store.data_root/'archive-uploads';cache.mkdir(exist_ok=True);clean_path(cache)
+        if shutil.disk_usage(cache).free<length+512*1024**2:raise UserError('暂存 ZIP 的磁盘空间不足。',507)
+        temporary=cache/(uid()+'.zip');queued=False
+        try:
+            with temporary.open('xb') as output:
+                remaining=length
+                while remaining:
+                    chunk=handler.rfile.read(min(1024**2,remaining))
+                    if not chunk:raise UserError('ZIP 上传中断，未解压。')
+                    output.write(chunk);remaining-=len(chunk)
+            result=self.jobs.submit_archive(pid,category,temporary,folder_id,safe_name(query.get('name','素材.zip')),cleanup=True)
+            queued=True
+            return result
+        finally:
+            if not queued:temporary.unlink(missing_ok=True)
 
     def receive_upload(self,handler,query):
         pid=query.get('project','');category=query.get('category','references')
@@ -179,6 +205,7 @@ class Application:
         except ValueError:raise UserError('无法读取文件大小。')
         if not 0<=length<=128*1024**3:raise UserError('单文件须小于128 GiB。',413)
         filename=safe_name(query.get('name',''))
+        if Path(filename).suffix.lower()=='.zip':return self.receive_archive(handler,query,length)
         if Path(filename).suffix.lower() not in SAFE_EXTENSIONS:raise UserError('此文件类型暂不支持导入。')
         root=clean_path(project['root'])
         folder_id=query.get('folder_id')

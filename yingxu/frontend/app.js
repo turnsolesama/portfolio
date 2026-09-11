@@ -916,23 +916,24 @@ async function newItemDialog(category,options = {}) {
 function importDialog() {
   if (!state.projectId) { newProjectDialog(); return; }
   const selected = state.category === 'all' ? 'unclassified' : state.category; const projectId = state.projectId;
-  const dialog = showDialog({title:'导入文件',subtitle:'选择文件、目录，或粘贴本地路径。',submit:'开始导入',body:`<div class="fields-two"><div class="field"><label for="importCategory">分类</label><select id="importCategory" name="category">${optionHtml(categoryDefs.filter(value => value.key !== 'all'),selected)}</select></div><div class="field"><label for="importFolder">文件夹</label><select id="importFolder" name="folder_id">${folderOptions(selected === state.category ? state.folders : [],state.folderId)}</select></div></div><div class="import-pickers"><button class="button button-secondary" type="button" data-pick="files">${icon('file')}选择文件</button><button class="button button-secondary" type="button" data-pick="folder">${icon('folder')}选择文件夹</button></div><div class="field"><label for="importPaths">文件路径（每行一个）</label><textarea class="selected-paths" id="importPaths" name="paths" placeholder="F:\\我的视频项目\\角色素材&#10;F:\\我的视频项目\\剧本.docx" required></textarea></div><p class="dialog-hint">引用原位置的文件，不复制或移动。直接把文件拖入页面，则会保存项目副本。</p>`,onSubmit:async form => { requireFolderSelection('#importFolder'); const data = new FormData(form); const paths = String(data.get('paths')).split(/\r?\n/).map(path => path.trim().replace(/^"|"$/g,'')).filter(Boolean); if (!paths.length) throw new Error('请选择文件，或填写至少一个本地路径。'); const result = await api('/api/import',{method:'POST',body:{project_id:projectId,category:data.get('category'),folder_id:data.get('folder_id') || null,paths}}); monitorJob(result.job_id,'正在整理导入的素材'); }});
+  const dialog = showDialog({title:'导入文件',subtitle:'选择文件、文件夹或 ZIP，也可粘贴本地路径。ZIP 会解压为当前分类下的独立文件夹，保留包内目录；原压缩包不变。',submit:'开始导入',body:`<div class="fields-two"><div class="field"><label for="importCategory">分类</label><select id="importCategory" name="category">${optionHtml(categoryDefs.filter(value => value.key !== 'all'),selected)}</select></div><div class="field"><label for="importFolder">文件夹</label><select id="importFolder" name="folder_id">${folderOptions(selected === state.category ? state.folders : [],state.folderId)}</select></div></div><div class="import-pickers"><button class="button button-secondary" type="button" data-pick="files">${icon('file')}选择文件</button><button class="button button-secondary" type="button" data-pick="folder">${icon('folder')}选择文件夹</button></div><div class="field"><label for="importPaths">文件路径（每行一个）</label><textarea class="selected-paths" id="importPaths" name="paths" placeholder="F:\\我的视频项目\\角色素材&#10;F:\\我的视频项目\\剧本.docx" required></textarea></div><p class="dialog-hint">引用原位置的文件，不复制或移动。直接把文件拖入页面，则会保存项目副本。</p>`,onSubmit:async form => { requireFolderSelection('#importFolder'); const data = new FormData(form); const paths = String(data.get('paths')).split(/\r?\n/).map(path => path.trim().replace(/^"|"$/g,'')).filter(Boolean); if (!paths.length) throw new Error('请选择文件，或填写至少一个本地路径。'); const result = await api('/api/import',{method:'POST',body:{project_id:projectId,category:data.get('category'),folder_id:data.get('folder_id') || null,paths}}); monitorJob(result.job_id,'正在整理导入的素材'); }});
   bindFolderSelector(dialog,'#importCategory','#importFolder',projectId,selected,state.folderId);
   $$('[data-pick]',dialog).forEach(button => button.addEventListener('click',async () => { button.disabled = true; try { const result = await api('/api/pick',{method:'POST',body:{kind:button.dataset.pick}}); if (result.paths?.length && dialog.open) { const existing = $('#importPaths').value.trim(); $('#importPaths').value = [...new Set([...existing.split(/\r?\n/).filter(Boolean),...result.paths])].join('\n'); } } catch(error) { $('#dialogError').textContent = error.message; $('#dialogError').hidden = false; } finally { button.disabled = false; } }));
 }
-async function monitorJob(id,label) {
+async function monitorJob(id,label,throwErrors = false) {
   if (!id) return; const token = {}; state.jobs.set(id,token); const tray = $('#jobTray'); tray.hidden = false; tray.innerHTML = `<span class="spinner"></span><span>${escapeHtml(label)}…</span>`;
   try {
     for (let count = 0; count < 7200 && state.jobs.get(id) === token; count++) {
       const job = await api(`/api/jobs/${encodeURIComponent(id)}`); tray.innerHTML = `<span class="spinner"></span><span>${escapeHtml(job.message || label)} · 已处理 ${job.done || 0} 项</span>`;
       if (job.state === 'done' || job.state === 'error') {
         if (job.state === 'error') throw new Error(job.message || job.errors?.[0] || '素材整理未完成。');
-        state.jobs.delete(id); tray.hidden = true; await refreshProjects(); if (state.section === 'assets') await loadItems(); toast(`素材已整理：${job.done || 0} 项${job.skipped ? `，跳过 ${job.skipped} 项` : ''}。`); if (job.errors?.length) toast(`部分文件未导入：${String(job.errors[0])}`,'info',8000); return;
+        if (throwErrors && job.errors?.length) throw new Error(job.errors[0]);
+        state.jobs.delete(id); tray.hidden = true; await refreshProjects(); if (state.section === 'assets') await loadItems(); toast(`素材已整理：${job.done || 0} 项${job.skipped ? `，跳过 ${job.skipped} 项` : ''}。`); if (job.errors?.length) toast(`部分文件未导入：${String(job.errors[0])}`,'info',8000); return job;
       }
       await new Promise(resolve => setTimeout(resolve,1100));
     }
     toast('整理任务仍在后台运行，可稍后使用“同步项目文件”查看。','info',6000);
-  } catch(error) { report(error); } finally { state.jobs.delete(id); if (!state.jobs.size) tray.hidden = true; }
+  } catch(error) { if (throwErrors) throw error; report(error); } finally { state.jobs.delete(id); if (!state.jobs.size) tray.hidden = true; }
 }
 function advancedSearchDialog() {
   showDialog({title:'高级检索',subtitle:'多个条件同时满足，快速找到需要继续制作的素材。',submit:'应用筛选',body:`<div class="field"><label for="queryText">关键词与查询条件</label><input id="queryText" name="q" value="${escapeHtml(state.q)}" placeholder="雨巷 tag:夜景 type:video"><p class="field-hint">支持 tag:夜景、type:video、status:已完成、category:scenes。普通文字检索名称与可搜索内容。</p></div><div class="fields-two"><div class="field"><label for="advancedStatus">制作状态</label><select id="advancedStatus" name="status"><option value="">全部状态</option>${optionHtml(statuses,state.status)}</select></div><div class="field"><label for="advancedKind">文件类型</label><select id="advancedKind" name="kind"><option value="">全部类型</option>${optionHtml(Object.entries(kindLabels).filter(([key]) => key !== 'skill').map(([key,label]) => ({key,label})),state.kind)}</select></div></div><div class="dialog-hint">例：<strong>夜景 tag:主角 type:video</strong><br>查找文字包含“夜景”、带“主角”标签的视频。</div>`,onSubmit:async form => { const data = new FormData(form); state.q = String(data.get('q')).trim(); state.status = data.get('status'); state.kind = data.get('kind'); state.offset = 0; $('#searchInput').value = state.q; $('#statusFilter').value = state.status; $('#kindFilter').value = state.kind; await loadItems(); }});
@@ -1202,7 +1203,9 @@ async function pasteResourceFiles(location = null) {
   state.uploading = true;
   try {
     const result = await api('/api/clipboard/paste',{method:'POST',body:{project_id:target.project_id,category,folder_id:target.folder_id || null}});
-    toast(`已粘贴 ${result.items.length} 个文件到${categoryLabel(category)}。`);
+    if (result.items.length) toast(`已粘贴 ${result.items.length} 个文件到${categoryLabel(category)}。`);
+    for (const id of result.job_ids || []) await monitorJob(id,'正在解压 ZIP');
+    if (result.error) report(new Error(result.error));
   } catch(error) { report(error); }
   finally { state.uploading = false; await refreshProjects(); if (state.section === 'assets') await loadItems(); }
 }
@@ -1213,9 +1216,11 @@ async function uploadFiles(files,category,folderId = null) {
   try {
     for (let index = 0; index < files.length && !cancelled; index++) {
       const file = files[index]; tray.innerHTML = `<span class="spinner"></span><span id="uploadProgress">正在保存项目副本 ${index+1}/${files.length} · ${escapeHtml(file.name)}</span><button class="button button-ghost button-small" id="cancelUpload">取消</button>`; $('#cancelUpload').onclick = () => { cancelled = true; xhr?.abort(); };
-      await new Promise((resolve,reject) => { xhr = new XMLHttpRequest(); const params = new URLSearchParams({project,category,name:file.name}); if (folderId) params.set('folder_id',folderId); xhr.open('POST',`/api/upload?${params}`); xhr.setRequestHeader('X-YingXu-Token',state.bootstrap.token); xhr.setRequestHeader('Content-Type','application/octet-stream'); xhr.upload.onprogress = event => { if (event.lengthComputable && $('#uploadProgress')) $('#uploadProgress').textContent = `正在保存 ${index+1}/${files.length} · ${file.name} · ${Math.round(event.loaded/event.total*100)}%`; }; xhr.onload = () => { let body; try { body = JSON.parse(xhr.responseText); } catch { body = {}; } if (xhr.status >= 200 && xhr.status < 300) resolve(body); else reject(new Error(body.error || `「${file.name}」未能导入。`)); }; xhr.onerror = () => reject(new Error('本地连接中断，文件导入未完成。')); xhr.onabort = () => reject(new Error('已取消后续导入，完成的项目副本会保留。')); xhr.send(file); }); completed++;
+      const result = await new Promise((resolve,reject) => { xhr = new XMLHttpRequest(); const params = new URLSearchParams({project,category,name:file.name}); if (folderId) params.set('folder_id',folderId); xhr.open('POST',`/api/upload?${params}`); xhr.setRequestHeader('X-YingXu-Token',state.bootstrap.token); xhr.setRequestHeader('Content-Type','application/octet-stream'); xhr.upload.onprogress = event => { if (event.lengthComputable && $('#uploadProgress')) $('#uploadProgress').textContent = `正在保存 ${index+1}/${files.length} · ${file.name} · ${Math.round(event.loaded/event.total*100)}%`; }; xhr.onload = () => { let body; try { body = JSON.parse(xhr.responseText); } catch { body = {}; } if (xhr.status >= 200 && xhr.status < 300) resolve(body); else reject(new Error(body.error || `「${file.name}」未能导入。`)); }; xhr.onerror = () => reject(new Error('本地连接中断，文件导入未完成。')); xhr.onabort = () => reject(new Error('已取消后续导入，完成的项目副本会保留。')); xhr.send(file); });
+      if (result.job_id) { const job = await monitorJob(result.job_id,'正在解压 ZIP',true); if (!job || job.errors?.length) throw new Error(job?.errors?.[0] || 'ZIP 导入未完成。'); }
+      completed++;
     }
-    toast(`已将 ${completed} 个文件保存到项目，分类为${categoryLabel(category)}。`);
+    toast(`已将 ${completed} 个文件或 ZIP 导入项目，分类为${categoryLabel(category)}。`);
   } catch(error) { if (cancelled) toast(error.message,'info'); else report(error); }
   finally { state.uploading = false; tray.hidden = true; await refreshProjects(); if (state.section === 'assets') await loadItems(); }
 }
