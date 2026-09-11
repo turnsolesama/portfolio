@@ -63,7 +63,7 @@ def wait_health(port, process=None):
 
 def check_server(port, data, projects):
     health = wait_health(port)
-    assert health['version'] == '0.4.0'
+    assert health['version'] == '0.4.1'
     expected = data_identity(data)
     assert health['instance_id'] == expected
     bootstrap = request(port, 'GET', '/api/bootstrap')
@@ -245,7 +245,7 @@ def check_media(port, root, base, interpreter, environment):
 def check_static_formats(port, base):
     token = request(port, 'GET', '/api/bootstrap')['token']
     samples = {
-        'safe.svg': b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><rect width="40" height="30" fill="#567456"/></svg>',
+        'safe.svg': b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 60"><defs><filter id="s"><feDropShadow stdDeviation="2"/></filter></defs><rect filter="url(#s)" width="40" height="30" fill="#567456" stroke-dasharray="16 8"/></svg>',
         'safe.html': b'<h1>Heading</h1><table><tr><td>Cell</td></tr></table><script>window.BAD=1</script>',
     }
     for name, raw in samples.items():
@@ -263,6 +263,8 @@ def check_static_formats(port, base):
             if name.endswith('.svg'):
                 assert media == base64.b64decode(content['preview_url'].split(',', 1)[1])
                 assert 'sandbox' in response.getheader('Content-Security-Policy')
+                assert b'<rect' in media and b'<filter' not in media
+                assert '滤镜' in content['notice'] and '实线' in content['notice']
             else:
                 assert content['content'] == raw.decode() and '<table>' in content['preview_html']
                 assert '<script' not in content['preview_html'] and 'window.BAD' not in content['preview_html']

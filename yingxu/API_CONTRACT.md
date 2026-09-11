@@ -146,3 +146,7 @@ DOCX content 保留 paragraphs/content/notice，并增加 blocks（paragraph/tab
 ## 0.4.0 静态格式
 
 资源 kind 增加 svg/html。项目 GET /api/content/ID 与外部 GET /api/external/ID.content 返回只读格式内容。SVG preview_url 为经过净化的 data:image/svg+xml;base64；HTML content 为原始解码源码，preview_html 为重建后的静态片段，必须使用无 allow-* 的 sandbox iframe + CSP。保存接口拒绝这两种格式。SVG 媒体直链也经过净化并返回隔离 CSP；HTML 媒体直链按 text/plain 附件提供，禁止同源网页执行。两者不创建缩略图任务。后台不解析超出各自有界限制的文件。
+
+## 0.4.1 SVG兼容
+
+SVG内容notice包含本次静态预览省略的装饰效果提示；内容与媒体均用相同净化结果。filter装饰省略，stroke-dasharray降级实线；不放宽脚本、外链、事件或动画边界。

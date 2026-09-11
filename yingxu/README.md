@@ -8,7 +8,7 @@
 
 浅色中文界面，多标签文件工作区，普通目录保存素材。原创代码采用 [MIT](LICENSE)，无需订阅或云账号。
 
-**[下载 Windows x64 完整包 · v0.4.0](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-Windows-x64.zip)**
+**[下载 Windows x64 完整包 · v0.4.1](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.1/YingXu-v0.4.1-Windows-x64.zip)**
 
 自带 Python、图片处理组件、FFmpeg 和 WebView2，完整解压后双击即可使用。
 
@@ -197,3 +197,9 @@ Windows 10 22H2 / Windows 11 x64。完整包自带运行环境，使用系统自
 - HTML/HTM 支持只读源码和静态结构预览。文字、标题、列表、表格等按统一样式显示；不运行脚本、不联网、不跳转，图片显示文字占位，不还原原网页 CSS。隔离 iframe 与限制性 CSP；原 HTML 不改写，复杂结构可退回只读源码。
 - 新格式各限输入 1 MiB、最多 2000 个内容节点与 32 层嵌套；SVG 另限制路径、引用和尺寸复杂度，超限请用原应用查看。只在打开详情时解析，不新增模型、依赖或空闲轮询。
 - 保留 0.3.9 的项目分类拖动和此前所有修复。Markdown 拖入 Word 等文件建立链接尚未包含在本版。
+
+## 0.4.1：SVG 装饰效果兼容修复
+
+- 修复轻量 SVG 因包含投影滤镜或虚线而整张无法预览的问题。保留静态主体，省略滤镜、把虚线显示为实线，并在预览内提示简化效果；原文件不改写。
+- 脚本、外链、事件和动画等限制仍保留，解析与复杂度上限不变。没有新增依赖、模型或空闲任务。
+- 保留0.4.0的Word编辑分页和HTML静态预览。文档内分层搜索、Markdown拖入Word等文件建立链接仍为后续需求，本版未实现。

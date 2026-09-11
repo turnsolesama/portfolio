@@ -80,6 +80,22 @@ class StaticFormatsHttpTests(unittest.TestCase):
                 self.assertNotIn(b'<script>',body)
             self.assertEqual(path.read_bytes(),raw)
 
+    def test_svg_optional_decorations_degrade_with_notice_without_losing_main_shapes(self):
+        raw=b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600"><defs><filter id="s"><feDropShadow dx="0" dy="8" stdDeviation="6"/></filter></defs><g filter="url(#s)"><circle cx="200" cy="300" r="50"/><line x1="40" x2="760" y1="500" y2="500" stroke-dasharray="16 8"/></g></svg>'
+        path,entry=self.opened('decorated.svg',raw)
+        status,body,_=self.request(entry['content_url']);self.assertEqual(status,200,body)
+        content=json.loads(body)['content'];safe=base64.b64decode(content['preview_url'].split(',',1)[1])
+        self.assertIn(b'<circle',safe);self.assertIn(b'<line',safe)
+        self.assertNotIn(b'<filter',safe);self.assertNotIn(b'feDropShadow',safe)
+        self.assertNotIn(b'stroke-dasharray="16 8"',safe)
+        self.assertIn('滤镜',content['notice']);self.assertIn('实线',content['notice'])
+        item=self.indexed(path)
+        self.assertEqual(self.request(entry['media_url'])[1],safe)
+        self.assertEqual(self.request('/api/media/'+item['id'])[1],safe)
+        project_content=json.loads(self.request('/api/content/'+item['id'])[1])
+        self.assertEqual(project_content['notice'],content['notice'])
+        self.assertFalse(content['editable']);self.assertEqual(path.read_bytes(),raw)
+
     def test_html_source_is_preserved_preview_inert_and_raw_media_is_attachment(self):
         raw=b'<h1>Title</h1><table><tr><td>Cell</td></tr></table><script>window.BAD=1</script><img src="https://example.invalid/pixel"><a href="javascript:alert(1)">Link</a>'
         path,entry=self.opened('page.HTML',raw)

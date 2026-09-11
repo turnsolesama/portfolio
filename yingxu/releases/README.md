@@ -1,11 +1,11 @@
 # 映序 Windows 发布包
 
-当前完整版 **0.4.0**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
+当前完整版 **0.4.1**，面向 Windows 10 22H2 / Windows 11 x64。自带 Python、Pillow、FFmpeg 与 WebView2，完整解压后双击 `YingXu.exe`。从 [GitHub Releases 下载页面](https://github.com/turnsolesama/portfolio/releases) 获取完整包、SHA-256 和验收记录。较大的完整包使用 Release 附件分发，历史轻量包保留原路径。
 
 组装方法见 [开发说明](../docs/开发说明.md)，来源与许可见 [第三方组件说明](../THIRD_PARTY_NOTICES.md)。所有检查只使用临时合成项目。
 
 
-**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.0/YingXu-v0.4.0-verification.json)
+**[下载完整包](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.1/YingXu-v0.4.1-Windows-x64.zip)** · [SHA-256](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.1/YingXu-v0.4.1-SHA256.txt) · [包大小与摘要](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.1/YingXu-v0.4.1-manifest.json) · [隔离验收记录](https://github.com/turnsolesama/portfolio/releases/download/yingxu-v0.4.1/YingXu-v0.4.1-verification.json)
 
 0.3.7 截图默认进入标注后确认，支持画笔、箭头、矩形、颜色/粗细与撤销；设置中保留快速完成，取消不写剪贴板或项目。原生状态栏显示实际界面缩放百分比，点击恢复 100%；图片预览另显示图片自身的实际缩放比例。同时增加项目行与素材组成员长条行的拖动归类：拖到其他分类或同项目的组，拖出弹窗到明确空白区域则未分类或移出组，Esc 取消。全部为逻辑整理，磁盘原文件保持不变；修复素材选择框保持焦点时按 Delete 无响应，仍沿用映序回收站、确认开关与草稿保护。
 
@@ -70,3 +70,9 @@ python tools/verify_release.py releases/YingXu-v0.2.3-Windows-x64.zip
 - HTML/HTM 支持只读源码和静态结构预览。文字、标题、列表、表格等按统一样式显示；不运行脚本、不联网、不跳转，图片显示文字占位，不还原原网页 CSS。隔离 iframe 与限制性 CSP；原 HTML 不改写，复杂结构可退回只读源码。
 - 新格式各限输入 1 MiB、最多 2000 个内容节点与 32 层嵌套；SVG 另限制路径、引用和尺寸复杂度，超限请用原应用查看。只在打开详情时解析，不新增模型、依赖或空闲轮询。
 - 保留 0.3.9 的项目分类拖动和此前所有修复。Markdown 拖入 Word 等文件建立链接尚未包含在本版。
+
+## 0.4.1：SVG 装饰效果兼容修复
+
+- 修复轻量 SVG 因包含投影滤镜或虚线而整张无法预览的问题。保留静态主体，省略滤镜、把虚线显示为实线，并在预览内提示简化效果；原文件不改写。
+- 脚本、外链、事件和动画等限制仍保留，解析与复杂度上限不变。没有新增依赖、模型或空闲任务。
+- 保留0.4.0的Word编辑分页和HTML静态预览。文档内分层搜索、Markdown拖入Word等文件建立链接仍为后续需求，本版未实现。

@@ -55,33 +55,31 @@ jobs:
         run: |
           python tools/package_release.py
           if ($LASTEXITCODE) { throw 'Package failed' }
-          python tools/verify_release.py releases/YingXu-v0.4.0-Windows-x64.zip | Tee-Object releases/YingXu-v0.4.0-verification.json
+          python tools/verify_release.py releases/YingXu-v0.4.1-Windows-x64.zip | Tee-Object releases/YingXu-v0.4.1-verification.json
           if ($LASTEXITCODE) { throw 'Release verification failed' }
       - name: Upload draft, fetch and verify assets, then publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $tag = 'yingxu-v0.4.0'
+          $tag = 'yingxu-v0.4.1'
           gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
           if ($LASTEXITCODE -eq 0) { throw 'Release already exists; preserve its historical assets' }
           @'
-          完整解压后双击 YingXu.exe。Windows 10 22H2 / Windows 11 x64，自带锁定 Python、Pillow、FFmpeg 和 WebView2。
+          完整解压后双击 YingXu.exe。自带锁定 Python、Pillow、FFmpeg 和 WebView2，无新增依赖或模型。
           
-          修复 Word 长文档切换编辑卡顿：每次最多显示40段，跨页保留草稿，支持跳页与中文输入保护。这里的段落分页不是Word打印页。
+          修复轻量SVG含投影或虚线时整张不能打开：主体正常静态预览，省略滤镜、虚线显示为实线，并提示简化效果。原文件不改写；脚本、外链、事件和动画限制保留。
           
-          新增 SVG 轻量静态预览和 HTML/HTM 只读源码、静态结构预览。无新增依赖、模型或空闲轮询；只在打开时有界解析。SVG脚本/外链/动画/滤镜/虚线等不支持；HTML脚本/联网/跳转不运行，不还原原网页CSS，图片用文字占位。原文件不修改。
+          保留Word长文档每页40段编辑、跨页草稿，以及HTML只读源码/静态预览和以前功能。文档内分层搜索及MD拖入Word等文件生成链接仍为后续需求。
           
-          保留项目分类拖动、批量标签/状态、截图标注、Markdown实时编辑及回收站保护。MD拖入Word等文件建立链接尚不包含在本版。
-          
-          更新前保存文稿，从托盘退出映序，运行旧目录 Stop-YingXu.ps1，再完整解压新版。保留原项目和应用数据目录。附件包含完整ZIP、SHA-256、大小清单和隔离验证记录；历史Release保留。
+          更新前保存文稿，从托盘退出映序，运行旧目录Stop-YingXu.ps1，再完整解压新版。保留原项目和应用数据目录。发布附件经过完整下载、SHA-256与隔离运行验证；历史版本保留。
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP/release-notes.md"
-          gh release create $tag releases/YingXu-v0.4.0-Windows-x64.zip releases/YingXu-v0.4.0-SHA256.txt releases/YingXu-v0.4.0-manifest.json releases/YingXu-v0.4.0-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.4.0 · Word稳定性与静态格式预览' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
+          gh release create $tag releases/YingXu-v0.4.1-Windows-x64.zip releases/YingXu-v0.4.1-SHA256.txt releases/YingXu-v0.4.1-manifest.json releases/YingXu-v0.4.1-verification.json --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title '映序 0.4.1 · SVG装饰效果兼容修复' --notes-file "$env:RUNNER_TEMP/release-notes.md" --draft
           if ($LASTEXITCODE) { throw 'Draft upload failed' }
           gh release download $tag --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/published-check"
           if ($LASTEXITCODE) { throw 'Draft download failed' }
-          $manifest = Get-Content "$env:RUNNER_TEMP/published-check/YingXu-v0.4.0-manifest.json" -Raw | ConvertFrom-Json
-          $zip = Get-Item "$env:RUNNER_TEMP/published-check/YingXu-v0.4.0-Windows-x64.zip"
+          $manifest = Get-Content "$env:RUNNER_TEMP/published-check/YingXu-v0.4.1-manifest.json" -Raw | ConvertFrom-Json
+          $zip = Get-Item "$env:RUNNER_TEMP/published-check/YingXu-v0.4.1-Windows-x64.zip"
           if ($zip.Length -ne $manifest.bytes -or (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower() -ne $manifest.sha256) { throw 'Downloaded asset differs' }
           python tools/verify_release.py $zip.FullName
           if ($LASTEXITCODE) { throw 'Downloaded asset failed verification' }

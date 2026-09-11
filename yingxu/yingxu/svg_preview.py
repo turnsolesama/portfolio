@@ -43,7 +43,23 @@ _LOCAL_URL = re.compile(r'url\(\s*[\'"]?#([A-Za-z_][A-Za-z0-9_.:-]{0,127})[\'"]?
 _TRANSFORM = re.compile(r'(matrix|translate|scale|rotate|skewX|skewY)\s*\(([^()]*)\)')
 _SHAPES = {'path', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon'}
 _GRADIENTS = {'linearGradient', 'radialGradient'}
-_ELEMENTS = {'svg', 'g', 'defs', 'text', 'tspan', 'title', 'desc', 'stop'} | _SHAPES | _GRADIENTS
+_FILTER_ELEMENTS = {'filter', 'feDropShadow', 'feGaussianBlur', 'feOffset', 'feFlood',
+    'feColorMatrix', 'feBlend', 'feComposite', 'feMerge', 'feMergeNode',
+    'feComponentTransfer', 'feFuncR', 'feFuncG', 'feFuncB', 'feFuncA',
+    'feMorphology', 'feTurbulence', 'feDisplacementMap', 'feConvolveMatrix',
+    'feDiffuseLighting', 'feSpecularLighting', 'feDistantLight', 'fePointLight', 'feSpotLight'}
+_FILTER_ATTRIBUTES = {'id', 'x', 'y', 'width', 'height', 'filterUnits', 'primitiveUnits',
+    'color-interpolation-filters', 'in', 'in2', 'result', 'dx', 'dy', 'stdDeviation',
+    'flood-color', 'flood-opacity', 'edgeMode', 'type', 'values', 'mode', 'operator',
+    'k1', 'k2', 'k3', 'k4', 'tableValues', 'slope', 'intercept', 'amplitude', 'exponent',
+    'offset', 'radius', 'baseFrequency', 'numOctaves', 'seed', 'stitchTiles', 'scale',
+    'xChannelSelector', 'yChannelSelector', 'order', 'kernelMatrix', 'divisor', 'bias',
+    'targetX', 'targetY', 'kernelUnitLength', 'preserveAlpha', 'surfaceScale',
+    'diffuseConstant', 'specularConstant', 'specularExponent', 'lighting-color',
+    'azimuth', 'elevation', 'z', 'pointsAtX', 'pointsAtY', 'pointsAtZ', 'limitingConeAngle'}
+_FILTER_NOTICE = '为保持轻量预览，已省略投影、模糊等滤镜效果；原 SVG 文件未改动。'
+_DASH_NOTICE = '为避免复杂虚线影响预览速度，虚线已按实线显示；原 SVG 文件未改动。'
+_ELEMENTS = {'svg', 'g', 'defs', 'text', 'tspan', 'title', 'desc', 'stop'} | _SHAPES | _GRADIENTS | _FILTER_ELEMENTS
 _PRESENTATION = {
     'fill', 'stroke', 'color', 'fill-opacity', 'stroke-opacity', 'opacity',
     'fill-rule', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
@@ -82,7 +98,7 @@ _ENUMS = {
     'spreadMethod': {'pad', 'reflect', 'repeat'},
     'lengthAdjust': {'spacing', 'spacingAndGlyphs'}, 'version': {'1.0', '1.1', '2.0'},
 }
-_COMMON = {'id', 'class', 'style', 'transform'} | _PRESENTATION
+_COMMON = {'id', 'class', 'style', 'transform', 'filter'} | _PRESENTATION
 
 
 def _reject(message):
@@ -100,6 +116,32 @@ class _Sanitizer:
         self.references = []
         self.gradient_links = {}
         self.transform_factors = []
+        self.notices = []
+
+    def notice(self, message):
+        if message not in self.notices:
+            self.notices.append(message)
+
+    def omitted_filter_attribute(self, name, value, node):
+        """Validate inert filter parameters before the entire subtree is removed.
+
+        No href, event, CSS, foreign namespaces or feImage are accepted even in
+        omitted decorations. XML structure/size/depth limits still cover them.
+        """
+        if name not in _FILTER_ATTRIBUTES or len(value) > 4096:
+            _reject('SVG 滤镜包含不支持的属性或复杂内容')
+        value = value.strip()
+        if name == 'id':
+            self.attribute(name, value, node)
+        elif name in ('flood-color', 'lighting-color'):
+            self.color(value, node)
+        elif re.fullmatch(r'[A-Za-z_][A-Za-z0-9_.-]{0,127}', value):
+            pass
+        elif _LENGTH.fullmatch(value):
+            self.length(value)
+        else:
+            self.numbers(value, maximum=1000)
+        return value
 
     def number(self, value):
         self.number_count += 1
@@ -231,7 +273,19 @@ class _Sanitizer:
                 # Tiny dashes can amplify browser work despite short input and
                 # bounded coordinates. ViewBox/transform/pathLength make a
                 # scalar minimum insufficient, so the light preview omits this.
-                _reject('轻量 SVG 预览暂不支持虚线描边')
+                numbers = self.numbers(value, maximum=64)
+                if any(number < 0 for number in numbers):
+                    _reject('SVG 虚线长度无效')
+                self.notice(_DASH_NOTICE)
+                return 'none'
+        elif name == 'filter':
+            if value == 'none':
+                return None
+            match = _LOCAL_URL.fullmatch(value)
+            if not match:
+                _reject('SVG 不允许外部滤镜或复杂 CSS 滤镜引用')
+            self.notice(_FILTER_NOTICE)
+            return None
         elif name in ('stroke-width', 'font-size'):
             pixels = self.length(value, nonnegative=True)
             if pixels is None or pixels > 4096:
@@ -307,6 +361,10 @@ class _Sanitizer:
                 _reject('SVG 图形包含不支持的嵌套内容')
             if parent in ('text', 'tspan') and name not in ('tspan', 'title', 'desc'):
                 _reject('SVG 文本包含不支持内容')
+            if name in _FILTER_ELEMENTS - {'filter'} and parent not in _FILTER_ELEMENTS:
+                _reject('SVG 滤镜节点位置无效')
+            if parent in _FILTER_ELEMENTS and (name not in _FILTER_ELEMENTS or name == 'filter'):
+                _reject('SVG 滤镜包含不支持的嵌套内容')
         if name in _GRADIENTS:
             self.gradient_count += 1
             if self.gradient_count > MAX_GRADIENTS:
@@ -323,6 +381,11 @@ class _Sanitizer:
             attr_namespace, attr_separator, attr = full_attr.rpartition('|')
             if not attr_separator:
                 attr = full_attr
+            if name in _FILTER_ELEMENTS:
+                if attr_namespace:
+                    _reject('SVG 滤镜包含不支持的命名空间属性')
+                node.set(attr, self.omitted_filter_attribute(attr, value, node))
+                continue
             if attr_namespace == XML_NAMESPACE and attr == 'space':
                 node.set('{'+XML_NAMESPACE+'}space', self.attribute('space', value, node))
                 continue
@@ -335,7 +398,9 @@ class _Sanitizer:
                 continue
             if attr in node.attrib:
                 _reject('SVG 属性重复')
-            node.set(attr, self.attribute(attr, value, node))
+            sanitized = self.attribute(attr, value, node)
+            if sanitized is not None:
+                node.set(attr, sanitized)
             if attr in ('transform', 'gradientTransform'):
                 factor *= self.transform(value)
         if pending_style:
@@ -346,9 +411,13 @@ class _Sanitizer:
                     continue
                 prop, separator, value = declaration.partition(':')
                 prop = prop.strip()
-                if not separator or prop not in _PRESENTATION:
+                if not separator or prop not in _PRESENTATION | {'filter'}:
                     _reject('SVG 只支持静态颜色、线条和文字样式')
-                node.set(prop, self.attribute(prop, value.strip(), node))
+                sanitized = self.attribute(prop, value.strip(), node)
+                if sanitized is not None:
+                    node.set(prop, sanitized)
+                elif prop in node.attrib:
+                    del node.attrib[prop]
         inherited = self.transform_factors[-1] if self.transform_factors else 1
         if factor * inherited > 10000:
             _reject('SVG 嵌套缩放超过安全范围')
@@ -393,6 +462,11 @@ class _Sanitizer:
                     _reject('SVG 渐变循环或引用链过长')
                 seen.add(id(cursor))
                 cursor = self.ids[self.gradient_links[id(cursor)]]
+        for parent in self.root.iter():
+            for child in list(parent):
+                if child.tag == 'filter':
+                    parent.remove(child)
+                    self.notice(_FILTER_NOTICE)
         # Canonical pixel dimensions also bound standalone SVG rasterization.
         width = self.length(self.root.get('width', '300'), dimension=True)
         height = self.length(self.root.get('height', '150'), dimension=True)
@@ -404,8 +478,8 @@ class _Sanitizer:
         return result
 
 
-def sanitize_svg(raw: bytes) -> bytes:
-    """Parse and rebuild a bounded, inert SVG subset, or raise SvgPreviewError.
+def preview_svg(raw: bytes) -> dict:
+    """Return {'svg': bytes, 'notices': list[str]} for the inert static subset.
 
     This never reads URLs, opens files, invokes a browser, or loads an SVG engine.
     Callers must read at most MAX_BYTES + 1 from an authorized verified handle.
@@ -430,6 +504,12 @@ def sanitize_svg(raw: bytes) -> bytes:
     parser.ProcessingInstructionHandler = forbidden
     try:
         parser.Parse(raw, True)
-        return sanitizer.finish()
+        clean = sanitizer.finish()
+        return {'svg': clean, 'notices': sanitizer.notices}
     except (expat.ExpatError, OverflowError, RecursionError) as error:
         raise SvgPreviewError('SVG XML 无法安全解析；请用原设计软件打开。') from error
+
+
+def sanitize_svg(raw: bytes) -> bytes:
+    """Compatibility byte API for isolated SVG media responses."""
+    return preview_svg(raw)['svg']

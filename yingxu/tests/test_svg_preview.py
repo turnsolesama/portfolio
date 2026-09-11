@@ -1,7 +1,7 @@
 import unittest
 import xml.etree.ElementTree as ET
 
-from yingxu.svg_preview import (sanitize_svg, SvgPreviewError, MAX_BYTES, MAX_NODES, MAX_PATH_COMMANDS,
+from yingxu.svg_preview import (sanitize_svg, preview_svg, SvgPreviewError, MAX_BYTES, MAX_NODES, MAX_PATH_COMMANDS,
                                MAX_DEPTH, MAX_NUMBERS, MAX_PATH_DATA, SVG_NAMESPACE)
 
 
@@ -85,9 +85,8 @@ class SvgPreviewTests(unittest.TestCase):
                      '<linearGradient href="https://example.com/g.svg#a"/>', '<linearGradient href="data:text/plain,xxx"/>'):
             with self.subTest(body=body): self.assertRejected(svg(body))
 
-    def test_animation_filters_masks_patterns_clips_and_all_use_are_rejected(self):
+    def test_animation_masks_patterns_clips_and_all_use_are_rejected(self):
         for body in ('<animate attributeName="x"/>', '<set attributeName="fill"/>', '<animateTransform/>',
-                     '<filter id="f"><feGaussianBlur stdDeviation="1"/></filter>', '<rect filter="url(#f)"/>',
                      '<mask id="m"/>', '<pattern id="p"/>', '<clipPath id="c"/>', '<use href="#self" id="self"/>'):
             with self.subTest(body=body): self.assertRejected(svg(body))
 
@@ -138,12 +137,60 @@ class SvgPreviewTests(unittest.TestCase):
         self.assertIn(b'rotate(45)', sanitize_svg(svg('<g transform="rotate(45) translate(2,3) scale(2)"/>')))
 
     def test_dash_expansion_pathlength_and_extreme_font_or_stroke_are_rejected(self):
-        for body in ('<path stroke-dasharray="1e-300 1e-300" d="M0 0 L1000000 1000000"/>',
-                     '<path stroke-dasharray="4 4" d="M0 0 L10 10"/>', '<path pathLength="1e-300"/>',
+        for body in ('<path pathLength="1e-300"/>', '<path stroke-dasharray="url(https://example.com)"/>',
                      '<text font-size="1000000">text</text>', '<text font-size="10000%">text</text>',
                      '<path stroke-width="1000000"/>', '<path stroke-width="10000%"/>'):
             with self.subTest(body=body): self.assertRejected(svg(body))
         self.assertIn(b'stroke-dasharray="none"', sanitize_svg(svg('<path stroke-dasharray="none"/>')))
+
+    def test_decorative_shadows_and_dashes_degrade_without_losing_diagram(self):
+        raw = svg('<defs><linearGradient id="paint"><stop offset="0" stop-color="#abcdef"/>'
+                  '<stop offset="1" stop-color="#123456"/></linearGradient>'
+                  '<filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">'
+                  '<feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.2"/>'
+                  '</filter></defs><g filter="url(#shadow)"><rect x="10" y="10" width="80" height="60" fill="url(#paint)"/>'
+                  '<text x="20" y="40">合成流程图</text></g>'
+                  '<line x1="0" y1="0" x2="100" y2="100" stroke="#000" stroke-dasharray="16 8"/>'
+                  '<line x1="0" y1="100" x2="100" y2="0" style="stroke-dasharray:4 2;filter:url(#shadow)"/>')
+        before = bytes(raw)
+        result = preview_svg(raw)
+        self.assertEqual(raw, before)
+        self.assertEqual(sanitize_svg(raw), result['svg'])
+        self.assertEqual(len(result['notices']), 2)
+        self.assertTrue(any('滤镜' in notice for notice in result['notices']))
+        self.assertTrue(any('实线' in notice for notice in result['notices']))
+        root = ET.fromstring(result['svg'])
+        self.assertEqual(len(root.findall('.//{' + SVG_NAMESPACE + '}rect')), 1)
+        self.assertEqual(len(root.findall('.//{' + SVG_NAMESPACE + '}line')), 2)
+        self.assertEqual(len(root.findall('.//{' + SVG_NAMESPACE + '}linearGradient')), 1)
+        self.assertIn('合成流程图'.encode(), result['svg'])
+        self.assertNotIn(b'<filter', result['svg'])
+        self.assertNotIn(b'feDropShadow', result['svg'])
+        self.assertNotIn(b'filter=', result['svg'])
+        self.assertNotIn(b'stroke-dasharray="16 8"', result['svg'])
+
+    def test_tiny_dashes_are_never_sent_to_renderer_and_plain_svg_has_no_notice(self):
+        result = preview_svg(svg('<path stroke-dasharray="1e-300 1e-300" d="M0 0 L1000000 1000000"/>'))
+        self.assertIn(b'stroke-dasharray="none"', result['svg'])
+        self.assertNotIn(b'1e-300', result['svg'])
+        self.assertEqual(len(result['notices']), 1)
+        self.assertEqual(preview_svg(svg('<rect width="1" height="2"/>'))['notices'], [])
+
+    def test_omitted_filter_subtrees_still_reject_active_or_external_content(self):
+        for body in ('<filter id="f"><script>alert(1)</script></filter>',
+                     '<filter id="f" onload="alert(1)"/>', '<filter id="f"><feDropShadow onclick="x"/></filter>',
+                     '<filter id="f"><feImage href="https://example.com/image.png"/></filter>',
+                     '<filter id="f"><feGaussianBlur href="https://example.com"/></filter>',
+                     '<filter id="f"><animate attributeName="x"/></filter>',
+                     '<filter id="f"><foreignObject/></filter>', '<filter id="f"><use href="#x"/></filter>',
+                     '<g filter="url(https://example.com/effect.svg#f)"/>',
+                     '<g style="filter:url(data:text/plain,unsafe)"/>'):
+            with self.subTest(body=body): self.assertRejected(svg(body))
+
+    def test_omitted_filters_still_obey_node_depth_and_attribute_limits(self):
+        self.assertRejected(svg('<defs><filter id="f">' + '<feOffset dx="0"/>' * MAX_NODES + '</filter></defs>'))
+        self.assertRejected(svg('<filter>' + '<feMerge>' * MAX_DEPTH + '</feMerge>' * MAX_DEPTH + '</filter>'))
+        self.assertRejected(svg('<filter><feDropShadow stdDeviation="' + '1 ' * 3000 + '"/></filter>'))
 
     def test_unknown_namespaces_elements_attributes_and_nested_svg_rejected(self):
         for body in ('<custom/>', '<rect xmlns="urn:not-svg"/>', '<svg/>',
