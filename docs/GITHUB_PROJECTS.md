@@ -14,7 +14,7 @@ portfolio 首页仅作为工具导航。源码开发、问题反馈和后续版�
 
 ## 历史保留
 
-迁移前的来源提交为 [`35ecc7e17cb9053279ecc422c3a577f5dafa5104`](https://github.com/turnsolesama/portfolio/commit/35ecc7e17cb9053279ecc422c3a577f5dafa5104)。原有源码文件、15 个历史 Release 与原始下载地址均保留，避免旧链接失效；历史源码目录不再作为新版本开发入口。迁移是公开源码的独立快照，旧提交历史仍在 portfolio 可查。
+迁移前的来源提交为 [`35ecc7e17cb9053279ecc422c3a577f5dafa5104`](https://github.com/turnsolesama/portfolio/commit/35ecc7e17cb9053279ecc422c3a577f5dafa5104)。原有源码文件、历史 Release 与原始下载地址均保留，避免旧链接失效；历史源码目录不再作为新版本开发入口。迁移是公开源码的独立快照，旧提交历史仍在 portfolio 可查。
 
 六个既有工具的独立版本页提供原始程序包链接，本次没有重新构建或重复上传大型历史安装包。ClassicDesk 的新前端包和源码包已直接发布在自己的预览 Release。
 
