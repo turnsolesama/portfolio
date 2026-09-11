@@ -1,0 +1,46 @@
+name: YingXu macOS preview
+on:
+  push:
+    branches: [codex/yingxu-macos-preview]
+    paths: [yingxu/**, .github/workflows/yingxu-macos-preview.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: yingxu
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: yingxu
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install build dependencies
+        run: python -m pip install -r macos/requirements-build.txt
+      - name: Regression checks
+        run: |
+          python -B -m unittest discover -s tests -v
+          node --check frontend/app.js
+          for test in tests/frontend_*.cjs; do node "$test"; done
+      - name: Native macOS smoke test
+        run: python -B macos_app.py --smoke-test
+      - name: Build application
+        run: python macos/build.py
+      - name: Frozen application checks
+        run: |
+          .release-work/macos/dist/YingXu.app/Contents/MacOS/YingXu --smoke-test > releases/macos-preview/frozen-verification.json
+          python macos/webkit_smoke.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YingXu-0.3.7-mac.1-arm64
+          path: yingxu/releases/macos-preview/
+          if-no-files-found: error
+

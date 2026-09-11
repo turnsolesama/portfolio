@@ -20,7 +20,8 @@ SOURCE_LABELS = {"yingxu": "映序本地", "codex": "Codex 技能", "claude": "C
 
 
 def _key(path):
-    return os.path.normcase(os.path.abspath(path)).casefold()
+    value = os.path.normcase(os.path.abspath(path))
+    return value.casefold() if os.name == 'nt' else value
 
 
 def _check_no_links(path):

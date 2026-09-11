@@ -2,12 +2,13 @@
 from functools import lru_cache
 from pathlib import Path
 import shutil
+import sys
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 
 
 def ffmpeg_path():
-    bundled = APP_ROOT / 'runtime' / 'ffmpeg' / 'bin' / 'ffmpeg.exe'
+    bundled = APP_ROOT / 'runtime' / 'ffmpeg' / 'bin' / ('ffmpeg' if sys.platform == 'darwin' else 'ffmpeg.exe')
     return str(bundled) if bundled.is_file() else shutil.which('ffmpeg')
 
 

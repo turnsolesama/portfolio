@@ -1,6 +1,7 @@
 """Portable, side-effect-free defaults shared by HTTP and desktop launchers."""
 import hashlib
 import os
+import sys
 from pathlib import Path
 
 
@@ -15,6 +16,8 @@ def default_data_root():
     value = os.environ.get('YINGXU_DATA_DIR')
     if value:
         return absolute_directory(value)
+    if sys.platform == 'darwin':
+        return absolute_directory(Path.home() / 'Library' / 'Application Support' / 'YingXu')
     local = Path(os.environ.get('LOCALAPPDATA') or Path.home() / 'AppData' / 'Local')
     return absolute_directory(local / 'YingXu')
 
@@ -36,5 +39,7 @@ def default_project_root():
 def instance_id(data_root):
     # Python and .NET have different Unicode uppercase tables (for example ß).
     # Resolve the physical spelling, then fold ASCII only in this shared protocol.
-    normalized = str(Path(data_root).resolve()).rstrip('\\/').translate(str.maketrans('abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
+    normalized = str(Path(data_root).resolve()).rstrip('\\/')
+    if os.name == 'nt':
+        normalized = normalized.translate(str.maketrans('abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'))
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()

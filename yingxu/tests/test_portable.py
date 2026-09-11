@@ -1,6 +1,7 @@
 import importlib.machinery
 import importlib.util
 import os
+import sys
 from pathlib import Path
 import tempfile
 import unittest
@@ -25,7 +26,8 @@ class PortablePathsTests(unittest.TestCase):
 
     def test_defaults_are_per_user_and_do_not_create_directories(self):
         with patch('yingxu.paths.documents_directory', return_value=self.root / '文档'):
-            self.assertEqual(default_data_root(), self.root / 'Local' / 'YingXu')
+            expected = Path.home() / 'Library/Application Support/YingXu' if sys.platform == 'darwin' else self.root / 'Local/YingXu'
+            self.assertEqual(default_data_root(), expected.resolve())
             self.assertEqual(default_project_root(), self.root / '文档' / 'YingXu' / 'Projects')
         self.assertEqual(list(self.root.iterdir()), [])
 
@@ -52,7 +54,8 @@ class PortablePathsTests(unittest.TestCase):
         for name in ('Straße', 'ﬀ', 'ς', '中文', 'Ascii'):
             path = self.root / name
             path.mkdir()
-            expected = hashlib.sha256(str(path.resolve()).translate(translation).encode()).hexdigest()
+            normalized = str(path.resolve())
+            expected = hashlib.sha256((normalized.translate(translation) if os.name == 'nt' else normalized).encode()).hexdigest()
             self.assertEqual(instance_id(path), expected)
 
     def test_launcher_uses_same_defaults_and_rejects_foreign_service(self):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 import sqlite3
 
@@ -20,6 +21,9 @@ def _rename(source,target):
     if target.exists() or target.is_symlink():raise UserError('目标位置已有同名文件或文件夹，未覆盖任何内容。',409)
     clean_path(source);clean_path(target.parent)
     if os.name=='nt':os.rename(source,target)
+    elif sys.platform == 'darwin':
+        from .macos import rename_exclusive
+        rename_exclusive(source,target)
     elif source.is_file():
         os.link(source,target);source.unlink()
     else:

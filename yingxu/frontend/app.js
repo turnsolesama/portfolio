@@ -38,6 +38,7 @@ const storage = {get(key){try{return localStorage.getItem(key);}catch{return nul
 const state = {bootstrap:null,projects:[],projectId:null,section:'assets',category:'all',folderId:null,folderScope:'current',folders:[],selectedIds:new Set(),trashEntries:[],q:'',status:'',kind:'',sort:'updated',view:storage.get('yingxu:view') || 'grid',offset:0,limit:48,items:[],total:0,counts:[],listSequence:0,listController:null,tabs:[],activeKey:null,skills:[],context:null,modalSequence:0,modalBusy:false,thumbCache:new Map(),thumbPending:new Set(),thumbTimers:new Set(),jobs:new Map(),drafts:{}};
 let searchTimer, draftTimer, observer;
 const defaultSettings = {confirm_delete:true,confirm_trash_delete:true,close_to_tray:true,default_view:'grid',default_sort:'updated',autoplay_media:false,capture_enabled:true,capture_hotkey:'Ctrl+Alt+Shift+S',capture_mode:'annotate'};
+function systemTrashName() { return globalThis.window?.yingxuMac ? 'macOS 废纸篓' : 'Windows 回收站'; }
 function preference(key) { return state.bootstrap?.settings?.[key] ?? defaultSettings[key]; }
 function desktopMessage(action,extra={}) {
   if (!window.chrome?.webview?.postMessage) { toast('请在映序桌面窗口中使用此功能。','info'); return false; }
@@ -210,7 +211,7 @@ function renderNavigation() {
 function renderHero() {
   const project = currentProject(); const counts = project?.counts || {};
   const title = state.section === 'skills' ? 'SKILL 库' : state.section === 'context' ? 'AI 协作' : state.section === 'trash' ? '回收站' : project?.name || '我的项目';
-  const description = state.section === 'skills' ? '管理创作规范，选择项目需要的能力。' : state.section === 'context' ? '复制项目交接文件，让 AI 接着处理当前进度。' : state.section === 'trash' ? '可以恢复，也可以确认后删除到 Windows 回收站。外部引用的原文件保留。' : project?.description || '';
+  const description = state.section === 'skills' ? '管理创作规范，选择项目需要的能力。' : state.section === 'context' ? '复制项目交接文件，让 AI 接着处理当前进度。' : state.section === 'trash' ? '可以恢复，也可以确认后删除到 '+systemTrashName()+'。外部引用的原文件保留。' : project?.description || '';
   $('#projectHero').innerHTML = `<div class="compact-project-header"><div><h1 class="hero-title">${escapeHtml(title)}</h1>${description ? `<p class="hero-description">${escapeHtml(description)}</p>` : ''}</div>${state.section === 'trash' ? `<button class="button button-secondary" data-action="empty-trash" ${state.trashBusy ? 'disabled' : ''}>${icon('trash')}清空回收站</button>` : state.section === 'assets' && project ? `<span class="project-summary-inline">${counts.total || 0} 项资源 · ${counts.completed || 0}/${counts.shots || 0} 分镜完成</span>` : ''}</div>`;
 }
 
@@ -512,7 +513,7 @@ async function restoreTrash(id,kind,button) {
   try { await api(`/api/trash/${encodeURIComponent(id)}/restore`,{method:'POST',body:{kind}}); if (button) button.closest('.undo-toast')?.remove(); await refreshProjects(); await refreshCategoryCounts(); await loadSection(); toast('已恢复。'); } catch(error) { if (button) button.disabled = false; report(error); }
 }
 function trashDeletePreviewHtml(plan) {
-  return `<p class="recycle-note">以下文件会移入 Windows 回收站，可到那里还原。成功处理后，这些条目不能再从映序恢复；外部引用与外部 SKILL 只清理映序记录。</p><div class="trash-delete-preview">${(plan.entries || []).map(entry => `<section class="trash-preview-entry"><strong>${escapeHtml(entry.name || '已删除内容')}</strong>${entry.error ? `<p class="trash-preview-error">暂不能删除：${escapeHtml(entry.error)}</p>` : ''}${(entry.paths || []).map(path => `<p class="trash-preview-path">${escapeHtml(path)}</p>`).join('')}${(entry.warnings || []).map(warning => `<p class="trash-preview-warning">${escapeHtml(warning)}</p>`).join('')}</section>`).join('')}</div>`;
+  return `<p class="recycle-note">以下文件会移入 ${systemTrashName()}，可到那里还原。成功处理后，这些条目不能再从映序恢复；外部引用与外部 SKILL 只清理映序记录。</p><div class="trash-delete-preview">${(plan.entries || []).map(entry => `<section class="trash-preview-entry"><strong>${escapeHtml(entry.name || '已删除内容')}</strong>${entry.error ? `<p class="trash-preview-error">暂不能删除：${escapeHtml(entry.error)}</p>` : ''}${(entry.paths || []).map(path => `<p class="trash-preview-path">${escapeHtml(path)}</p>`).join('')}${(entry.warnings || []).map(warning => `<p class="trash-preview-warning">${escapeHtml(warning)}</p>`).join('')}</section>`).join('')}</div>`;
 }
 async function deleteTrash(id,kind,all=false) {
   if (state.trashBusy || state.section !== 'trash') return;
@@ -524,7 +525,7 @@ async function deleteTrash(id,kind,all=false) {
     const actionable = (plan.entries || []).filter(entry => !entry.error).length;
     const result = !preference('confirm_trash_delete') && actionable === plan.total ? await api('/api/trash/delete',{method:'POST',body:{token:plan.token}}) : await new Promise(resolve => {
       let outcome = null;
-      const dialog = showDialog({title:all ? '清空映序回收站？' : '删除到 Windows 回收站？',wide:true,
+      const dialog = showDialog({title:all ? '清空映序回收站？' : '删除到 '+systemTrashName()+'？',wide:true,
         subtitle:all ? `包含全部回收条目，不受当前搜索或分页影响。${actionable} 项可处理，${plan.total-actionable} 项暂不能删除。` : '请核对原文件位置和处理说明，再确认删除。',
         body:trashDeletePreviewHtml(plan),
         actions:`<button type="button" class="button button-ghost" data-dialog-cancel>${actionable ? '取消' : '关闭'}</button>${actionable ? `<button type="submit" class="button button-danger">确认处理 ${actionable} 项</button>` : ''}`,
@@ -945,7 +946,7 @@ function renderContext() {
 
 async function copyText(value,message='已复制。') { try { await navigator.clipboard.writeText(String(value || '')); toast(message); } catch { showDialog({title:'复制内容',subtitle:'当前窗口不能直接访问剪贴板，可在下方选择并复制。',body:`<div class="field"><textarea id="copyFallback" readonly style="min-height:200px">${escapeHtml(value)}</textarea></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>完成</button>'}); $('#copyFallback').select(); } }
 async function runNative(action) { const tab = activeTab(); if (!tab || tab.source !== 'file') return; await api('/api/open',{method:'POST',body:{id:tab.id,action}}); }
-function runtimeSummary() { const caps = state.bootstrap?.capabilities || {}; return `<p class="muted">图片缩略图：${caps.image_thumbnails === false ? '组件缺失，请重新解压完整包' : '可用'} · 视频缩略图：${caps.ffmpeg ? '可用' : '组件缺失，请使用完整包'} · 拖出原文件：${window.yingxuDesktopDrag ? '可用' : '请从桌面程序打开'}</p>`; }
+function runtimeSummary() { if (window.yingxuMac) return '<p class="muted">macOS 试用版 · 原文件可通过 Finder 定位后拖出。截图与菜单栏常驻暂未提供。</p>';  const caps = state.bootstrap?.capabilities || {}; return `<p class="muted">图片缩略图：${caps.image_thumbnails === false ? '组件缺失，请重新解压完整包' : '可用'} · 视频缩略图：${caps.ffmpeg ? '可用' : '组件缺失，请使用完整包'} · 拖出原文件：${window.yingxuDesktopDrag ? '可用' : '请从桌面程序打开'}</p>`; }
 function helpDialog() { showDialog({title:'让每个镜头都有来处',subtitle:'映序把本地创作文件串成项目，你可以从最熟悉的一步开始。',wide:true,body:`${runtimeSummary()}<div class="guide-grid"><div class="guide-item"><strong>${icon('folder')}项目与分类</strong><p>创建项目，再用剧本、分镜、角色、场景、道具等分类整理内容。卡片可拖到左侧分类。</p></div><div class="guide-item"><strong>${icon('script')}像笔记一样写作</strong><p>右键空白处、项目或文件夹可新建笔记。单击打开文件，多标签自由切换；Markdown 支持实时预览编辑，Word 可修改正文段落。Ctrl+K 可跨项目查找名称与已索引正文，点击结果直接打开。</p></div><div class="guide-item"><strong>${icon('link')}把创作线索连起来</strong><p>在右侧信息面板把角色、场景、白模视频、生成版本关联到具体分镜，并记录状态与提示词。</p></div><div class="guide-item"><strong>${icon('upload')}导入与拖放</strong><p>导入目录引用原文件；把文件拖进页面会保存项目副本。桌面版直接拖动图片或卡片即可拖到其他软件。先点第一项，按住 Shift 点最后一项可连续多选并一起拖动。</p></div><div class="guide-item"><strong>${icon('skills')}集中管理 SKILL</strong><p>阅读已有 SKILL，创建自己的创作规范。右键 SKILL 可打开其所在位置；绑定到项目后，交接文件会记录相关能力与位置。</p></div><div class="guide-item"><strong>${icon('context')}把进度交给 AI</strong><p>在 AI 协作中刷新项目进度，将本地交接文件路径发给 Codex，继续处理已有项目。</p></div></div><div class="shortcut-list"><span>当前页面搜索<kbd>Ctrl F</kbd></span><span>全局搜索<kbd>Ctrl K</kbd></span><span>保存<kbd>Ctrl S</kbd></span><span>帮助<kbd>?</kbd></span></div>`,actions:'<button class="button button-primary" type="button" data-dialog-cancel>开始创作</button>'}); }
 
 async function handleAction(action,target) {
@@ -1131,6 +1132,7 @@ async function uploadFiles(files,category,folderId = null) {
 }
 
 async function settingsDialog() {
+  if (window.yingxuMac) return window.yingxuMacSettings();
   if ($('#appDialog').open || groupsIsOpen() || globalSearchIsOpen()) { toast('请先完成或关闭当前对话框。','info'); return; }
   const settings = await api('/api/settings'); state.bootstrap.settings = settings;
   const toggle = (key,title,description) => `<label class="setting-row"><span><strong>${title}</strong><small>${description}</small></span><input type="checkbox" name="${key}" ${settings[key] ? 'checked' : ''}></label>`;

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 import re
 import shlex
@@ -711,18 +712,22 @@ class Store:
             target=path.with_name(name+path.suffix)
             if target==path:return self.get_item(iid,True)
             if target.exists():raise UserError('同文件夹已有这个名称，请换一个名称。',409)
-            if os.name!='nt':raise UserError('原文件重命名目前仅支持 Windows。')
+            if os.name!='nt' and sys.platform!='darwin':raise UserError('当前平台不支持安全的原文件重命名。')
+            rename = os.rename
+            if sys.platform=='darwin':
+                from .macos import rename_exclusive
+                rename = rename_exclusive
             with self.connection() as db:
                 # BEGIN IMMEDIATE prevents app writers racing the filesystem rename.
                 db.execute('BEGIN IMMEDIATE')
                 rows=db.execute('SELECT id FROM items WHERE path=?',(str(path),)).fetchall()
-                os.rename(path,target)  # Windows fails rather than replacing an existing target.
+                rename(path,target)  # Both implementations refuse an existing destination.
                 try:
                     db.execute('UPDATE sources SET path=? WHERE path=? AND is_file=1',(str(target),str(path)))
                     db.execute('UPDATE items SET path=?,name=?,updated=? WHERE path=?',(str(target),name,now(),str(path)))
                     for row in rows:self._search_row(db,row['id'])
                     db.commit()
                 except Exception:
-                    os.rename(target,path)
+                    rename(target,path)
                     raise
             return self.get_item(iid,True)

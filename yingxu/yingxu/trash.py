@@ -7,6 +7,7 @@ import uuid
 import hashlib
 import json
 import os
+import sys
 from pathlib import Path
 import re
 import secrets
@@ -82,6 +83,9 @@ class _RecycleSink:
 
 
 def recycle_path(path):
+    if sys.platform == 'darwin':
+        from .macos import recycle
+        return recycle(path)
     if os.name != "nt":
         raise OSError("当前平台没有可用的 Windows 回收站。")
     path = str(clean_path(path))
@@ -129,7 +133,8 @@ def recycle_path(path):
 
 
 def _key(path):
-    return os.path.normcase(os.path.abspath(path)).casefold()
+    value = os.path.normcase(os.path.abspath(path))
+    return value.casefold() if os.name == 'nt' else value
 
 
 def _inside(path, root):
