@@ -20,6 +20,14 @@ ClassicDesk 当前公开包用于方案编辑与界面预览，真实系统增�
 
 详细功能、截图、安装步骤和问题反馈都放在各工具的独立仓库。这里仅作为总入口。
 
+## 个人娱乐创作
+
+娱乐向的个人创作，与上面的工具分开维护，同样使用独立仓库与版本页。
+
+| 类型 | 作品 | 介绍 | 版本 |
+| --- | --- | --- | --- |
+| Windows 桌宠 | [枣子姐桌宠 NatsumePet](https://github.com/turnsolesama/codex-pet) | 《星光咖啡馆与死神之蝶》四季夏目 Q 版桌宠：五套服装换装、按部位点击互动、拖拽回弹与边缘收纳探头 | [v0.4.1 下载](https://github.com/turnsolesama/codex-pet/releases/tag/v0.4.1) |
+
 <details>
 <summary>旧版本与迁移说明</summary>
 
